@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Funnel Analytics</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1>Professional Funnel Analytics</h1>
+                <div class="header-actions">
+                    <button class="btn btn--secondary" id="help-btn">Help (⌘K)</button>
+                    <button class="btn btn--primary" id="run-analysis">Run Analysis (R)</button>
+                    <button class="btn btn--outline" id="save-funnel">Save Funnel (S)</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="app-main">
+            <!-- Left Sidebar - Event Catalog -->
+            <aside class="event-catalog">
+                <div class="catalog-header">
+                    <h3>Event Catalog</h3>
+                    <input type="text" class="form-control" id="event-search" placeholder="Search events...">
+                </div>
+                
+                <div class="catalog-filters">
+                    <select class="form-control" id="category-filter">
+                        <option value="">All Categories</option>
+                        <option value="Authentication">Authentication</option>
+                        <option value="E-commerce">E-commerce</option>
+                        <option value="Engagement">Engagement</option>
+                        <option value="Onboarding">Onboarding</option>
+                        <option value="Social">Social</option>
+                        <option value="Mobile">Mobile</option>
+                    </select>
+                </div>
+
+                <div class="frequent-events">
+                    <h4>Frequently Used</h4>
+                    <div id="pinned-events" class="event-tags"></div>
+                </div>
+
+                <div class="event-list" id="event-list">
+                    <!-- Events will be populated here -->
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Step Builder Canvas -->
+                <section class="step-builder">
+                    <div class="section-header">
+                        <h3>Funnel Steps</h3>
+                        <span class="step-counter">0/10 steps</span>
+                    </div>
+                    
+                    <div class="steps-container" id="steps-container">
+                        <div class="empty-state" id="empty-steps">
+                            <p>Drag events here to build your funnel or click "Add Step" below</p>
+                            <button class="btn btn--secondary" id="add-step-btn">Add Step</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Configuration Panel -->
+                <section class="config-panel">
+                    <div class="config-row">
+                        <div class="config-group">
+                            <label class="form-label">Conversion Window</label>
+                            <select class="form-control" id="conversion-window">
+                                <option value="1h">1 Hour</option>
+                                <option value="1d" selected>1 Day</option>
+                                <option value="3d">3 Days</option>
+                                <option value="7d">7 Days</option>
+                                <option value="30d">30 Days</option>
+                                <option value="90d">90 Days</option>
+                            </select>
+                        </div>
+                        
+                        <div class="config-group">
+                            <label class="form-label">Re-entry Mode</label>
+                            <select class="form-control" id="reentry-mode">
+                                <option value="first">First Entry Only</option>
+                                <option value="optimized" selected>Optimized Re-entry</option>
+                            </select>
+                        </div>
+                        
+                        <div class="config-group">
+                            <label class="form-label">Counting Method</label>
+                            <select class="form-control" id="counting-method">
+                                <option value="unique_users" selected>Unique Users</option>
+                                <option value="event_totals">Event Totals</option>
+                                <option value="unique_pairs">Unique Property Pairs</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Breakdown & Segmentation -->
+                <section class="breakdown-panel">
+                    <div class="section-header">
+                        <h3>Breakdown & Segmentation</h3>
+                        <button class="btn btn--secondary btn--sm" id="toggle-breakdown">Toggle Breakdown</button>
+                    </div>
+                    
+                    <div class="breakdown-controls" id="breakdown-controls">
+                        <div class="breakdown-row">
+                            <div class="breakdown-group">
+                                <label class="form-label">Group By Property 1</label>
+                                <select class="form-control" id="groupby-1">
+                                    <option value="">Select Property</option>
+                                    <option value="platform">Platform</option>
+                                    <option value="country">Country</option>
+                                    <option value="user_type">User Type</option>
+                                    <option value="campaign">Campaign</option>
+                                    <option value="device_type">Device Type</option>
+                                </select>
+                            </div>
+                            
+                            <div class="breakdown-group">
+                                <label class="form-label">Group By Property 2</label>
+                                <select class="form-control" id="groupby-2">
+                                    <option value="">Select Property</option>
+                                    <option value="platform">Platform</option>
+                                    <option value="country">Country</option>
+                                    <option value="user_type">User Type</option>
+                                    <option value="campaign">Campaign</option>
+                                    <option value="device_type">Device Type</option>
+                                </select>
+                            </div>
+
+                            <div class="breakdown-group">
+                                <label class="form-label">Breakdown Level</label>
+                                <select class="form-control" id="breakdown-level">
+                                    <option value="global" selected>Global</option>
+                                    <option value="step">Step Level</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Comparison Panel -->
+                <section class="comparison-panel">
+                    <div class="section-header">
+                        <h3>A/B Comparison</h3>
+                        <button class="btn btn--secondary btn--sm" id="toggle-comparison">Enable Comparison</button>
+                    </div>
+                    
+                    <div class="comparison-controls hidden" id="comparison-controls">
+                        <div class="comparison-row">
+                            <div class="variant-group">
+                                <label class="form-label">Variant A</label>
+                                <select class="form-control" id="variant-a">
+                                    <option value="control">Control Group</option>
+                                    <option value="mobile">Mobile Users</option>
+                                    <option value="desktop">Desktop Users</option>
+                                </select>
+                            </div>
+                            
+                            <div class="variant-group">
+                                <label class="form-label">Variant B</label>
+                                <select class="form-control" id="variant-b">
+                                    <option value="treatment">Treatment Group</option>
+                                    <option value="mobile">Mobile Users</option>
+                                    <option value="desktop">Desktop Users</option>
+                                </select>
+                            </div>
+
+                            <div class="significance-group">
+                                <label class="form-label">Statistical Significance</label>
+                                <div class="significance-indicator" id="significance-indicator">
+                                    <span class="status status--info">Calculating...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Charts and Visualization -->
+                <section class="visualization-section">
+                    <div class="section-header">
+                        <h3>Funnel Analysis Results</h3>
+                        <div class="chart-tabs">
+                            <button class="chart-tab active" data-chart="conversion">Conversion</button>
+                            <button class="chart-tab" data-chart="timeline">Over Time</button>
+                            <button class="chart-tab" data-chart="distribution">Time Distribution</button>
+                        </div>
+                    </div>
+
+                    <div class="charts-container">
+                        <div class="chart-panel active" id="conversion-chart-panel">
+                            <canvas id="conversion-chart" height="400"></canvas>
+                        </div>
+                        
+                        <div class="chart-panel" id="timeline-chart-panel">
+                            <canvas id="timeline-chart" height="400"></canvas>
+                        </div>
+                        
+                        <div class="chart-panel" id="distribution-chart-panel">
+                            <canvas id="distribution-chart" height="400"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Results Table -->
+                <section class="results-table-section">
+                    <div class="section-header">
+                        <h3>Detailed Results</h3>
+                        <button class="btn btn--secondary btn--sm" id="export-results">Export CSV</button>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table class="results-table" id="results-table">
+                            <thead>
+                                <tr>
+                                    <th>Step</th>
+                                    <th>Event</th>
+                                    <th>Users</th>
+                                    <th>Conversion %</th>
+                                    <th>Drop-off %</th>
+                                    <th>Avg Time</th>
+                                    <th>Median Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-tbody">
+                                <!-- Results will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal hidden" id="event-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Event to Funnel</h3>
+                <button class="modal-close" id="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Selected Event</label>
+                    <input type="text" class="form-control" id="selected-event" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Property Filters</label>
+                    <div id="property-filters">
+                        <!-- Property filters will be added here -->
+                    </div>
+                    <button class="btn btn--secondary btn--sm" id="add-filter">Add Filter</button>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Exclusion Step</label>
+                    <input type="checkbox" id="exclusion-step"> Make this an exclusion step
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Minimum Frequency</label>
+                    <input type="number" class="form-control" id="min-frequency" min="1" value="1">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn--secondary" id="cancel-add">Cancel</button>
+                <button class="btn btn--primary" id="confirm-add">Add to Funnel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Funnel Modal -->
+    <div class="modal hidden" id="save-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Save Funnel</h3>
+                <button class="modal-close" id="close-save-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Funnel Name</label>
+                    <input type="text" class="form-control" id="funnel-name" placeholder="Enter funnel name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" id="funnel-description" rows="3" placeholder="Describe this funnel..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tags</label>
+                    <input type="text" class="form-control" id="funnel-tags" placeholder="e.g., onboarding, e-commerce">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn--secondary" id="cancel-save">Cancel</button>
+                <button class="btn btn--primary" id="confirm-save">Save Funnel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal hidden" id="help-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Keyboard Shortcuts</h3>
+                <button class="modal-close" id="close-help-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="shortcut-list">
+                    <div class="shortcut-item">
+                        <kbd>⌘ K</kbd>
+                        <span>Quick add event</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>R</kbd>
+                        <span>Run analysis</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>S</kbd>
+                        <span>Save funnel</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Esc</kbd>
+                        <span>Close modals</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
