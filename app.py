@@ -838,7 +838,6 @@ class FunnelCalculator:
         preprocess_time = time.time() - preprocess_start
         
         if preprocessed_df.empty:
-        simplify-funnel-event-selection
             # Check if this is because the original dataset was empty or because no events matched
             if events_df.empty:
                 # Original dataset was empty - return empty results
