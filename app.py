@@ -222,12 +222,42 @@ class FunnelResults:
     statistical_tests: Optional[List[StatSignificanceResult]] = None
 
 # Data Source Management
+def _data_source_performance_monitor(func_name: str):
+    """Decorator for monitoring DataSourceManager function performance"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            start_time = time.time()
+            try:
+                result = func(self, *args, **kwargs)
+                execution_time = time.time() - start_time
+                
+                if not hasattr(self, '_performance_metrics'):
+                    self._performance_metrics = {}
+                    
+                if func_name not in self._performance_metrics:
+                    self._performance_metrics[func_name] = []
+                
+                self._performance_metrics[func_name].append(execution_time)
+                
+                self.logger.info(f"DataSource.{func_name} executed in {execution_time:.4f} seconds")
+                return result
+                
+            except Exception as e:
+                execution_time = time.time() - start_time
+                self.logger.error(f"DataSource.{func_name} failed after {execution_time:.4f} seconds: {str(e)}")
+                raise
+                
+        return wrapper
+    return decorator
+
 class DataSourceManager:
     """Manages different data sources for funnel analysis"""
     
     def __init__(self):
         self.clickhouse_client = None
         self.logger = logging.getLogger(__name__)
+        self._performance_metrics = {}  # Performance monitoring for data operations
     
     def validate_event_data(self, df: pd.DataFrame) -> Tuple[bool, str]:
         """Validate that DataFrame has required columns for funnel analysis"""
@@ -303,6 +333,7 @@ class DataSourceManager:
             st.error(f"ClickHouse query failed: {str(e)}")
             return pd.DataFrame()
     
+    @_data_source_performance_monitor('get_sample_data')
     def get_sample_data(self) -> pd.DataFrame:
         """Generate sample event data for demonstration"""
         np.random.seed(42)
@@ -406,6 +437,7 @@ class DataSourceManager:
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         return df
     
+    @_data_source_performance_monitor('get_segmentation_properties')
     def get_segmentation_properties(self, df: pd.DataFrame) -> Dict[str, List[str]]:
         """Extract available properties for segmentation"""
         properties = {'event_properties': set(), 'user_properties': set()}
@@ -451,6 +483,7 @@ class DataSourceManager:
         
         return sorted(list(values))
     
+    @_data_source_performance_monitor('get_event_metadata')
     def get_event_metadata(self, df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
         """Extract event metadata for enhanced display with statistics"""
         # Calculate basic statistics for all events
@@ -587,6 +620,35 @@ class DataSourceManager:
             return metadata
 
 # Funnel Calculation Engine
+def _funnel_performance_monitor(func_name: str):
+    """Decorator for monitoring FunnelCalculator function performance"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            start_time = time.time()
+            try:
+                result = func(self, *args, **kwargs)
+                execution_time = time.time() - start_time
+                
+                if not hasattr(self, '_performance_metrics'):
+                    self._performance_metrics = {}
+                    
+                if func_name not in self._performance_metrics:
+                    self._performance_metrics[func_name] = []
+                
+                self._performance_metrics[func_name].append(execution_time)
+                
+                self.logger.info(f"{func_name} executed in {execution_time:.4f} seconds")
+                return result
+                
+            except Exception as e:
+                execution_time = time.time() - start_time
+                self.logger.error(f"{func_name} failed after {execution_time:.4f} seconds: {str(e)}")
+                raise
+                
+        return wrapper
+    return decorator
+
 class FunnelCalculator:
     """Core funnel calculation engine with performance optimizations"""
     
@@ -605,32 +667,6 @@ class FunnelCalculator:
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
     
-    def _performance_monitor(self, func_name: str):
-        """Decorator for monitoring function performance"""
-        def decorator(func):
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                start_time = time.time()
-                try:
-                    result = func(*args, **kwargs)
-                    execution_time = time.time() - start_time
-                    
-                    if func_name not in self._performance_metrics:
-                        self._performance_metrics[func_name] = []
-                    
-                    self._performance_metrics[func_name].append(execution_time)
-                    
-                    self.logger.info(f"{func_name} executed in {execution_time:.4f} seconds")
-                    return result
-                    
-                except Exception as e:
-                    execution_time = time.time() - start_time
-                    self.logger.error(f"{func_name} failed after {execution_time:.4f} seconds: {str(e)}")
-                    raise
-                    
-            return wrapper
-        return decorator
-    
     def get_performance_report(self) -> Dict[str, Dict[str, float]]:
         """Get performance metrics report"""
         report = {}
@@ -644,6 +680,67 @@ class FunnelCalculator:
                     'total_time': sum(times)
                 }
         return report
+    
+    def get_bottleneck_analysis(self) -> Dict[str, Any]:
+        """
+        Get comprehensive bottleneck analysis showing which functions are consuming the most time
+        Returns functions ordered by total time consumption and analysis
+        """
+        if not self._performance_metrics:
+            return {
+                'message': 'No performance data available. Run funnel analysis first.',
+                'bottlenecks': [],
+                'summary': {}
+            }
+        
+        # Calculate metrics for each function
+        function_metrics = []
+        total_execution_time = 0
+        
+        for func_name, times in self._performance_metrics.items():
+            if times:
+                total_time = sum(times)
+                avg_time = np.mean(times)
+                total_execution_time += total_time
+                
+                function_metrics.append({
+                    'function_name': func_name,
+                    'total_time': total_time,
+                    'avg_time': avg_time,
+                    'min_time': min(times),
+                    'max_time': max(times),
+                    'call_count': len(times),
+                    'std_time': np.std(times),
+                    'time_per_call_consistency': np.std(times) / avg_time if avg_time > 0 else 0
+                })
+        
+        # Sort by total time (biggest bottlenecks first)
+        function_metrics.sort(key=lambda x: x['total_time'], reverse=True)
+        
+        # Calculate percentages
+        for metric in function_metrics:
+            metric['percentage_of_total'] = (metric['total_time'] / total_execution_time * 100) if total_execution_time > 0 else 0
+        
+        # Identify critical bottlenecks (functions taking >20% of total time)
+        critical_bottlenecks = [f for f in function_metrics if f['percentage_of_total'] > 20]
+        
+        # Identify optimization candidates (high variance functions)
+        high_variance_functions = [f for f in function_metrics if f['time_per_call_consistency'] > 0.5]
+        
+        return {
+            'bottlenecks': function_metrics,
+            'critical_bottlenecks': critical_bottlenecks,
+            'high_variance_functions': high_variance_functions,
+            'summary': {
+                'total_execution_time': total_execution_time,
+                'total_functions_monitored': len(function_metrics),
+                'top_3_bottlenecks': [f['function_name'] for f in function_metrics[:3]],
+                'performance_distribution': {
+                    'critical_functions_pct': len(critical_bottlenecks) / len(function_metrics) * 100 if function_metrics else 0,
+                    'top_function_dominance': function_metrics[0]['percentage_of_total'] if function_metrics else 0
+                }
+            }
+        }
     
     def _get_data_hash(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> str:
         """Generate a stable hash for caching based on data and configuration."""
@@ -680,6 +777,7 @@ class FunnelCalculator:
             self._preprocessed_cache = None
         self.logger.info("Cache cleared")
     
+    @_funnel_performance_monitor('_preprocess_data')
     def _preprocess_data(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> pd.DataFrame:
         """
         Preprocess and optimize data for funnel calculations with internal caching
@@ -761,6 +859,7 @@ class FunnelCalculator:
         
         return funnel_events
     
+    @_funnel_performance_monitor('_expand_json_properties')
     def _expand_json_properties(self, df: pd.DataFrame, column: str) -> pd.DataFrame:
         """
         Expand commonly used JSON properties into separate columns
@@ -826,6 +925,7 @@ class FunnelCalculator:
             self.logger.debug(f"Failed to decode JSON in _extract_property_value: {json_str[:50]}")
             return None
 
+    @_funnel_performance_monitor('segment_events_data')
     def segment_events_data(self, events_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         """Segment events data based on configuration with optimized filtering"""
         if not self.config.segment_by or not self.config.segment_values:
@@ -886,6 +986,7 @@ class FunnelCalculator:
             self.logger.debug(f"Failed to decode JSON in _has_property_value: {prop_str[:50]}")
             return False
     
+    @_funnel_performance_monitor('calculate_funnel_metrics')
     def calculate_funnel_metrics(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> FunnelResults:
         """
         Calculate comprehensive funnel metrics from event data with performance optimizations
@@ -1015,6 +1116,7 @@ class FunnelCalculator:
             
             return main_result
     
+    @_funnel_performance_monitor('_calculate_time_to_convert_optimized')
     def _calculate_time_to_convert_optimized(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> List[TimeToConvertStats]:
         """
         Calculate time to convert statistics using vectorized operations
@@ -1104,6 +1206,7 @@ class FunnelCalculator:
         
         return None
     
+    @_funnel_performance_monitor('_calculate_cohort_analysis_optimized')
     def _calculate_cohort_analysis_optimized(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> CohortData:
         """
         Calculate cohort analysis using vectorized operations
@@ -1163,6 +1266,7 @@ class FunnelCalculator:
             cohort_labels=cohort_labels
         )
     
+    @_funnel_performance_monitor('_calculate_path_analysis_optimized')
     def _calculate_path_analysis_optimized(self, 
                                            segment_funnel_events_df: pd.DataFrame, 
                                            funnel_steps: List[str],
@@ -1566,6 +1670,7 @@ class FunnelCalculator:
             between_steps_events=between_steps_events
         )
     
+    @_funnel_performance_monitor('_calculate_statistical_significance')
     def _calculate_statistical_significance(self, segment_results: Dict[str, FunnelResults]) -> List[StatSignificanceResult]:
         """Calculate statistical significance between two segments"""
         segments = list(segment_results.keys())
@@ -1633,6 +1738,7 @@ class FunnelCalculator:
         
         return tests
     
+    @_funnel_performance_monitor('_calculate_unique_users_funnel_optimized')
     def _calculate_unique_users_funnel_optimized(self, events_df: pd.DataFrame, steps: List[str]) -> FunnelResults:
         """
         Calculate funnel using unique users method with vectorized operations
@@ -1698,6 +1804,7 @@ class FunnelCalculator:
             drop_off_rates=drop_off_rates
         )
     
+    @_funnel_performance_monitor('_find_converted_users_vectorized')
     def _find_converted_users_vectorized(self, user_groups, eligible_users: set, 
                                        prev_step: str, current_step: str) -> set:
         """
@@ -1878,6 +1985,7 @@ class FunnelCalculator:
         
         return False
     
+    @_funnel_performance_monitor('_calculate_unique_pairs_funnel_optimized')
     def _calculate_unique_pairs_funnel_optimized(self, events_df: pd.DataFrame, steps: List[str]) -> FunnelResults:
         """
         Calculate funnel using unique pairs method with vectorized operations
@@ -1942,6 +2050,7 @@ class FunnelCalculator:
             drop_off_rates=drop_off_rates
         )
     
+    @_funnel_performance_monitor('_calculate_unique_users_funnel')
     def _calculate_unique_users_funnel(self, events_df: pd.DataFrame, steps: List[str]) -> FunnelResults:
         """Calculate funnel using unique users method"""
         users_count = []
@@ -2113,6 +2222,7 @@ class FunnelCalculator:
             self.logger.warning(f"Error in _user_did_later_steps_before_current: {str(e)}")
             return False
     
+    @_funnel_performance_monitor('_calculate_unordered_funnel')
     def _calculate_unordered_funnel(self, events_df: pd.DataFrame, steps: List[str]) -> FunnelResults:
         """Calculate funnel metrics for unordered funnel (all steps within window)"""
         users_count = []
@@ -2178,6 +2288,7 @@ class FunnelCalculator:
             drop_off_rates=drop_off_rates
         )
     
+    @_funnel_performance_monitor('_calculate_event_totals_funnel')
     def _calculate_event_totals_funnel(self, events_df: pd.DataFrame, steps: List[str]) -> FunnelResults:
         """Calculate funnel using event totals method"""
         users_count = []
@@ -2215,6 +2326,7 @@ class FunnelCalculator:
             drop_off_rates=drop_off_rates
         )
     
+    @_funnel_performance_monitor('_calculate_unique_pairs_funnel')
     def _calculate_unique_pairs_funnel(self, events_df: pd.DataFrame, steps: List[str]) -> FunnelResults:
         """Calculate funnel using unique pairs method (step-to-step conversion)"""
         users_count = []
@@ -2641,6 +2753,52 @@ def event_browser_DISABLED():
 def create_enhanced_event_selector_DISABLED():
     """Create enhanced event selector with search, filters, and categorized display - DISABLED in simplified version"""
     pass
+
+def get_comprehensive_performance_analysis() -> Dict[str, Any]:
+    """
+    Get comprehensive performance analysis from all monitored components
+    """
+    analysis = {
+        'data_source_metrics': {},
+        'funnel_calculator_metrics': {},
+        'combined_bottlenecks': [],
+        'overall_summary': {}
+    }
+    
+    # Get data source performance if available
+    if hasattr(st.session_state, 'data_source_manager') and hasattr(st.session_state.data_source_manager, '_performance_metrics'):
+        analysis['data_source_metrics'] = st.session_state.data_source_manager._performance_metrics
+    
+    # Get funnel calculator performance if available
+    if hasattr(st.session_state, 'last_calculator') and hasattr(st.session_state.last_calculator, '_performance_metrics'):
+        analysis['funnel_calculator_metrics'] = st.session_state.last_calculator._performance_metrics
+        
+        # Get bottleneck analysis from calculator
+        bottleneck_analysis = st.session_state.last_calculator.get_bottleneck_analysis()
+        if bottleneck_analysis.get('bottlenecks'):
+            analysis['combined_bottlenecks'] = bottleneck_analysis['bottlenecks']
+    
+    # Calculate overall metrics
+    all_metrics = {}
+    all_metrics.update(analysis['data_source_metrics'])
+    all_metrics.update(analysis['funnel_calculator_metrics'])
+    
+    total_time = 0
+    total_calls = 0
+    
+    for func_name, times in all_metrics.items():
+        if times:
+            total_time += sum(times)
+            total_calls += len(times)
+    
+    analysis['overall_summary'] = {
+        'total_execution_time': total_time,
+        'total_function_calls': total_calls,
+        'average_call_time': total_time / total_calls if total_calls > 0 else 0,
+        'functions_monitored': len([f for f, t in all_metrics.items() if t])
+    }
+    
+    return analysis
 
 def get_event_statistics(events_data: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
     """Get comprehensive statistics for each event in the dataset"""
@@ -3341,7 +3499,126 @@ ORDER BY user_id, timestamp""",
                 with tab_objects[tab_idx]:  # Performance Monitor
                     st.markdown("### ⚡ Performance Monitoring")
                     
+                    # Show comprehensive performance analysis
+                    comprehensive_analysis = get_comprehensive_performance_analysis()
+                    
+                    if comprehensive_analysis['overall_summary']['functions_monitored'] > 0:
+                        st.markdown("#### 🎯 System Performance Overview")
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric("Total System Time", f"{comprehensive_analysis['overall_summary']['total_execution_time']:.3f}s")
+                        with col2:
+                            st.metric("Total Function Calls", comprehensive_analysis['overall_summary']['total_function_calls'])
+                        with col3:
+                            st.metric("Avg Call Time", f"{comprehensive_analysis['overall_summary']['average_call_time']:.4f}s")
+                        with col4:
+                            st.metric("Functions Monitored", comprehensive_analysis['overall_summary']['functions_monitored'])
+                        
+                        # Show data source performance if available
+                        if comprehensive_analysis['data_source_metrics']:
+                            st.markdown("#### 📊 Data Source Performance")
+                            
+                            ds_metrics_table = []
+                            for func_name, times in comprehensive_analysis['data_source_metrics'].items():
+                                if times:
+                                    ds_metrics_table.append({
+                                        'Data Operation': func_name,
+                                        'Total Time (s)': f"{sum(times):.4f}",
+                                        'Avg Time (s)': f"{np.mean(times):.4f}",
+                                        'Calls': len(times),
+                                        'Min Time (s)': f"{min(times):.4f}",
+                                        'Max Time (s)': f"{max(times):.4f}"
+                                    })
+                            
+                            if ds_metrics_table:
+                                st.dataframe(pd.DataFrame(ds_metrics_table), use_container_width=True, hide_index=True)
+                    
+                    # Show bottleneck analysis from calculator
+                    if hasattr(st.session_state, 'last_calculator') and st.session_state.last_calculator:
+                        bottleneck_analysis = st.session_state.last_calculator.get_bottleneck_analysis()
+                        
+                        if bottleneck_analysis.get('bottlenecks'):
+                            st.markdown("#### 🔍 Bottleneck Analysis")
+                            
+                            # Summary metrics
+                            summary = bottleneck_analysis['summary']
+                            col1, col2, col3, col4 = st.columns(4)
+                            
+                            with col1:
+                                st.metric("Total Execution Time", f"{summary['total_execution_time']:.3f}s")
+                            with col2:
+                                st.metric("Functions Monitored", summary['total_functions_monitored'])
+                            with col3:
+                                top_function_dominance = summary['performance_distribution']['top_function_dominance']
+                                st.metric("Top Function Dominance", f"{top_function_dominance:.1f}%")
+                            with col4:
+                                critical_pct = summary['performance_distribution']['critical_functions_pct']
+                                st.metric("Critical Functions", f"{critical_pct:.1f}%")
+                            
+                            # Bottleneck table
+                            st.markdown("**⚠️ Function Performance Breakdown (Ordered by Total Time)**")
+                            
+                            bottleneck_table_data = []
+                            for func_data in bottleneck_analysis['bottlenecks']:
+                                # Color coding for critical bottlenecks
+                                if func_data['percentage_of_total'] > 20:
+                                    status = "🔴 Critical"
+                                elif func_data['percentage_of_total'] > 10:
+                                    status = "🟡 Moderate"
+                                else:
+                                    status = "🟢 Normal"
+                                
+                                bottleneck_table_data.append({
+                                    'Function': func_data['function_name'],
+                                    'Status': status,
+                                    'Total Time (s)': f"{func_data['total_time']:.4f}",
+                                    '% of Total': f"{func_data['percentage_of_total']:.1f}%",
+                                    'Avg Time (s)': f"{func_data['avg_time']:.4f}",
+                                    'Calls': func_data['call_count'],
+                                    'Min Time (s)': f"{func_data['min_time']:.4f}",
+                                    'Max Time (s)': f"{func_data['max_time']:.4f}",
+                                    'Consistency': f"{1/func_data['time_per_call_consistency']:.1f}x" if func_data['time_per_call_consistency'] > 0 else "Perfect"
+                                })
+                            
+                            st.dataframe(
+                                pd.DataFrame(bottleneck_table_data), 
+                                use_container_width=True, 
+                                hide_index=True
+                            )
+                            
+                            # Critical bottlenecks alert
+                            if bottleneck_analysis['critical_bottlenecks']:
+                                st.warning(
+                                    f"🚨 **Critical Bottlenecks Detected:** "
+                                    f"{', '.join([f['function_name'] for f in bottleneck_analysis['critical_bottlenecks']])} "
+                                    f"are consuming significant computation time. Consider optimization."
+                                )
+                            
+                            # High variance functions alert
+                            if bottleneck_analysis['high_variance_functions']:
+                                st.info(
+                                    f"📊 **Variable Performance:** "
+                                    f"{', '.join([f['function_name'] for f in bottleneck_analysis['high_variance_functions']])} "
+                                    f"show high variance in execution times. May benefit from optimization."
+                                )
+                            
+                            # Optimization recommendations
+                            st.markdown("#### 💡 Optimization Recommendations")
+                            
+                            top_3 = summary['top_3_bottlenecks']
+                            if top_3:
+                                st.markdown(f"1. **Primary Focus**: Optimize `{top_3[0]}` - highest time consumer")
+                                if len(top_3) > 1:
+                                    st.markdown(f"2. **Secondary Focus**: Review `{top_3[1]}` for efficiency improvements")
+                                if len(top_3) > 2:
+                                    st.markdown(f"3. **Tertiary Focus**: Consider optimizing `{top_3[2]}`")
+                            
+                            st.markdown("---")
+                    
                     # Performance history table
+                    st.markdown("#### 📊 Calculation History")
                     perf_data = []
                     for entry in st.session_state.performance_history:
                         perf_data.append({
