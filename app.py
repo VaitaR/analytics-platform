@@ -838,13 +838,18 @@ class FunnelCalculator:
         preprocess_time = time.time() - preprocess_start
         
         if preprocessed_df.empty:
-            return FunnelResults(
-                steps=funnel_steps,
-                users_count=[0] * len(funnel_steps),
-                conversion_rates=[0.0] * len(funnel_steps),
-                drop_offs=[0] * len(funnel_steps),
-                drop_off_rates=[0.0] * len(funnel_steps)
-            )
+        simplify-funnel-event-selection
+            # Check if this is because the original dataset was empty or because no events matched
+            if events_df.empty:
+                # Original dataset was empty - return empty results
+                return FunnelResults([], [], [], [], [])
+            else:
+                # Events exist but none match funnel steps - return zero counts for all steps
+                zero_counts = [0] * len(funnel_steps)
+                conversion_rates = [100.0] + [0.0] * (len(funnel_steps) - 1)
+                drop_offs = [0] + [0] * (len(funnel_steps) - 1)
+                drop_off_rates = [0.0] * len(funnel_steps)
+                return FunnelResults(funnel_steps, zero_counts, conversion_rates, drop_offs, drop_off_rates)
         
         self.logger.info(f"Preprocessing completed in {preprocess_time:.4f} seconds. Processing {len(preprocessed_df)} relevant events.")
         
@@ -2520,200 +2525,100 @@ def filter_events(events_metadata: Dict[str, Dict[str, Any]], search_query: str,
     
     return filtered
 
-@st.fragment
-def funnel_step_manager():
-    """Fragment for managing funnel steps without full page reloads"""
-    if not st.session_state.funnel_steps:
-        st.info("Add events from the left panel to build your funnel")
-        return
-    
-    metadata = st.session_state.event_metadata
-    
-    # Category emoji mapping
-    category_emojis = {
-        'Authentication': '🔐',
-        'Onboarding': '👋',
-        'E-commerce': '🛒',
-        'Engagement': '👁️',
-        'Social': '👥',
-        'Mobile': '📱',
-        'Other': '📊'
-    }
-    
-    # Display current funnel steps with enhanced cards
-    for i, step in enumerate(st.session_state.funnel_steps):
-        step_metadata = metadata.get(step, {})
-        category = step_metadata.get('category', 'Other')
-        frequency = step_metadata.get('frequency', 'medium')
-        category_emoji = category_emojis.get(category, '📊')
-        
-        with st.container():
-            st.markdown(f"""
-            <div class="step-container">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <span class="funnel-step">
-                            {i+1}. {category_emoji} {step}
-                        </span>
-                        <br>
-                        <small style="color: #6b7280;">Category: {category} | Frequency: {frequency}</small>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Action buttons for each step
-            btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
-            
-            with btn_col1:
-                if st.button("🗑️", key=f"remove_{i}", help="Remove step"):
-                    st.session_state.funnel_steps.pop(i)
-                    st.rerun()
-            
-            with btn_col2:
-                if i > 0 and st.button("⬆️", key=f"up_{i}", help="Move up"):
-                    st.session_state.funnel_steps[i], st.session_state.funnel_steps[i-1] = \
-                        st.session_state.funnel_steps[i-1], st.session_state.funnel_steps[i]
-                    st.rerun()
-            
-            with btn_col3:
-                if i < len(st.session_state.funnel_steps) - 1 and st.button("⬇️", key=f"down_{i}", help="Move down"):
-                    st.session_state.funnel_steps[i], st.session_state.funnel_steps[i+1] = \
-                        st.session_state.funnel_steps[i+1], st.session_state.funnel_steps[i]
-                    st.rerun()
-            
-            with btn_col4:
-                if st.button("ℹ️", key=f"info_{i}", help="View details"):
-                    with st.popover(f"Details: {step}"):
-                        st.markdown(f"**Category:** {category}")
-                        st.markdown(f"**Frequency:** {frequency}")
-                        st.markdown(f"**Description:** {step_metadata.get('description', 'No description')}")
+# DISABLED complex functions - keeping for reference but not using in simplified version
+def funnel_step_manager_DISABLED():
+    """Fragment for managing funnel steps without full page reloads - DISABLED"""
+    pass
 
-@st.fragment
-def event_browser():
-    """Fragment for browsing and adding events without full page reloads"""
-    metadata = st.session_state.event_metadata
-    
-    # Search and filter controls
-    with st.container():
-        # Search box
-        search_query = st.text_input(
-            "🔍 Search Events", 
-            value=st.session_state.search_query,
-            placeholder="Search by event name or description...",
-            key="event_search"
-        )
-        
-        # Only update session state if changed
-        if search_query != st.session_state.search_query:
-            st.session_state.search_query = search_query
-        
-        # Filter controls in columns
-        filter_col1, filter_col2 = st.columns(2)
-        
-        with filter_col1:
-            # Category filter - multiselect
-            available_categories = sorted(list(set(m.get('category', 'Other') for m in metadata.values())))
-            selected_categories = st.multiselect(
-                "📂 Categories",
-                available_categories,
-                default=st.session_state.selected_categories,
-                key="category_filter"
-            )
-            
-            if selected_categories != st.session_state.selected_categories:
-                st.session_state.selected_categories = selected_categories
-        
-        with filter_col2:
-            # Frequency filter - checkboxes
-            st.markdown("**📊 Frequency:**")
-            frequencies = ['high', 'medium', 'low']
-            selected_frequencies = []
-            
-            for freq in frequencies:
-                if st.checkbox(freq.title(), value=freq in st.session_state.selected_frequencies, key=f"freq_{freq}"):
-                    selected_frequencies.append(freq)
-            
-            if selected_frequencies != st.session_state.selected_frequencies:
-                st.session_state.selected_frequencies = selected_frequencies
-    
-    st.markdown("---")
-    
-    # Filter events
-    filtered_events = filter_events(metadata, search_query, selected_categories, selected_frequencies)
-    
-    if not filtered_events:
-        st.info("No events match your current filters. Try adjusting your search criteria.")
-        return
-    
-    # Group events by category
-    events_by_category = defaultdict(list)
-    for event_name, event_metadata in filtered_events.items():
-        category = event_metadata.get('category', 'Other')
-        events_by_category[category].append((event_name, event_metadata))
-    
-    # Display events in expandable categories
-    for category, events in sorted(events_by_category.items()):
-        with st.expander(f"📁 {category} ({len(events)} events)", expanded=True):
-            # Sort events by frequency and name
-            frequency_order = {'high': 0, 'medium': 1, 'low': 2}
-            # Enumerate to get index for unique key generation
-            for idx, (event_name, event_metadata) in enumerate(sorted(events, key=lambda x: (frequency_order.get(x[1].get('frequency', 'medium'), 1), x[0]))):
-                col_info, col_btn = st.columns([4, 1])
-                
-                with col_info:
-                    # Event info with frequency indicator
-                    freq = event_metadata.get('frequency', 'medium')
-                    freq_emoji = {'high': '🔥', 'medium': '⚡', 'low': '💡'}
-                    freq_class = f'frequency-{freq}'
-                    
-                    st.markdown(f"""
-                    <div class="event-card {freq_class}">
-                        <strong>{event_name}</strong> {freq_emoji.get(freq, '⚡')}<br/>
-                        <em style="color: #6b7280;">{event_metadata.get('description', 'No description')}</em><br/>
-                        <small style="color: #9ca3af;">Frequency: {freq}</small>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col_btn:
-                    # Use a unique key that includes event name, category, and index
-                    safe_event_name = "".join(c if c.isalnum() else "_" for c in event_name)
-                    safe_category = "".join(c if c.isalnum() else "_" for c in category)
-                    add_key = f"add_event_{safe_category}_{safe_event_name}_{idx}"
-                    if st.button("➕", key=add_key, help=f"Add {event_name} to funnel"):
-                        if event_name not in st.session_state.funnel_steps:
-                            st.session_state.funnel_steps.append(event_name)
-                            st.toast(f"✅ Added: {event_name}", icon="✅")
-                            st.rerun()
-                        else:
-                            st.toast(f"⚠️ {event_name} is already in the funnel!", icon="⚠️")
+def event_browser_DISABLED():
+    """Fragment for browsing and adding events without full page reloads - DISABLED"""
+    pass
 
-def create_enhanced_event_selector():
-    """Create enhanced event selector with search, filters, and categorized display"""
+def create_enhanced_event_selector_DISABLED():
+    """Create enhanced event selector with search, filters, and categorized display - DISABLED in simplified version"""
+    pass
+
+def create_simple_event_selector():
+    """Create simplified event selector with search and checkboxes"""
     if st.session_state.events_data is None or st.session_state.events_data.empty:
         st.warning("Please load data first to see available events.")
         return
     
-    # Update event metadata when data changes
-    if not st.session_state.event_metadata:
-        st.session_state.event_metadata = st.session_state.data_source_manager.get_event_metadata(
-            st.session_state.events_data
-        )
+    # Get all unique events from all data sources
+    available_events = sorted(st.session_state.events_data['event_name'].unique())
     
-    st.markdown("## 🎯 Enhanced Funnel Builder")
-    
-    # Create two columns: event selection on left, current funnel on right
     col_events, col_funnel = st.columns([3, 2])
     
     with col_events:
         st.markdown("### 📋 Available Events")
-        event_browser()
+        
+        # Search bar to filter events
+        search_query = st.text_input(
+            "🔍 Search Events", 
+            placeholder="Type to filter events...",
+            key="simple_event_search"
+        )
+        
+        # Filter events based on search query
+        if search_query:
+            filtered_events = [event for event in available_events 
+                             if search_query.lower() in event.lower()]
+        else:
+            filtered_events = available_events
+        
+        if not filtered_events:
+            st.info("No events match your search query.")
+            return
+        
+        st.markdown(f"**{len(filtered_events)} events available**")
+        
+        # Event selection with checkboxes - improved state management
+        with st.container():
+            # Show events in a scrollable area
+            for event in filtered_events:
+                # Check if event is already in funnel steps
+                is_selected = event in st.session_state.funnel_steps
+                
+                # Create a key that's unique and stable
+                safe_event_name = "".join(c if c.isalnum() else "_" for c in event)
+                checkbox_key = f"event_checkbox_{safe_event_name}"
+                
+                # Use callback to handle checkbox changes
+                checkbox_selected = st.checkbox(
+                    event, 
+                    value=is_selected, 
+                    key=checkbox_key,
+                    help=f"Add/remove {event} from funnel"
+                )
+                
+                # Handle checkbox state changes
+                if checkbox_selected and event not in st.session_state.funnel_steps:
+                    # Add to funnel
+                    st.session_state.funnel_steps.append(event)
+                    st.rerun()
+                elif not checkbox_selected and event in st.session_state.funnel_steps:
+                    # Remove from funnel
+                    st.session_state.funnel_steps.remove(event)
+                    st.rerun()
     
     with col_funnel:
         st.markdown("### 🚀 Current Funnel")
-        funnel_step_manager()
         
-        if st.session_state.funnel_steps:
+        if not st.session_state.funnel_steps:
+            st.info("Select events from the left to build your funnel")
+        else:
+            # Display current funnel steps
+            for i, step in enumerate(st.session_state.funnel_steps):
+                col_step, col_actions = st.columns([3, 1])
+                
+                with col_step:
+                    st.markdown(f"**{i+1}.** {step}")
+                
+                with col_actions:
+                    if st.button("🗑️", key=f"remove_step_{i}", help="Remove step"):
+                        st.session_state.funnel_steps.pop(i)
+                        st.rerun()
+            
             st.markdown("---")
             
             # Quick actions
@@ -2764,38 +2669,10 @@ def create_enhanced_event_selector():
                     else:
                         st.toast("⚠️ Please add at least 2 steps to create a funnel", icon="⚠️")
 
-def create_funnel_templates():
-    """Create predefined funnel templates for quick setup"""
-    st.markdown("### 🎯 Quick Funnel Templates")
-    
-    templates = {
-        "🔐 User Onboarding": ["User Sign-Up", "Verify Email", "First Login", "Profile Setup"],
-        "🛒 E-commerce Journey": ["Product View", "Add to Cart", "Checkout Started", "Payment Completed"],
-        "📱 Mobile Engagement": ["App Downloaded", "First Login", "Tutorial Completed", "Push Notification Enabled"],
-        "👥 Social Features": ["User Sign-Up", "Profile Setup", "Share Product", "Invite Friend"],
-        "🎓 Learning Path": ["Tutorial Completed", "First Purchase", "Review Submitted"]
-    }
-    
-    col1, col2, col3 = st.columns(3)
-    
-    for i, (template_name, template_steps) in enumerate(templates.items()):
-        col = [col1, col2, col3][i % 3]
-        
-        with col:
-            if st.button(template_name, help=f"Load template: {' → '.join(template_steps)}", key=f"template_{i}"):
-                # Check if all steps exist in current data
-                available_events = st.session_state.events_data['event_name'].unique() if st.session_state.events_data is not None else []
-                valid_steps = [step for step in template_steps if step in available_events]
-                
-                if valid_steps:
-                    st.session_state.funnel_steps = valid_steps
-                    st.toast(f"✅ Loaded template: {template_name}", icon="✅")
-                    if len(valid_steps) < len(template_steps):
-                        missing = set(template_steps) - set(valid_steps)
-                        st.toast(f"⚠️ Some events not found: {', '.join(list(missing)[:2])}{'...' if len(missing) > 2 else ''}", icon="⚠️")
-                    st.rerun()
-                else:
-                    st.toast("❌ No events from this template found in your data", icon="❌")
+# Commented out original complex functions - keeping for reference but not using
+def create_funnel_templates_DISABLED():
+    """Create predefined funnel templates for quick setup - DISABLED in simplified version"""
+    pass
 
 # Main application
 def main():
@@ -2962,60 +2839,7 @@ ORDER BY user_id, timestamp""",
         
         st.markdown("---")
         
-        # Quick Add Events
-        if st.session_state.events_data is not None and not st.session_state.events_data.empty:
-            st.markdown("### ⚡ Quick Add Events")
-            
-            with st.container():
-                # Quick search and add from sidebar
-                available_events = sorted(st.session_state.events_data['event_name'].unique())
-                quick_search = st.selectbox(
-                    "Quick Search & Add",
-                    [""] + available_events,
-                    help="Quickly find and add an event to your funnel",
-                    key="sidebar_event_select"
-                )
-                
-                # Use callback to handle addition without full reload
-                if quick_search:
-                    col_add, col_clear = st.columns([1, 1])
-                    
-                    with col_add:
-                        if st.button("⚡", key="sidebar_quick_add", help="Add selected event"):
-                            if quick_search not in st.session_state.funnel_steps:
-                                st.session_state.funnel_steps.append(quick_search)
-                                st.toast(f"✅ Added: {quick_search}", icon="✅")
-                                # Clear selection after adding to reset the selectbox
-                                st.session_state.sidebar_event_select = ""
-                                st.rerun()
-                            else:
-                                st.toast("⚠️ Already in funnel!", icon="⚠️")
-                    
-                    with col_clear:
-                        if st.button("🗑️", key="sidebar_clear_selection", help="Clear selection"):
-                            st.session_state.sidebar_event_select = ""
-                            st.rerun()
-            
-            # Show current funnel progress in sidebar
-            if st.session_state.funnel_steps:
-                st.markdown("**Current Funnel:**")
-                
-                # Create a compact display with emoji indicators
-                for i, step in enumerate(st.session_state.funnel_steps):
-                    # Truncate long step names for sidebar
-                    display_step = step if len(step) <= 25 else f"{step[:22]}..."
-                    st.markdown(f"**{i+1}.** {display_step}")
-                
-                # Status indicators
-                col_stats1, col_stats2 = st.columns(2)
-                with col_stats1:
-                    st.metric("Steps", len(st.session_state.funnel_steps))
-                
-                with col_stats2:
-                    if len(st.session_state.funnel_steps) >= 2:
-                        st.markdown("✅ **Ready**")
-                    else:
-                        st.markdown("⚠️ **Need +1**")
+        # Removed Quick Add Events section as per simplification requirements
         
         st.markdown("---")
         
@@ -3157,12 +2981,8 @@ ORDER BY user_id, timestamp""",
             date_range = st.session_state.events_data['timestamp'].max() - st.session_state.events_data['timestamp'].min()
             st.metric("Date Range", f"{date_range.days} days")
         
-        # Enhanced event selection and funnel builder
-        create_funnel_templates()
-        
-        st.markdown("---")
-        
-        create_enhanced_event_selector()
+        # Simplified event selection - replace complex functionality with simple checkbox list
+        create_simple_event_selector()
         
         # Display results
         if st.session_state.analysis_results:
