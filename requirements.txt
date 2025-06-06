@@ -1,5 +1,6 @@
 streamlit>=1.28.0
 pandas>=2.0.0
+polars>=0.20.0
 numpy>=1.24.0
 plotly>=5.15.0
 clickhouse-connect>=0.6.0
