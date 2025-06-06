@@ -2790,69 +2790,69 @@ def create_simple_event_selector():
                 step_container = st.container()
                 
                 with step_container:
-                    col_step, col_arrows, col_remove = st.columns([4, 1, 1])
+                    # Use a single row layout to avoid deep column nesting
+                    step_col, actions_col = st.columns([3, 1])
                     
-                    with col_step:
+                    with step_col:
                         st.markdown(f"**{i+1}.** {step}")
                     
-                    with col_arrows:
-                        # Create arrow buttons for reordering without page reload
-                        arrow_col1, arrow_col2 = st.columns(2)
-                        
-                        with arrow_col1:
-                            # Move up button
-                            if i > 0:  # Not the first item
-                                def move_up():
+                    with actions_col:
+                        # Create a horizontal layout for action buttons using columns
+                        action_buttons_container = st.container()
+                        with action_buttons_container:
+                            # Use button layout in a single row
+                            btn_cols = st.columns(3)
+                            
+                            with btn_cols[0]:
+                                # Move up button
+                                if i > 0:  # Not the first item
+                                    def move_up():
+                                        index = i  # Capture the current index
+                                        # Swap with previous item
+                                        st.session_state.funnel_steps[index], st.session_state.funnel_steps[index-1] = \
+                                            st.session_state.funnel_steps[index-1], st.session_state.funnel_steps[index]
+                                        # Clear analysis results to trigger recalculation
+                                        st.session_state.analysis_results = None
+                                    
+                                    st.button(
+                                        "⬆️", 
+                                        key=f"move_up_{i}_{step}", 
+                                        help="Move step up",
+                                        on_click=move_up
+                                    )
+                            
+                            with btn_cols[1]:
+                                # Move down button
+                                if i < len(st.session_state.funnel_steps) - 1:  # Not the last item
+                                    def move_down():
+                                        index = i  # Capture the current index
+                                        # Swap with next item
+                                        st.session_state.funnel_steps[index], st.session_state.funnel_steps[index+1] = \
+                                            st.session_state.funnel_steps[index+1], st.session_state.funnel_steps[index]
+                                        # Clear analysis results to trigger recalculation
+                                        st.session_state.analysis_results = None
+                                    
+                                    st.button(
+                                        "⬇️", 
+                                        key=f"move_down_{i}_{step}", 
+                                        help="Move step down",
+                                        on_click=move_down
+                                    )
+                            
+                            with btn_cols[2]:
+                                # Remove button
+                                def remove_step():
                                     index = i  # Capture the current index
-                                    # Swap with previous item
-                                    st.session_state.funnel_steps[index], st.session_state.funnel_steps[index-1] = \
-                                        st.session_state.funnel_steps[index-1], st.session_state.funnel_steps[index]
-                                    # Clear analysis results to trigger recalculation
+                                    st.session_state.funnel_steps.pop(index)
+                                    # Clear analysis results
                                     st.session_state.analysis_results = None
                                 
                                 st.button(
-                                    "⬆️", 
-                                    key=f"move_up_{i}_{step}", 
-                                    help="Move step up",
-                                    on_click=move_up
+                                    "🗑️", 
+                                    key=f"remove_step_{i}_{step}", 
+                                    help="Remove step",
+                                    on_click=remove_step
                                 )
-                            else:
-                                st.write("")  # Empty space for alignment
-                        
-                        with arrow_col2:
-                            # Move down button
-                            if i < len(st.session_state.funnel_steps) - 1:  # Not the last item
-                                def move_down():
-                                    index = i  # Capture the current index
-                                    # Swap with next item
-                                    st.session_state.funnel_steps[index], st.session_state.funnel_steps[index+1] = \
-                                        st.session_state.funnel_steps[index+1], st.session_state.funnel_steps[index]
-                                    # Clear analysis results to trigger recalculation
-                                    st.session_state.analysis_results = None
-                                
-                                st.button(
-                                    "⬇️", 
-                                    key=f"move_down_{i}_{step}", 
-                                    help="Move step down",
-                                    on_click=move_down
-                                )
-                            else:
-                                st.write("")  # Empty space for alignment
-                    
-                    with col_remove:
-                        # Remove button
-                        def remove_step():
-                            index = i  # Capture the current index
-                            st.session_state.funnel_steps.pop(index)
-                            # Clear analysis results
-                            st.session_state.analysis_results = None
-                        
-                        st.button(
-                            "🗑️", 
-                            key=f"remove_step_{i}_{step}", 
-                            help="Remove step",
-                            on_click=remove_step
-                        )
             
             st.markdown("---")
             
