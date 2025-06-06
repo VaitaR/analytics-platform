@@ -103,6 +103,12 @@ def run_integration_tests():
     return run_command(cmd, "Running integration tests")
 
 
+def run_no_reload_tests():
+    """Run no-reload improvements tests."""
+    cmd = ["python", "-m", "pytest", "tests/test_no_reload_improvements.py", "-v"]
+    return run_command(cmd, "Running no-reload improvements tests")
+
+
 def run_all_tests(parallel=False, coverage=False, markers=None):
     """Run all tests with optional configurations."""
     cmd = ["python", "-m", "pytest", "tests/", "-v"]
@@ -175,7 +181,8 @@ def validate_test_files():
         "tests/test_counting_methods.py",
         "tests/test_edge_cases.py",
         "tests/test_segmentation.py",
-        "tests/test_integration_flow.py"
+        "tests/test_integration_flow.py",
+        "tests/test_no_reload_improvements.py"
     ]
     
     missing = []
@@ -243,6 +250,7 @@ Examples:
     parser.add_argument("--edge-cases", action="store_true", help="Run edge case tests")
     parser.add_argument("--segmentation", action="store_true", help="Run segmentation tests")
     parser.add_argument("--integration", action="store_true", help="Run integration tests for complete workflow")
+    parser.add_argument("--no-reload", action="store_true", help="Run no-reload improvements tests")
     parser.add_argument("--performance", action="store_true", help="Run performance tests")
     
     # Test execution options
@@ -286,6 +294,8 @@ Examples:
         success = run_segmentation_tests()
     elif args.integration:
         success = run_integration_tests()
+    elif args.no_reload:
+        success = run_no_reload_tests()
     elif args.performance:
         success = run_performance_tests()
     elif args.report:
