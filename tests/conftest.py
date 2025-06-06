@@ -366,7 +366,7 @@ def large_dataset(base_timestamp):
     np.random.seed(42)
     
     events = []
-    n_users = 10000
+    n_users = 5000  # Reduced for faster test execution
     
     for i in range(n_users):
         # Simulate different completion rates

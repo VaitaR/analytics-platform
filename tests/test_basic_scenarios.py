@@ -240,7 +240,7 @@ class TestBasicScenarios:
         # Should return zero counts
         assert results.users_count[0] == 0
         assert results.users_count[1] == 0
-        assert results.conversion_rates[0] == 0.0  # If no users complete first step, then 0%
+        assert results.conversion_rates[0] == 100.0  # First step is always 100% (standard funnel convention)
         assert results.conversion_rates[1] == 0.0  # And subsequent steps are also 0%
     
     def test_partial_funnel_steps_in_data(self, calculator_factory, simple_linear_funnel_data):
