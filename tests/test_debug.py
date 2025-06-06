@@ -72,7 +72,7 @@ def test_funnel_calculation():
     missing_events = [step for step in funnel_steps if step not in available_events]
     if missing_events:
         print(f"❌ События не найдены в данных: {missing_events}")
-        return False
+        raise AssertionError(f"Missing events in data: {missing_events}")
     else:
         print(f"✅ Все события найдены в данных: {available_events}")
     
@@ -92,18 +92,15 @@ def test_funnel_calculation():
         # Проверяем ожидаемые результаты
         expected_users = [100, 80, 60]  # Ожидаемое количество пользователей на каждом шаге
         
-        if results.users_count == expected_users:
-            print("✅ Результаты соответствуют ожиданиям!")
-            return True
-        else:
-            print(f"❌ Результаты НЕ соответствуют ожиданиям. Ожидалось: {expected_users}, получено: {results.users_count}")
-            return False
+        print("✅ Checking results against expectations...")
+        assert results.users_count == expected_users, f"Expected {expected_users}, got {results.users_count}"
+        print("✅ Results match expectations!")
             
     except Exception as e:
         print(f"❌ Ошибка при расчете: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False
+        raise  # Re-raise the exception for pytest
 
 if __name__ == "__main__":
     success = test_funnel_calculation()

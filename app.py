@@ -626,6 +626,10 @@ class FunnelCalculator:
         if funnel_events.empty:
             return funnel_events
         
+        # Add original order index before any sorting for FIRST_ONLY mode
+        funnel_events = funnel_events.copy()
+        funnel_events['_original_order'] = range(len(funnel_events))
+        
         # Clean data: remove events with missing or invalid user_id
         if 'user_id' in funnel_events.columns:
             # Remove rows with null, empty, or non-string user_ids
@@ -639,8 +643,9 @@ class FunnelCalculator:
         if funnel_events.empty:
             return funnel_events
         
-        # Sort by user_id and timestamp for optimal performance
-        funnel_events = funnel_events.sort_values(['user_id', 'timestamp'])
+        # Sort by user_id, then original order, then timestamp for optimal performance
+        # The original order ensures FIRST_ONLY mode works correctly
+        funnel_events = funnel_events.sort_values(['user_id', '_original_order', 'timestamp'])
         
         # Optimize data types for better performance
         if 'user_id' in funnel_events.columns:
@@ -843,11 +848,18 @@ class FunnelCalculator:
                 # Original dataset was empty - return empty results
                 return FunnelResults([], [], [], [], [])
             else:
-                # Events exist but none match funnel steps - return zero counts for all steps
+                # Events exist but none match funnel steps - check if any of the funnel steps exist in the data at all
+                existing_events_in_data = set(events_df['event_name'].unique())
+                funnel_steps_in_data = set(funnel_steps) & existing_events_in_data
+                
                 zero_counts = [0] * len(funnel_steps)
-                conversion_rates = [100.0] + [0.0] * (len(funnel_steps) - 1)
-                drop_offs = [0] + [0] * (len(funnel_steps) - 1)
+                drop_offs = [0] * len(funnel_steps)
                 drop_off_rates = [0.0] * len(funnel_steps)
+                
+                # Regardless of whether steps exist, follow standard funnel convention:
+                # First step is always 100% of its own count (even if 0), subsequent steps are 0%
+                conversion_rates = [100.0] + [0.0] * (len(funnel_steps) - 1)
+                
                 return FunnelResults(funnel_steps, zero_counts, conversion_rates, drop_offs, drop_off_rates)
         
         self.logger.info(f"Preprocessing completed in {preprocess_time:.4f} seconds. Processing {len(preprocessed_df)} relevant events.")
@@ -1688,12 +1700,20 @@ class FunnelCalculator:
                 
             user_events = user_groups.get_group(user_id)
             
-            # Get timestamps for both steps
-            prev_events = user_events[user_events['event_name'] == prev_step]['timestamp']
-            current_events = user_events[user_events['event_name'] == current_step]['timestamp']
+            # Get events for both steps (including original order)
+            prev_step_events = user_events[user_events['event_name'] == prev_step]
+            current_step_events = user_events[user_events['event_name'] == current_step]
             
-            if len(prev_events) == 0 or len(current_events) == 0:
+            if len(prev_step_events) == 0 or len(current_step_events) == 0:
                 continue
+            
+            # For FIRST_ONLY mode, use original order
+            if self.config.reentry_mode == ReentryMode.FIRST_ONLY and '_original_order' in user_events.columns:
+                # Sort by original order to get first occurrence in data order
+                current_step_events = current_step_events.sort_values('_original_order')
+            
+            prev_events = prev_step_events['timestamp']
+            current_events = current_step_events['timestamp']
             
             # Vectorized conversion checking
             if self._check_conversion_vectorized(prev_events, current_events, conversion_window):
@@ -1719,11 +1739,12 @@ class FunnelCalculator:
                     return False
                 prev_time = pd.Timestamp(prev_times.min()) # Ensure pandas Timestamp
                 
-                # For FIRST_ONLY mode, use the first occurrence in the data (not chronologically first)
+                # For FIRST_ONLY mode, use the chronologically first occurrence
                 if len(current_times) == 0:
                     return False
                 
-                # Use the first occurrence in the data order
+                # Use the first occurrence in original data order 
+                # Need to get the original data to find first occurrence
                 first_current_time = pd.Timestamp(current_times[0])
                 
                 # For zero conversion window, events must be simultaneous
@@ -1915,24 +1936,21 @@ class FunnelCalculator:
                     prev_time = prev_events.min()
                     conversion_window = timedelta(hours=self.config.conversion_window_hours)
                     
+                    # For FIRST_ONLY mode, we use the first current event in data order
+                    first_current_time = current_events.iloc[0]
+                    
                     # Handle zero conversion window (events must be simultaneous)
                     if conversion_window.total_seconds() == 0:
-                        valid_current = current_events[current_events == prev_time]
+                        if first_current_time == prev_time:
+                            converted_users.add(user_id)
                     else:
-                        # For FIRST_ONLY mode, we need to use the chronologically first current event
-                        # that occurs after the prev event, or simultaneous if allowed
-                        if conversion_window.total_seconds() == 0:
-                            # Zero window: only simultaneous events allowed
-                            valid_current = current_events[current_events == prev_time]
-                        else:
-                            # Non-zero window: allow simultaneous and later events
-                            valid_current = current_events[current_events >= prev_time]
-                        
-                    if len(valid_current) > 0:
-                        current_time = valid_current.min()
-                        time_diff = current_time - prev_time
-                        # Check conversion window
-                        if time_diff < conversion_window:
+                        # For non-zero window, check if first current event is after prev and within window
+                        if first_current_time > prev_time:
+                            time_diff = first_current_time - prev_time
+                            if time_diff < conversion_window:
+                                converted_users.add(user_id)
+                        elif first_current_time == prev_time:
+                            # Allow simultaneous events for non-zero windows
                             converted_users.add(user_id)
                 
                 elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
