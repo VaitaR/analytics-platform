@@ -2681,229 +2681,168 @@ def get_event_statistics(events_data: pd.DataFrame) -> Dict[str, Dict[str, Any]]
     return event_stats
 
 def create_simple_event_selector():
-    """Create simplified event selector with search, statistics, and no-reload functionality"""
-    if st.session_state.events_data is None or st.session_state.events_data.empty:
+    """
+    Create simplified event selector with proper closure handling and improved architecture.
+    Uses callback arguments to avoid closure issues in loops.
+    """
+    if st.session_state.get('events_data') is None or st.session_state.events_data.empty:
         st.warning("Please load data first to see available events.")
         return
+
+    # --- State Management Functions (defined outside loops) ---
     
-    # Get event statistics
-    if 'event_statistics' not in st.session_state:
-        st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
-    
-    # Get all unique events from all data sources
-    available_events = sorted(st.session_state.events_data['event_name'].unique())
-    
-    # Events Section - without nested columns
-    st.markdown("### 📋 Available Events")
-    
-    # Search bar to filter events
-    search_query = st.text_input(
-        "🔍 Search Events", 
-        placeholder="Type to filter events...",
-        key="simple_event_search"
-    )
-    
-    # Filter events based on search query
-    if search_query:
-        filtered_events = [event for event in available_events 
-                         if search_query.lower() in event.lower()]
-    else:
-        filtered_events = available_events
-    
-    if not filtered_events:
-        st.info("No events match your search query.")
-        return
-    
-    st.markdown(f"**{len(filtered_events)} events available**")
-    
-    # Event selection with checkboxes and statistics - no reload implementation
-    with st.container():
-        # Initialize event selection state if not exists
-        if 'event_selections' not in st.session_state:
-            st.session_state.event_selections = {}
-        
-        # Show events in a scrollable area with statistics
-        for event in filtered_events:
-            # Get event statistics
-            stats = st.session_state.event_statistics.get(event, {})
-            
-            # Create columns for event display - this is level 1 nesting
-            event_col, stats_col = st.columns([2, 1])
-            
-            with event_col:
-                # Check if event is already in funnel steps
-                is_selected = event in st.session_state.funnel_steps
+    def toggle_event_in_funnel(event_name: str):
+        """Add or remove event from funnel steps."""
+        if event_name in st.session_state.funnel_steps:
+            st.session_state.funnel_steps.remove(event_name)
+        else:
+            st.session_state.funnel_steps.append(event_name)
+        st.session_state.analysis_results = None  # Clear results when funnel changes
+
+    def move_step(index: int, direction: int):
+        """Move funnel step up or down."""
+        if 0 <= index + direction < len(st.session_state.funnel_steps):
+            # Classic swap
+            st.session_state.funnel_steps[index], st.session_state.funnel_steps[index + direction] = \
+                st.session_state.funnel_steps[index + direction], st.session_state.funnel_steps[index]
+            st.session_state.analysis_results = None
+
+    def remove_step(index: int):
+        """Remove step from funnel."""
+        if 0 <= index < len(st.session_state.funnel_steps):
+            st.session_state.funnel_steps.pop(index)
+            st.session_state.analysis_results = None
+
+    def clear_all_steps():
+        """Clear all funnel steps."""
+        st.session_state.funnel_steps = []
+        st.session_state.analysis_results = None
+        st.toast("🗑️ Funnel cleared!", icon="🗑️")
+
+    def analyze_funnel():
+        """Run funnel analysis."""
+        if len(st.session_state.funnel_steps) >= 2:
+            with st.spinner("Calculating funnel metrics..."):
+                calculator = FunnelCalculator(st.session_state.funnel_config)
                 
-                # Create a unique key for this checkbox
-                safe_event_name = "".join(c if c.isalnum() else "_" for c in event)
-                checkbox_key = f"event_checkbox_{safe_event_name}"
+                # Store calculator for cache management
+                st.session_state.last_calculator = calculator
                 
-                # Handle checkbox with on_change callback to prevent rerun
-                def toggle_event_selection():
-                    event_name = event  # Capture the event name
-                    if event_name in st.session_state.funnel_steps:
-                        st.session_state.funnel_steps.remove(event_name)
-                    else:
-                        st.session_state.funnel_steps.append(event_name)
-                    # Clear analysis results when funnel changes
-                    st.session_state.analysis_results = None
-                
-                checkbox_selected = st.checkbox(
-                    event, 
-                    value=is_selected, 
-                    key=checkbox_key,
-                    help=f"Add/remove {event} from funnel",
-                    on_change=toggle_event_selection
+                # Monitor performance
+                calculation_start = time.time()
+                st.session_state.analysis_results = calculator.calculate_funnel_metrics(
+                    st.session_state.events_data, 
+                    st.session_state.funnel_steps
                 )
-            
-            with stats_col:
-                # Display event statistics
-                if stats:
-                    # Create a compact stats display
-                    st.markdown(f"""
-                    <div style="
-                        font-size: 0.8em; 
-                        padding: 0.25rem; 
-                        border-left: 3px solid {stats['frequency_color']};
-                        background: rgba(0,0,0,0.02);
-                        border-radius: 0.25rem;
-                        margin: 0.1rem 0;
-                    ">
-                        <strong>{stats['count']:,}</strong> events<br/>
-                        <strong>{stats['unique_users']:,}</strong> users<br/>
-                        <span style="color: {stats['frequency_color']}; font-weight: bold;">
-                            {stats['user_coverage']:.1f}% coverage
-                        </span>
-                    </div>
-                    """, unsafe_allow_html=True)
-    
-    # Funnel Section - separate from events to avoid nesting
-    st.markdown("---")  # Visual separator
-    st.markdown("### 🚀 Current Funnel")
-    
-    if not st.session_state.funnel_steps:
-        st.info("Select events to build your funnel")
-    else:
-        # Display current funnel steps with reordering functionality
-        for i, step in enumerate(st.session_state.funnel_steps):
-            step_container = st.container()
-            
-            with step_container:
-                    # Create a row for step display and actions using markdown
-                    step_display = f"**{i+1}.** {step}"
+                calculation_time = time.time() - calculation_start
+                
+                # Store performance metrics in session state
+                if 'performance_history' not in st.session_state:
+                    st.session_state.performance_history = []
+                
+                st.session_state.performance_history.append({
+                    'timestamp': datetime.now(),
+                    'events_count': len(st.session_state.events_data),
+                    'steps_count': len(st.session_state.funnel_steps),
+                    'calculation_time': calculation_time,
+                    'method': st.session_state.funnel_config.counting_method.value
+                })
+                
+                # Keep only last 10 calculations
+                if len(st.session_state.performance_history) > 10:
+                    st.session_state.performance_history = st.session_state.performance_history[-10:]
+                
+                st.toast(f"✅ Analysis completed in {calculation_time:.2f}s!", icon="✅")
+        else:
+            st.toast("⚠️ Please add at least 2 steps to create a funnel", icon="⚠️")
+
+    # --- UI Display Section ---
+
+    # Use two main columns for better organization
+    col_events, col_funnel = st.columns(2)
+
+    with col_events:
+        st.markdown("### 📋 Step 1: Select Events")
+        search_query = st.text_input(
+            "🔍 Search Events",
+            placeholder="Start typing to filter...",
+            key="event_search"
+        )
+
+        if 'event_statistics' not in st.session_state:
+            st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
+        
+        available_events = sorted(st.session_state.events_data['event_name'].unique())
+        
+        if search_query:
+            filtered_events = [event for event in available_events if search_query.lower() in event.lower()]
+        else:
+            filtered_events = available_events
+
+        if not filtered_events:
+            st.info("No events match your search query.")
+        else:
+            # Use scrollable container for event list
+            with st.container(height=400):
+                for event in filtered_events:
+                    stats = st.session_state.event_statistics.get(event, {})
+                    is_selected = event in st.session_state.funnel_steps
                     
-                    # Create action buttons without any columns - use streamlit components
-                    actions_html = ""
+                    # Use columns for layout within container
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        # KEY FIX: Pass event name as argument to callback
+                        st.checkbox(
+                            event,
+                            value=is_selected,
+                            key=f"cb_{hash(event)}",  # Use hash for cleaner key
+                            on_change=toggle_event_in_funnel,
+                            args=(event,),  # Pass event name as argument
+                            help=f"Add/remove {event} from funnel"
+                        )
+                    with c2:
+                        if stats:
+                            st.markdown(
+                                f"""<div style="font-size: 0.75rem; text-align: right; color: #888;">
+                                {stats['unique_users']:,} users<br/>
+                                <span style="color: {stats['frequency_color']};">{stats['user_coverage']:.1f}%</span>
+                                </div>""",
+                                unsafe_allow_html=True
+                            )
+
+    with col_funnel:
+        st.markdown("### 🚀 Step 2: Configure Funnel")
+        
+        if not st.session_state.funnel_steps:
+            st.info("Select events from the left to build your funnel.")
+        else:
+            # Display funnel steps with management controls
+            for i, step in enumerate(st.session_state.funnel_steps):
+                with st.container():
+                    r1, r2, r3, r4 = st.columns([0.6, 0.1, 0.1, 0.2])
+                    r1.markdown(f"**{i+1}.** {step}")
                     
                     # Move up button
-                    if i > 0:  # Not the first item
-                        def move_up():
-                            index = i  # Capture the current index
-                            # Swap with previous item
-                            st.session_state.funnel_steps[index], st.session_state.funnel_steps[index-1] = \
-                                st.session_state.funnel_steps[index-1], st.session_state.funnel_steps[index]
-                            # Clear analysis results to trigger recalculation
-                            st.session_state.analysis_results = None
-                        
-                        move_up_clicked = st.button(
-                            "⬆️", 
-                            key=f"move_up_{i}_{step}", 
-                            help="Move step up",
-                            on_click=move_up
-                        )
+                    if i > 0:
+                        r2.button("⬆️", key=f"up_{i}", on_click=move_step, args=(i, -1), help="Move up")
                     
-                    # Display step text
-                    st.markdown(step_display)
-                    
-                    # Move down button  
-                    if i < len(st.session_state.funnel_steps) - 1:  # Not the last item
-                        def move_down():
-                            index = i  # Capture the current index
-                            # Swap with next item
-                            st.session_state.funnel_steps[index], st.session_state.funnel_steps[index+1] = \
-                                st.session_state.funnel_steps[index+1], st.session_state.funnel_steps[index]
-                            # Clear analysis results to trigger recalculation
-                            st.session_state.analysis_results = None
-                        
-                        move_down_clicked = st.button(
-                            "⬇️", 
-                            key=f"move_down_{i}_{step}", 
-                            help="Move step down",
-                            on_click=move_down
-                        )
+                    # Move down button
+                    if i < len(st.session_state.funnel_steps) - 1:
+                        r3.button("⬇️", key=f"down_{i}", on_click=move_step, args=(i, 1), help="Move down")
                     
                     # Remove button
-                    def remove_step():
-                        index = i  # Capture the current index
-                        st.session_state.funnel_steps.pop(index)
-                        # Clear analysis results
-                        st.session_state.analysis_results = None
-                    
-                    remove_clicked = st.button(
-                        "🗑️", 
-                        key=f"remove_step_{i}_{step}", 
-                        help="Remove step",
-                        on_click=remove_step
-                    )
+                    r4.button("🗑️", key=f"del_{i}", on_click=remove_step, args=(i,), help="Remove step")
+
+            st.markdown("---")
             
-        st.markdown("---")
-        
-        # Quick actions - without column layout to avoid nesting issues
-        st.markdown("**Quick Actions:**")
-        
-        def clear_all_steps():
-            st.session_state.funnel_steps = []
-            st.session_state.analysis_results = None
-            st.toast("🗑️ Funnel cleared!", icon="🗑️")
-        
-        st.button(
-            "🗑️ Clear All", 
-            help="Remove all steps",
-            on_click=clear_all_steps
-        )
-        
-        def analyze_funnel():
-            if len(st.session_state.funnel_steps) >= 2:
-                with st.spinner("Calculating funnel metrics..."):
-                    calculator = FunnelCalculator(st.session_state.funnel_config)
-                    
-                    # Store calculator for cache management
-                    st.session_state.last_calculator = calculator
-                    
-                    # Monitor performance
-                    calculation_start = time.time()
-                    st.session_state.analysis_results = calculator.calculate_funnel_metrics(
-                        st.session_state.events_data, 
-                        st.session_state.funnel_steps
-                    )
-                    calculation_time = time.time() - calculation_start
-                    
-                    # Store performance metrics in session state
-                    if 'performance_history' not in st.session_state:
-                        st.session_state.performance_history = []
-                    
-                    st.session_state.performance_history.append({
-                        'timestamp': datetime.now(),
-                        'events_count': len(st.session_state.events_data),
-                        'steps_count': len(st.session_state.funnel_steps),
-                        'calculation_time': calculation_time,
-                        'method': st.session_state.funnel_config.counting_method.value
-                    })
-                    
-                    # Keep only last 10 calculations
-                    if len(st.session_state.performance_history) > 10:
-                        st.session_state.performance_history = st.session_state.performance_history[-10:]
-                    
-                    st.toast(f"✅ Analysis completed in {calculation_time:.2f}s!", icon="✅")
-            else:
-                st.toast("⚠️ Please add at least 2 steps to create a funnel", icon="⚠️")
-        
-        st.button(
-            "🚀 Analyze Funnel", 
-            type="primary", 
-            help="Calculate funnel metrics",
-            on_click=analyze_funnel
-        )
+            # Action buttons
+            action_col1, action_col2 = st.columns(2)
+            
+            with action_col1:
+                st.button("🚀 Analyze Funnel", type="primary", use_container_width=True, on_click=analyze_funnel)
+
+            with action_col2:
+                st.button("🗑️ Clear All", on_click=clear_all_steps, use_container_width=True)
 
 # Commented out original complex functions - keeping for reference but not using
 def create_funnel_templates_DISABLED():
