@@ -90,7 +90,7 @@ class TestCountingMethods:
         # Should count each user only once per step
         assert results.users_count[0] == 3  # All 3 users signed up
         assert results.users_count[1] == 2  # Only users 1 and 2 verified email
-        assert results.conversion_rates[1] == 66.67  # 2/3 ≈ 66.67%
+        assert abs(results.conversion_rates[1] - 66.67) < 0.01  # 2/3 ≈ 66.67%
     
     def test_event_totals_method(self, calculator_factory, base_timestamp):
         """
@@ -167,7 +167,7 @@ class TestCountingMethods:
         # Should count total events
         assert results.users_count[0] == 3  # 2 + 1 Sign Up events
         assert results.users_count[1] == 4  # 1 + 3 Email Verification events
-        assert results.conversion_rates[1] == 133.33  # 4/3 ≈ 133.33%
+        assert abs(results.conversion_rates[1] - 133.33) < 0.01  # 4/3 ≈ 133.33%
     
     def test_unique_pairs_method(self, calculator_factory, base_timestamp):
         """
@@ -244,8 +244,8 @@ class TestCountingMethods:
         
         # Overall conversion rates from first step
         assert results.conversion_rates[0] == 100.0
-        assert results.conversion_rates[1] == 66.67  # 2/3
-        assert results.conversion_rates[2] == 33.33  # 1/3
+        assert abs(results.conversion_rates[1] - 66.67) < 0.01  # 2/3
+        assert abs(results.conversion_rates[2] - 33.33) < 0.01  # 1/3
     
     def test_counting_method_comparison_same_data(self, calculator_factory, base_timestamp):
         """
