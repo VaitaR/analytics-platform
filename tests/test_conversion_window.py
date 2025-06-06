@@ -127,8 +127,8 @@ class TestConversionWindow:
         results = calculator.calculate_funnel_metrics(data, steps)
         
         assert results.users_count[0] == 1
-        assert results.users_count[1] == 1  # Should be included at boundary
-        assert results.conversion_rates[1] == 100.0
+        assert results.users_count[1] == 0  # Should NOT be included at boundary (exclusive)
+        assert results.conversion_rates[1] == 0.0
     
     def test_sequential_conversion_windows(self, calculator_factory, base_timestamp):
         """
