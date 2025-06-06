@@ -39,4 +39,8 @@ test-results.xml
 # pytest.ini # Keep this
 
 # Logs
-*.log 
+*.log
+
+# Test files
+test_polars_fix.py
+test_polars_expressions.py 

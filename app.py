@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import polars as pl
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
@@ -652,8 +653,9 @@ def _funnel_performance_monitor(func_name: str):
 class FunnelCalculator:
     """Core funnel calculation engine with performance optimizations"""
     
-    def __init__(self, config: FunnelConfig):
+    def __init__(self, config: FunnelConfig, use_polars: bool = True):
         self.config = config
+        self.use_polars = use_polars  # Flag to control polars usage
         self._cached_properties = {}  # Cache for parsed JSON properties
         self._preprocessed_data = None  # Cache for preprocessed data
         self._performance_metrics = {}  # Performance monitoring
@@ -666,6 +668,36 @@ class FunnelCalculator:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
+    
+    def _to_polars(self, df: pd.DataFrame) -> pl.DataFrame:
+        """Convert pandas DataFrame to polars DataFrame with proper schema handling"""
+        try:
+            # Handle datetime columns explicitly
+            df_copy = df.copy()
+            if 'timestamp' in df_copy.columns:
+                df_copy['timestamp'] = pd.to_datetime(df_copy['timestamp'])
+            
+            # Ensure user_id is string type to avoid mixed types
+            if 'user_id' in df_copy.columns:
+                df_copy['user_id'] = df_copy['user_id'].astype(str)
+            
+            # Convert to polars
+            polars_df = pl.from_pandas(df_copy)
+            self.logger.debug(f"Converted pandas DataFrame to polars: {polars_df.shape}")
+            return polars_df
+        except Exception as e:
+            self.logger.error(f"Error converting to polars: {str(e)}")
+            raise
+    
+    def _to_pandas(self, df: pl.DataFrame) -> pd.DataFrame:
+        """Convert polars DataFrame to pandas DataFrame"""
+        try:
+            pandas_df = df.to_pandas()
+            self.logger.debug(f"Converted polars DataFrame to pandas: {pandas_df.shape}")
+            return pandas_df
+        except Exception as e:
+            self.logger.error(f"Error converting to pandas: {str(e)}")
+            raise
     
     def get_performance_report(self) -> Dict[str, Dict[str, float]]:
         """Get performance metrics report"""
@@ -777,6 +809,62 @@ class FunnelCalculator:
             self._preprocessed_cache = None
         self.logger.info("Cache cleared")
     
+    @_funnel_performance_monitor('_preprocess_data_polars')
+    def _preprocess_data_polars(self, events_df: pl.DataFrame, funnel_steps: List[str]) -> pl.DataFrame:
+        """
+        Preprocess and optimize data for funnel calculations using Polars
+        
+        Performance optimizations:
+        - Filter to relevant events only
+        - Set up efficient indexing  
+        - Expand commonly used JSON properties
+        - Cache results for repeated calculations
+        """
+        start_time = time.time()
+        
+        # Check internal cache based on data hash (simplified for now)
+        # TODO: Implement proper caching for polars
+        
+        # Filter to only funnel-relevant events
+        funnel_events = events_df.filter(pl.col('event_name').is_in(funnel_steps))
+        
+        if funnel_events.height == 0:
+            return funnel_events
+        
+        # Add original order index before any sorting for FIRST_ONLY mode
+        funnel_events = funnel_events.with_row_index('_original_order')
+        
+        # Clean data: remove events with missing or invalid user_id
+        # Ensure user_id is string type and filter out invalid values
+        funnel_events = funnel_events.with_columns([
+            pl.col('user_id').cast(pl.Utf8)
+        ]).filter(
+            pl.col('user_id').is_not_null() &
+            (pl.col('user_id') != '') &
+            (pl.col('user_id') != 'nan') &
+            (pl.col('user_id') != 'None')
+        )
+        
+        if funnel_events.height == 0:
+            return funnel_events
+        
+        # Sort by user_id, then original order, then timestamp for optimal performance
+        funnel_events = funnel_events.sort(['user_id', '_original_order', 'timestamp'])
+        
+        # Convert user_id and event_name to categorical for better performance
+        funnel_events = funnel_events.with_columns([
+            pl.col('user_id').cast(pl.Categorical),
+            pl.col('event_name').cast(pl.Categorical)
+        ])
+        
+        # TODO: Implement JSON property expansion for polars
+        # For now, keep the original columns
+        
+        execution_time = time.time() - start_time
+        self.logger.info(f"Polars data preprocessing completed in {execution_time:.4f} seconds for {funnel_events.height} events")
+        
+        return funnel_events
+
     @_funnel_performance_monitor('_preprocess_data')
     def _preprocess_data(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> pd.DataFrame:
         """
@@ -986,7 +1074,6 @@ class FunnelCalculator:
             self.logger.debug(f"Failed to decode JSON in _has_property_value: {prop_str[:50]}")
             return False
     
-    @_funnel_performance_monitor('calculate_funnel_metrics')
     def calculate_funnel_metrics(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> FunnelResults:
         """
         Calculate comprehensive funnel metrics from event data with performance optimizations
@@ -1008,8 +1095,148 @@ class FunnelCalculator:
                 drop_offs=[],
                 drop_off_rates=[]
             )
+
+        # Bridge: Convert to Polars if using Polars engine
+        if self.use_polars:
+            self.logger.info(f"Starting POLARS funnel calculation for {len(events_df)} events and {len(funnel_steps)} steps")
+            try:
+                # Convert to Polars at the entry point
+                polars_df = self._to_polars(events_df)
+                return self._calculate_funnel_metrics_polars(polars_df, funnel_steps, events_df)
+            except Exception as e:
+                self.logger.warning(f"Polars calculation failed: {str(e)}, falling back to Pandas")
+                # Fallback to Pandas implementation
+                return self._calculate_funnel_metrics_pandas(events_df, funnel_steps)
+        else:
+            # Use original Pandas implementation
+            return self._calculate_funnel_metrics_pandas(events_df, funnel_steps)
+    
+    @_funnel_performance_monitor('calculate_funnel_metrics_polars')
+    def _calculate_funnel_metrics_polars(self, polars_df: pl.DataFrame, funnel_steps: List[str], 
+                                       original_events_df: pd.DataFrame) -> FunnelResults:
+        """
+        Polars implementation of funnel calculation with bridges to existing functionality
+        """
+        start_time = time.time()
         
-        self.logger.info(f"Starting funnel calculation for {len(events_df)} events and {len(funnel_steps)} steps")
+        # Handle empty dataset
+        if polars_df.height == 0:
+            return FunnelResults(
+                steps=[],
+                users_count=[],
+                conversion_rates=[],
+                drop_offs=[],
+                drop_off_rates=[]
+            )
+        
+        # Preprocess data using Polars
+        preprocess_start = time.time()
+        preprocessed_polars_df = self._preprocess_data_polars(polars_df, funnel_steps)
+        preprocess_time = time.time() - preprocess_start
+        
+        if preprocessed_polars_df.height == 0:
+            # Check if this is because the original dataset was empty or because no events matched
+            if polars_df.height == 0:
+                return FunnelResults([], [], [], [], [])
+            else:
+                # Events exist but none match funnel steps
+                existing_events_in_data = set(polars_df.select('event_name').unique().to_series().to_list())
+                funnel_steps_in_data = set(funnel_steps) & existing_events_in_data
+                
+                zero_counts = [0] * len(funnel_steps)
+                drop_offs = [0] * len(funnel_steps)
+                drop_off_rates = [0.0] * len(funnel_steps)
+                conversion_rates = [100.0] + [0.0] * (len(funnel_steps) - 1)
+                
+                return FunnelResults(funnel_steps, zero_counts, conversion_rates, drop_offs, drop_off_rates)
+        
+        self.logger.info(f"Polars preprocessing completed in {preprocess_time:.4f} seconds. Processing {preprocessed_polars_df.height} relevant events.")
+        
+        # For now, convert back to Pandas for segmentation and other advanced features
+        # TODO: Implement these in Polars in future iterations
+        preprocessed_pandas_df = self._to_pandas(preprocessed_polars_df)
+        
+        # Segment data if configured (using existing Pandas implementation)
+        segments = self.segment_events_data(preprocessed_pandas_df)
+        
+        # Calculate base funnel metrics for each segment
+        segment_results = {}
+        for segment_name, segment_df in segments.items():
+            # Convert back to Polars for core calculation
+            segment_polars_df = self._to_polars(segment_df)
+            
+            # Calculate metrics based on counting method and funnel order
+            if self.config.funnel_order == FunnelOrder.UNORDERED:
+                # Use Pandas implementation for now
+                segment_results[segment_name] = self._calculate_unordered_funnel(segment_df, funnel_steps)
+            elif self.config.counting_method == CountingMethod.UNIQUE_USERS:
+                # Use new Polars implementation
+                segment_results[segment_name] = self._calculate_unique_users_funnel_polars(segment_polars_df, funnel_steps)
+            elif self.config.counting_method == CountingMethod.EVENT_TOTALS:
+                # Use Pandas implementation for now
+                segment_results[segment_name] = self._calculate_event_totals_funnel(segment_df, funnel_steps)
+            elif self.config.counting_method == CountingMethod.UNIQUE_PAIRS:
+                # Use Pandas implementation for now
+                segment_results[segment_name] = self._calculate_unique_pairs_funnel_optimized(segment_df, funnel_steps)
+        
+        # If only one segment, return its results directly with additional analysis
+        if len(segment_results) == 1:
+            main_result = list(segment_results.values())[0]
+            segment_df = list(segments.values())[0]
+            
+            # If segmentation was configured, add segment data even for single segment
+            if self.config.segment_by and self.config.segment_values:
+                main_result.segment_data = {
+                    segment_name: result.users_count 
+                    for segment_name, result in segment_results.items()
+                }
+            
+            # Add advanced analysis using existing Pandas methods (TODO: convert to Polars)
+            main_result.time_to_convert = self._calculate_time_to_convert_optimized(segment_df, funnel_steps)
+            main_result.cohort_data = self._calculate_cohort_analysis_optimized(segment_df, funnel_steps)
+            
+            # Get all user_ids from this segment
+            segment_user_ids = segment_df['user_id'].unique()
+            # Filter the *original* events_df for these users to get their full history
+            full_history_for_segment_users = original_events_df[original_events_df['user_id'].isin(segment_user_ids)].copy()
+            
+            main_result.path_analysis = self._calculate_path_analysis_optimized(
+                segment_df, # Funnel events for users in this segment
+                funnel_steps,
+                full_history_for_segment_users # Full event history for these users
+            )
+            
+            return main_result
+        
+        # If multiple segments, combine results and add statistical tests
+        else:
+            # Use first segment as primary result
+            primary_segment = list(segment_results.keys())[0]
+            main_result = segment_results[primary_segment]
+            
+            # Add segment data
+            main_result.segment_data = {
+                segment_name: result.users_count 
+                for segment_name, result in segment_results.items()
+            }
+            
+            # Calculate statistical significance between segments
+            if len(segment_results) == 2:
+                main_result.statistical_tests = self._calculate_statistical_significance(segment_results)
+            
+            total_time = time.time() - start_time
+            self.logger.info(f"Total Polars funnel calculation completed in {total_time:.4f} seconds")
+            
+            return main_result
+    
+    @_funnel_performance_monitor('calculate_funnel_metrics_pandas')
+    def _calculate_funnel_metrics_pandas(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> FunnelResults:
+        """
+        Original Pandas implementation (preserved for compatibility and fallback)
+        """
+        start_time = time.time()
+
+        self.logger.info(f"Starting PANDAS funnel calculation for {len(events_df)} events and {len(funnel_steps)} steps")
         
         # Handle empty dataset
         if events_df.empty:
@@ -1046,7 +1273,7 @@ class FunnelCalculator:
                 
                 return FunnelResults(funnel_steps, zero_counts, conversion_rates, drop_offs, drop_off_rates)
         
-        self.logger.info(f"Preprocessing completed in {preprocess_time:.4f} seconds. Processing {len(preprocessed_df)} relevant events.")
+        self.logger.info(f"Pandas preprocessing completed in {preprocess_time:.4f} seconds. Processing {len(preprocessed_df)} relevant events.")
         
         # Segment data if configured
         segments = self.segment_events_data(preprocessed_df)
@@ -1112,7 +1339,7 @@ class FunnelCalculator:
                 main_result.statistical_tests = self._calculate_statistical_significance(segment_results)
             
             total_time = time.time() - start_time
-            self.logger.info(f"Total funnel calculation completed in {total_time:.4f} seconds")
+            self.logger.info(f"Total Pandas funnel calculation completed in {total_time:.4f} seconds")
             
             return main_result
     
@@ -1738,6 +1965,168 @@ class FunnelCalculator:
         
         return tests
     
+    @_funnel_performance_monitor('_calculate_unique_users_funnel_polars')
+    def _calculate_unique_users_funnel_polars(self, events_df: pl.DataFrame, steps: List[str]) -> FunnelResults:
+        """
+        Calculate funnel using unique users method with Polars optimizations
+        """
+        users_count = []
+        conversion_rates = []
+        drop_offs = []
+        drop_off_rates = []
+        
+        # Ensure we have the required columns
+        try:
+            events_df.select('user_id')
+        except Exception:
+            self.logger.error("Missing 'user_id' column in events_df")
+            return FunnelResults(steps, [0] * len(steps), [0.0] * len(steps), [0] * len(steps), [0.0] * len(steps))
+        
+        # Track users who completed each step
+        step_users = {}
+        
+        for step_idx, step in enumerate(steps):
+            if step_idx == 0:
+                # First step: all users who performed this event
+                step_users_set = set(
+                    events_df.filter(pl.col('event_name') == step)
+                    .select('user_id')
+                    .unique()
+                    .to_series()
+                    .to_list()
+                )
+                step_users[step] = step_users_set
+                users_count.append(len(step_users_set))
+                conversion_rates.append(100.0)
+                drop_offs.append(0)
+                drop_off_rates.append(0.0)
+            else:
+                # Subsequent steps: users who converted from previous step
+                prev_step = steps[step_idx - 1]
+                eligible_users = step_users[prev_step]
+                
+                converted_users = self._find_converted_users_polars(
+                    events_df, eligible_users, prev_step, step
+                )
+                
+                step_users[step] = converted_users
+                count = len(converted_users)
+                users_count.append(count)
+                
+                # Calculate conversion rate from first step
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
+                conversion_rates.append(conversion_rate)
+                
+                # Calculate drop-off from previous step
+                drop_off = users_count[step_idx - 1] - count
+                drop_offs.append(drop_off)
+                
+                drop_off_rate = (drop_off / users_count[step_idx - 1] * 100) if users_count[step_idx - 1] > 0 else 0
+                drop_off_rates.append(drop_off_rate)
+        
+        return FunnelResults(
+            steps=steps,
+            users_count=users_count,
+            conversion_rates=conversion_rates,
+            drop_offs=drop_offs,
+            drop_off_rates=drop_off_rates
+        )
+        
+
+    def _find_converted_users_polars(self, events_df: pl.DataFrame, eligible_users: set,
+                                   prev_step: str, current_step: str) -> set:
+        """
+        Polars-idiomatic implementation to find users who converted between steps using joins.
+        This is optimized to avoid per-user iteration and uses vectorized Polars expressions.
+        """
+        conversion_window = pl.duration(hours=self.config.conversion_window_hours)
+
+        # Filter for relevant events for eligible users.
+        eligible_users_list = [str(user_id) for user_id in eligible_users]
+        relevant_events = events_df.filter(
+            pl.col('user_id').cast(pl.Utf8).is_in(eligible_users_list) &
+            pl.col('event_name').is_in([prev_step, current_step])
+        )
+
+        if relevant_events.height == 0:
+            return set()
+
+        converted = None
+        # Handle ORDERED funnels
+        if self.config.funnel_order == FunnelOrder.ORDERED:
+            if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
+                # Get the first event based on its original position in the file.
+                # Assumes '_original_order' column exists from preprocessing.
+                first_events = relevant_events.sort("_original_order").group_by(["user_id", "event_name"], maintain_order=True).first()
+
+                # Create separate DataFrames for prev_step and current_step events
+                prev_events = first_events.filter(pl.col("event_name") == prev_step).select(["user_id", "timestamp"]).rename({"timestamp": "prev_time"})
+                current_events = first_events.filter(pl.col("event_name") == current_step).select(["user_id", "timestamp"]).rename({"timestamp": "current_time"})
+                
+                if prev_events.height == 0 or current_events.height == 0:
+                    return set()
+
+                # Join prev and current events
+                user_events = prev_events.join(current_events, on="user_id", how="inner")
+                
+                if user_events.height == 0:
+                    return set()
+
+                # Apply conversion window filter
+                converted = user_events.filter(
+                    (pl.col("current_time") > pl.col("prev_time")) &
+                    ((pl.col("current_time") - pl.col("prev_time")) <= conversion_window)
+                )
+
+            elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
+                # Simple approach: for each current event, check if there's a valid previous event
+                prev_df = relevant_events.filter(pl.col("event_name") == prev_step).select(["user_id", "timestamp"]).rename({"timestamp": "prev_time"})
+                current_df = relevant_events.filter(pl.col("event_name") == current_step).select(["user_id", "timestamp"]).rename({"timestamp": "current_time"})
+
+                if prev_df.height == 0 or current_df.height == 0:
+                    return set()
+
+                # Cross join to get all combinations, then filter
+                user_combinations = current_df.join(prev_df, on="user_id", how="inner")
+                
+                if user_combinations.height == 0:
+                    return set()
+                
+                # Filter: current event after prev event and within window
+                valid_conversions = user_combinations.filter(
+                    (pl.col("current_time") > pl.col("prev_time")) &
+                    ((pl.col("current_time") - pl.col("prev_time")) <= conversion_window)
+                )
+                
+                converted = valid_conversions
+
+        # Handle UNORDERED funnels
+        elif self.config.funnel_order == FunnelOrder.UNORDERED:
+            prev_df = relevant_events.filter(pl.col("event_name") == prev_step).select(
+                ["user_id", "timestamp"]).rename({"timestamp": "prev_time"})
+            current_df = relevant_events.filter(pl.col("event_name") == current_step).select(
+                ["user_id", "timestamp"]).rename({"timestamp": "current_time"})
+
+            if prev_df.height == 0 or current_df.height == 0:
+                return set()
+
+            # Cross join within each user group to get all event pairs and check if any are within window.
+            user_combinations = prev_df.join(current_df, on="user_id", how="inner")
+            
+            if user_combinations.height == 0:
+                return set()
+                
+            converted = user_combinations.filter(
+                (pl.col("current_time") - pl.col("prev_time")).abs() <= conversion_window
+            )
+
+        if converted is None or converted.height == 0:
+            return set()
+
+        return set(converted.select("user_id").unique().to_series().to_list())
+    
+
+
     @_funnel_performance_monitor('_calculate_unique_users_funnel_optimized')
     def _calculate_unique_users_funnel_optimized(self, events_df: pd.DataFrame, steps: List[str]) -> FunnelResults:
         """
@@ -2881,7 +3270,9 @@ def create_simple_event_selector():
         """Run funnel analysis."""
         if len(st.session_state.funnel_steps) >= 2:
             with st.spinner("Calculating funnel metrics..."):
-                calculator = FunnelCalculator(st.session_state.funnel_config)
+                # Get polars preference from session state (default to True)
+                use_polars = st.session_state.get('use_polars', True)
+                calculator = FunnelCalculator(st.session_state.funnel_config, use_polars=use_polars)
                 
                 # Store calculator for cache management
                 st.session_state.last_calculator = calculator
@@ -2898,19 +3289,21 @@ def create_simple_event_selector():
                 if 'performance_history' not in st.session_state:
                     st.session_state.performance_history = []
                 
+                engine_used = "Polars" if use_polars else "Pandas"
                 st.session_state.performance_history.append({
                     'timestamp': datetime.now(),
                     'events_count': len(st.session_state.events_data),
                     'steps_count': len(st.session_state.funnel_steps),
                     'calculation_time': calculation_time,
-                    'method': st.session_state.funnel_config.counting_method.value
+                    'method': st.session_state.funnel_config.counting_method.value,
+                    'engine': engine_used
                 })
                 
                 # Keep only last 10 calculations
                 if len(st.session_state.performance_history) > 10:
                     st.session_state.performance_history = st.session_state.performance_history[-10:]
                 
-                st.toast(f"✅ Analysis completed in {calculation_time:.2f}s!", icon="✅")
+                st.toast(f"✅ {engine_used} analysis completed in {calculation_time:.2f}s!", icon="✅")
         else:
             st.toast("⚠️ Please add at least 2 steps to create a funnel", icon="⚠️")
 
@@ -2992,6 +3385,13 @@ def create_simple_event_selector():
                     r4.button("🗑️", key=f"del_{i}", on_click=remove_step, args=(i,), help="Remove step")
 
             st.markdown("---")
+            
+            # Engine selection
+            st.session_state.use_polars = st.checkbox(
+                "🚀 Use Polars Engine", 
+                value=st.session_state.get('use_polars', True), 
+                help="Use Polars for faster funnel calculations (experimental)"
+            )
             
             # Action buttons
             action_col1, action_col2 = st.columns(2)
@@ -3626,6 +4026,7 @@ ORDER BY user_id, timestamp""",
                             'Events Count': f"{entry['events_count']:,}",
                             'Steps': entry['steps_count'],
                             'Method': entry['method'],
+                            'Engine': entry.get('engine', 'Pandas'),  # Default to Pandas for backward compatibility
                             'Calculation Time (s)': f"{entry['calculation_time']:.3f}",
                             'Events/Second': f"{entry['events_count'] / entry['calculation_time']:,.0f}"
                         })
