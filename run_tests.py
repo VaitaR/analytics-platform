@@ -97,6 +97,12 @@ def run_segmentation_tests():
     return run_command(cmd, "Running segmentation tests")
 
 
+def run_integration_tests():
+    """Run integration tests for complete workflow."""
+    cmd = ["python", "-m", "pytest", "tests/test_integration_flow.py", "-v"]
+    return run_command(cmd, "Running integration tests")
+
+
 def run_all_tests(parallel=False, coverage=False, markers=None):
     """Run all tests with optional configurations."""
     cmd = ["python", "-m", "pytest", "tests/", "-v"]
@@ -168,7 +174,8 @@ def validate_test_files():
         "tests/test_conversion_window.py",
         "tests/test_counting_methods.py",
         "tests/test_edge_cases.py",
-        "tests/test_segmentation.py"
+        "tests/test_segmentation.py",
+        "tests/test_integration_flow.py"
     ]
     
     missing = []
@@ -235,6 +242,7 @@ Examples:
     parser.add_argument("--counting-methods", action="store_true", help="Run counting method tests")
     parser.add_argument("--edge-cases", action="store_true", help="Run edge case tests")
     parser.add_argument("--segmentation", action="store_true", help="Run segmentation tests")
+    parser.add_argument("--integration", action="store_true", help="Run integration tests for complete workflow")
     parser.add_argument("--performance", action="store_true", help="Run performance tests")
     
     # Test execution options
@@ -276,6 +284,8 @@ Examples:
         success = run_edge_case_tests()
     elif args.segmentation:
         success = run_segmentation_tests()
+    elif args.integration:
+        success = run_integration_tests()
     elif args.performance:
         success = run_performance_tests()
     elif args.report:
