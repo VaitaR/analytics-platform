@@ -109,6 +109,12 @@ def run_no_reload_tests():
     return run_command(cmd, "Running no-reload improvements tests")
 
 
+def run_polars_tests():
+    """Run Polars engine and migration tests."""
+    cmd = ["python", "-m", "pytest", "tests/test_polars_engine.py", "tests/test_polars_path_analysis.py", "-v"]
+    return run_command(cmd, "Running Polars engine and migration tests")
+
+
 def run_all_tests(parallel=False, coverage=False, markers=None):
     """Run all tests with optional configurations."""
     cmd = ["python", "-m", "pytest", "tests/", "-v"]
@@ -150,7 +156,7 @@ def check_test_dependencies():
     """Check if all test dependencies are installed."""
     print("🔍 Checking test dependencies...")
     
-    dependencies = ["pytest", "pandas", "numpy", "scipy"]
+    dependencies = ["pytest", "pandas", "numpy", "scipy", "polars"]
     missing = []
     
     for dep in dependencies:
@@ -182,7 +188,9 @@ def validate_test_files():
         "tests/test_edge_cases.py",
         "tests/test_segmentation.py",
         "tests/test_integration_flow.py",
-        "tests/test_no_reload_improvements.py"
+        "tests/test_no_reload_improvements.py",
+        "tests/test_polars_engine.py",
+        "tests/test_polars_path_analysis.py"
     ]
     
     missing = []
@@ -252,6 +260,7 @@ Examples:
     parser.add_argument("--integration", action="store_true", help="Run integration tests for complete workflow")
     parser.add_argument("--no-reload", action="store_true", help="Run no-reload improvements tests")
     parser.add_argument("--performance", action="store_true", help="Run performance tests")
+    parser.add_argument("--polars", action="store_true", help="Run Polars engine and migration tests")
     
     # Test execution options
     parser.add_argument("--parallel", action="store_true", help="Run tests in parallel")
@@ -298,6 +307,8 @@ Examples:
         success = run_no_reload_tests()
     elif args.performance:
         success = run_performance_tests()
+    elif args.polars:
+        success = run_polars_tests()
     elif args.report:
         success = generate_test_report()
     elif any([args.parallel, args.coverage, args.marker]):

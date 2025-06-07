@@ -2294,9 +2294,44 @@ class FunnelCalculator:
         Polars-idiomatic implementation to find users who converted between steps using joins.
         This is optimized to avoid per-user iteration and uses vectorized Polars expressions.
         """
+        # Special handling for zero conversion window
+        if self.config.conversion_window_hours == 0:
+            # For zero window, events must be simultaneous
+            eligible_users_list = [str(user_id) for user_id in eligible_users]
+            relevant_events = events_df.filter(
+                pl.col('user_id').cast(pl.Utf8).is_in(eligible_users_list) &
+                pl.col('event_name').is_in([prev_step, current_step])
+            )
+
+            if relevant_events.height == 0:
+                return set()
+
+            # Group by user and timestamp to find simultaneous events
+            simultaneous_events = (
+                relevant_events
+                .group_by(['user_id', 'timestamp'])
+                .agg([
+                    pl.col('event_name').alias('events'),
+                    pl.col('_original_order').min().alias('first_order'),
+                    pl.col('_original_order').max().alias('last_order')
+                ])
+                .filter(
+                    pl.col('events').list.contains(prev_step) &
+                    pl.col('events').list.contains(current_step)
+                )
+                # For ordered funnels, ensure events appear in correct order in file
+                .filter(
+                    (self.config.funnel_order == FunnelOrder.UNORDERED) |
+                    (pl.col('events').list.get(0) == prev_step)
+                )
+            )
+
+            return set(simultaneous_events.select('user_id').unique().to_series().to_list())
+
+        # Regular conversion window handling
         conversion_window = pl.duration(hours=self.config.conversion_window_hours)
 
-        # Filter for relevant events for eligible users.
+        # Filter for relevant events for eligible users
         eligible_users_list = [str(user_id) for user_id in eligible_users]
         relevant_events = events_df.filter(
             pl.col('user_id').cast(pl.Utf8).is_in(eligible_users_list) &
@@ -2310,35 +2345,89 @@ class FunnelCalculator:
         # Handle ORDERED funnels
         if self.config.funnel_order == FunnelOrder.ORDERED:
             if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
-                # Get the first event based on its original position in the file.
-                # Assumes '_original_order' column exists from preprocessing.
-                first_events = relevant_events.sort("_original_order").group_by(["user_id", "event_name"], maintain_order=True).first()
+                # First check for simultaneous events
+                simultaneous = (
+                    relevant_events
+                    .group_by(['user_id', 'timestamp'])
+                    .agg([
+                        pl.col('event_name').alias('events'),
+                        pl.col('_original_order').min().alias('first_order'),
+                        pl.col('_original_order').max().alias('last_order')
+                    ])
+                    .filter(
+                        pl.col('events').list.contains(prev_step) &
+                        pl.col('events').list.contains(current_step)
+                    )
+                    # Ensure events appear in correct order in file
+                    .filter(
+                        pl.col('events').list.get(0) == prev_step
+                    )
+                )
+
+                # Then check for sequential events
+                # Get first event of each type by timestamp
+                first_events = (
+                    relevant_events
+                    .sort(['user_id', 'timestamp', '_original_order'])
+                    .group_by(['user_id', 'event_name'])
+                    .first()
+                )
 
                 # Create separate DataFrames for prev_step and current_step events
-                prev_events = first_events.filter(pl.col("event_name") == prev_step).select(["user_id", "timestamp"]).rename({"timestamp": "prev_time"})
-                current_events = first_events.filter(pl.col("event_name") == current_step).select(["user_id", "timestamp"]).rename({"timestamp": "current_time"})
+                prev_events = first_events.filter(pl.col("event_name") == prev_step).select(
+                    ["user_id", "timestamp", "_original_order"]
+                ).rename({"timestamp": "prev_time", "_original_order": "prev_order"})
                 
-                if prev_events.height == 0 or current_events.height == 0:
+                current_events = first_events.filter(pl.col("event_name") == current_step).select(
+                    ["user_id", "timestamp", "_original_order"]
+                ).rename({"timestamp": "current_time", "_original_order": "current_order"})
+
+                if prev_events.height == 0 and simultaneous.height == 0:
                     return set()
 
                 # Join prev and current events
                 user_events = prev_events.join(current_events, on="user_id", how="inner")
-                
-                if user_events.height == 0:
+
+                if user_events.height == 0 and simultaneous.height == 0:
                     return set()
 
-                # Apply conversion window filter
-                converted = user_events.filter(
+                # For non-simultaneous events, check order and window
+                # In FIRST_ONLY mode, if the first event is outside the window, we should not count any later events
+                valid_sequence = user_events.filter(
                     (pl.col("current_time") > pl.col("prev_time")) &
-                    ((pl.col("current_time") - pl.col("prev_time")) <= conversion_window)
+                    ((pl.col("current_time") - pl.col("prev_time")) < conversion_window) &
+                    (pl.col("current_time") == first_events.filter(pl.col("event_name") == current_step).select("timestamp").min())
                 )
 
-            elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
-                # Simple approach: for each current event, check if there's a valid previous event
-                prev_df = relevant_events.filter(pl.col("event_name") == prev_step).select(["user_id", "timestamp"]).rename({"timestamp": "prev_time"})
-                current_df = relevant_events.filter(pl.col("event_name") == current_step).select(["user_id", "timestamp"]).rename({"timestamp": "current_time"})
+                # Combine users from both simultaneous and sequential events
+                converted_users = set()
+                if simultaneous.height > 0:
+                    converted_users.update(simultaneous.select("user_id").unique().to_series().to_list())
+                if valid_sequence.height > 0:
+                    converted_users.update(valid_sequence.select("user_id").unique().to_series().to_list())
+                return converted_users
 
-                if prev_df.height == 0 or current_df.height == 0:
+            elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
+                # Get first events for each user and event type by timestamp
+                # For ordered funnels, we need to ensure events happen in sequence
+                first_events = (
+                    relevant_events
+                    .sort(['user_id', 'timestamp', '_original_order'])
+                    .group_by(['user_id', 'event_name'])
+                    .first()
+                    .sort(['user_id', 'timestamp', '_original_order'])
+                )
+
+                # Create separate DataFrames for prev_step and current_step events
+                prev_df = first_events.filter(pl.col("event_name") == prev_step).select(
+                    ["user_id", "timestamp", "_original_order"]
+                ).rename({"timestamp": "prev_time", "_original_order": "prev_order"})
+                
+                current_df = first_events.filter(pl.col("event_name") == current_step).select(
+                    ["user_id", "timestamp", "_original_order"]
+                ).rename({"timestamp": "current_time", "_original_order": "current_order"})
+
+                if prev_df.height == 0:
                     return set()
 
                 # Cross join to get all combinations, then filter
@@ -2347,33 +2436,56 @@ class FunnelCalculator:
                 if user_combinations.height == 0:
                     return set()
                 
-                # Filter: current event after prev event and within window
+                # Filter: current event after prev event and within window (exclusive)
                 valid_conversions = user_combinations.filter(
                     (pl.col("current_time") > pl.col("prev_time")) &
-                    ((pl.col("current_time") - pl.col("prev_time")) <= conversion_window)
+                    ((pl.col("current_time") - pl.col("prev_time")) < conversion_window)
                 )
                 
                 converted = valid_conversions
 
         # Handle UNORDERED funnels
         elif self.config.funnel_order == FunnelOrder.UNORDERED:
+            # First check for simultaneous events
+            simultaneous = (
+                relevant_events
+                .group_by(['user_id', 'timestamp'])
+                .agg(pl.col('event_name').alias('events'))
+                .filter(
+                    pl.col('events').list.contains(prev_step) &
+                    pl.col('events').list.contains(current_step)
+                )
+            )
+
+            # Then check for events within window
             prev_df = relevant_events.filter(pl.col("event_name") == prev_step).select(
                 ["user_id", "timestamp"]).rename({"timestamp": "prev_time"})
             current_df = relevant_events.filter(pl.col("event_name") == current_step).select(
                 ["user_id", "timestamp"]).rename({"timestamp": "current_time"})
 
             if prev_df.height == 0 or current_df.height == 0:
-                return set()
+                if simultaneous.height == 0:
+                    return set()
+                return set(simultaneous.select("user_id").unique().to_series().to_list())
 
-            # Cross join within each user group to get all event pairs and check if any are within window.
+            # Cross join within each user group to get all event pairs
             user_combinations = prev_df.join(current_df, on="user_id", how="inner")
             
-            if user_combinations.height == 0:
+            if user_combinations.height == 0 and simultaneous.height == 0:
                 return set()
                 
-            converted = user_combinations.filter(
-                (pl.col("current_time") - pl.col("prev_time")).abs() <= conversion_window
+            # For unordered, we allow events in any order within window
+            window_conversions = user_combinations.filter(
+                (pl.col("current_time") - pl.col("prev_time")).abs() < conversion_window
             )
+
+            # Combine users from both simultaneous events and window conversions
+            converted_users = set()
+            if simultaneous.height > 0:
+                converted_users.update(simultaneous.select("user_id").unique().to_series().to_list())
+            if window_conversions.height > 0:
+                converted_users.update(window_conversions.select("user_id").unique().to_series().to_list())
+            return converted_users
 
         if converted is None or converted.height == 0:
             return set()
@@ -2937,6 +3049,7 @@ class FunnelCalculator:
                 if self._user_did_later_steps_before_current(user_events, prev_step, current_step, events_df):
                     self.logger.info(f"Skipping user {user_id} due to out-of-order sequence from {prev_step} to {current_step}")
                     continue
+                
                 # Apply reentry mode logic for ordered funnels
                 if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
                     prev_time = prev_events.min()
@@ -2950,14 +3063,11 @@ class FunnelCalculator:
                         if first_current_time == prev_time:
                             converted_users.add(user_id)
                     else:
-                        # For non-zero window, check if first current event is after prev and within window
-                        if first_current_time > prev_time:
+                        # For non-zero window, check if first current event is within window (inclusive)
+                        if first_current_time >= prev_time:  # Allow simultaneous events
                             time_diff = first_current_time - prev_time
-                            if time_diff < conversion_window:
+                            if time_diff <= conversion_window:  # Changed from < to <= for inclusive boundary
                                 converted_users.add(user_id)
-                        elif first_current_time == prev_time:
-                            # Allow simultaneous events for non-zero windows
-                            converted_users.add(user_id)
                 
                 elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
                     # Check any valid sequence within conversion window
@@ -2967,10 +3077,10 @@ class FunnelCalculator:
                             # For zero window, events must be simultaneous
                             valid_current = current_events[current_events == prev_time]
                         else:
-                            # For non-zero window, current events after prev_time within window
+                            # For non-zero window, current events after prev_time within window (inclusive)
                             valid_current = current_events[
-                                (current_events > prev_time) & 
-                                (current_events < prev_time + conversion_window)
+                                (current_events >= prev_time) &  # Changed from > to >= for simultaneous events
+                                (current_events <= prev_time + conversion_window)  # Changed from < to <= for inclusive boundary
                             ]
                         if len(valid_current) > 0:
                             converted_users.add(user_id)
@@ -2994,14 +3104,18 @@ class FunnelCalculator:
         This is used to enforce strict ordering in ordered funnels.
         """
         try:
-            # Get the funnel sequence from the order that steps appear in the overall dataset
-            # This is a heuristic but works for most cases
-            all_funnel_events = all_events_df['event_name'].unique()
+            # Get the funnel sequence from the steps list in the calculator
+            funnel_steps = all_events_df['event_name'].unique()
             
-            # For the test case, we know the sequence should be: Sign Up -> Email Verification -> First Login
-            # When checking Email Verification after Sign Up, we should see if First Login happened before Email Verification
+            # Find indices of prev_step and current_step in the sequence
+            try:
+                prev_idx = list(funnel_steps).index(prev_step)
+                current_idx = list(funnel_steps).index(current_step)
+            except ValueError:
+                # If steps are not found in sequence, allow the conversion
+                return False
             
-            # Get timestamps for each step
+            # Get timestamps for the steps we're checking
             prev_step_times = user_events[user_events['event_name'] == prev_step]['timestamp']
             current_step_times = user_events[user_events['event_name'] == current_step]['timestamp']
             
@@ -3017,17 +3131,21 @@ class FunnelCalculator:
                 
             current_time = valid_current_times.min()
             
-            # For the specific test case: check if "First Login" happened between "Sign Up" and "Email Verification"
-            # This is a simplified check for the failing test
-            if prev_step == 'Sign Up' and current_step == 'Email Verification':
-                first_login_events = user_events[
-                    (user_events['event_name'] == 'First Login') &
+            # Check if any later steps in the sequence happened between prev_step and current_step
+            for step in funnel_steps[prev_idx+1:]:
+                if step == current_step:
+                    continue
+                    
+                # Check if this step happened between prev_step and current_step
+                intermediate_events = user_events[
+                    (user_events['event_name'] == step) &
                     (user_events['timestamp'] > prev_time) &
                     (user_events['timestamp'] < current_time)
                 ]
-                if len(first_login_events) > 0:
-                    self.logger.info(f"User did First Login before Email Verification - out of order")
-                    return True  # User did First Login before Email Verification - out of order
+                
+                if len(intermediate_events) > 0:
+                    self.logger.info(f"User did {step} before {current_step} - out of order")
+                    return True  # Found a later step that happened before current_step
             
             return False
             
