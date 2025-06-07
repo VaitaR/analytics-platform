@@ -235,6 +235,117 @@ def compare_time_to_convert(pandas_stats: List[TimeToConvertStats], polars_stats
     
     return True, "Time to convert stats match within tolerance"
 
+@pytest.mark.data_integrity
+@pytest.mark.parametrize("test_config, funnel_steps", [
+    pytest.param(
+        FunnelConfig(
+            counting_method=CountingMethod.UNIQUE_USERS,
+            reentry_mode=ReentryMode.OPTIMIZED_REENTRY,
+            funnel_order=FunnelOrder.ORDERED,
+            conversion_window_hours=168
+        ),
+        [
+            'User Sign-Up', 'Verify Email', 'First Login', 
+            'Profile Setup', 'Tutorial Completed', 'First Purchase'
+        ],
+        id="unique_users_optimized_ordered"
+    ),
+    pytest.param(
+        FunnelConfig(
+            counting_method=CountingMethod.UNIQUE_USERS,
+            reentry_mode=ReentryMode.FIRST_ONLY,
+            funnel_order=FunnelOrder.ORDERED,
+            conversion_window_hours=168
+        ),
+        [
+            'User Sign-Up', 'Verify Email', 'First Login', 
+            'Profile Setup', 'Tutorial Completed', 'First Purchase'
+        ],
+        id="unique_users_first_only_ordered"
+    ),
+    pytest.param(
+        FunnelConfig(
+            counting_method=CountingMethod.UNIQUE_USERS,
+            funnel_order=FunnelOrder.UNORDERED,
+            conversion_window_hours=168
+        ),
+        [
+            'User Sign-Up', 'Verify Email', 'First Login', 
+            'Profile Setup', 'Tutorial Completed', 'First Purchase'
+        ],
+        id="unique_users_unordered"
+    ),
+    pytest.param(
+        FunnelConfig(
+            counting_method=CountingMethod.UNIQUE_PAIRS,
+            reentry_mode=ReentryMode.OPTIMIZED_REENTRY,
+            funnel_order=FunnelOrder.ORDERED,
+            conversion_window_hours=168
+        ),
+        [
+            'User Sign-Up', 'Verify Email', 'First Login', 
+            'Profile Setup', 'Tutorial Completed', 'First Purchase'
+        ],
+        id="unique_pairs_ordered"
+    ),
+    pytest.param(
+        FunnelConfig(
+            counting_method=CountingMethod.EVENT_TOTALS,
+            funnel_order=FunnelOrder.ORDERED,
+            conversion_window_hours=168
+        ),
+        [
+            'User Sign-Up', 'Verify Email', 'First Login', 
+            'Profile Setup', 'Tutorial Completed', 'First Purchase'
+        ],
+        id="event_totals_ordered"
+    ),
+    pytest.param(
+        FunnelConfig(
+            counting_method=CountingMethod.UNIQUE_USERS,
+            reentry_mode=ReentryMode.FIRST_ONLY,
+            funnel_order=FunnelOrder.ORDERED,
+            conversion_window_hours=168
+        ),
+        [
+            'KYC. Basic Verification. Name Screen Shown',
+            'KYC. Basic Verification. Name Screen. Action Clicked',
+            'KYC. Basic Verification. Phone Screen. Action Clicked',
+            'KYC. Basic Verification. Phone Screen. Started',
+            'KYC. KYC Finished'
+        ],
+        id="kyc_bug_replication_first_only_ordered"
+    )
+])
+def test_large_dataset_integrity(test_config: FunnelConfig, funnel_steps: List[str]):
+    """
+    Compare Pandas and Polars engines on a large, real-world dataset
+    across various funnel configurations.
+    """
+    try:
+        events_df = pd.read_csv('test_data/test_200k.csv')
+        if 'timestamp' in events_df.columns:
+            events_df['timestamp'] = pd.to_datetime(events_df['timestamp'])
+    except FileNotFoundError:
+        pytest.skip("Test data file 'test_data/test_200k.csv' not found.")
+        return
+
+    pandas_calculator = FunnelCalculator(test_config, use_polars=False)
+    pandas_results = pandas_calculator.calculate_funnel_metrics(events_df, funnel_steps)
+
+    polars_calculator = FunnelCalculator(test_config, use_polars=True)
+    polars_results = polars_calculator.calculate_funnel_metrics(events_df, funnel_steps)
+
+    are_same, message = compare_funnel_results(pandas_results, polars_results)
+    assert are_same, f"Funnel results mismatch: {message}"
+
+    pandas_ttc = pandas_results.time_to_convert or []
+    polars_ttc = polars_results.time_to_convert or []
+    
+    are_same_ttc, message_ttc = compare_time_to_convert(pandas_ttc, polars_ttc)
+    assert are_same_ttc, f"Time to convert stats mismatch: {message_ttc}"
+
+
 @pytest.mark.parametrize("scenario", [
     "conversion_window_edge",
     "reentry_patterns",
