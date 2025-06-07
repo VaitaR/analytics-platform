@@ -193,38 +193,26 @@ def compare_path_analysis_results(pandas_result: PathAnalysisData, polars_result
     """Compare path analysis results from Pandas and Polars implementations"""
     
     # Compare dropoff_paths
-    if set(pandas_result.dropoff_paths.keys()) != set(polars_result.dropoff_paths.keys()):
-        print("❌ Dropoff paths keys don't match")
-        print(f"Pandas keys: {set(pandas_result.dropoff_paths.keys())}")
-        print(f"Polars keys: {set(polars_result.dropoff_paths.keys())}")
-        return False
+    assert set(pandas_result.dropoff_paths.keys()) == set(polars_result.dropoff_paths.keys()), \
+        f"Dropoff paths keys don't match:\nPandas keys: {set(pandas_result.dropoff_paths.keys())}\nPolars keys: {set(polars_result.dropoff_paths.keys())}"
     
     for step in pandas_result.dropoff_paths:
         pandas_paths = pandas_result.dropoff_paths[step]
         polars_paths = polars_result.dropoff_paths[step]
         
-        if pandas_paths != polars_paths:
-            print(f"❌ Dropoff paths for step '{step}' don't match")
-            print(f"Pandas: {pandas_paths}")
-            print(f"Polars: {polars_paths}")
-            return False
+        assert pandas_paths == polars_paths, \
+            f"Dropoff paths for step '{step}' don't match:\nPandas: {pandas_paths}\nPolars: {polars_paths}"
     
     # Compare between_steps_events
-    if set(pandas_result.between_steps_events.keys()) != set(polars_result.between_steps_events.keys()):
-        print("❌ Between steps events keys don't match")
-        print(f"Pandas keys: {set(pandas_result.between_steps_events.keys())}")
-        print(f"Polars keys: {set(polars_result.between_steps_events.keys())}")
-        return False
+    assert set(pandas_result.between_steps_events.keys()) == set(polars_result.between_steps_events.keys()), \
+        f"Between steps events keys don't match:\nPandas keys: {set(pandas_result.between_steps_events.keys())}\nPolars keys: {set(polars_result.between_steps_events.keys())}"
     
     for step_pair in pandas_result.between_steps_events:
         pandas_events = pandas_result.between_steps_events[step_pair]
         polars_events = polars_result.between_steps_events[step_pair]
         
-        if pandas_events != polars_events:
-            print(f"❌ Between steps events for '{step_pair}' don't match")
-            print(f"Pandas: {pandas_events}")
-            print(f"Polars: {polars_events}")
-            return False
+        assert pandas_events == polars_events, \
+            f"Between steps events for '{step_pair}' don't match:\nPandas: {pandas_events}\nPolars: {polars_events}"
     
     return True
 
