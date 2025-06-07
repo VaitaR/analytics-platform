@@ -185,6 +185,35 @@ def create_test_data_for_path_analysis() -> pd.DataFrame:
         }
     ])
     
+    # User 6: Performs a later funnel step out of order.
+    # In an ORDERED funnel, this should disqualify them from converting to 'Profile Setup'.
+    # The pandas implementation has a bug in its out-of-order detection and will likely count this conversion,
+    # while the Polars implementation should correctly reject it. This is designed to expose that discrepancy.
+    user_id = "user_006"
+    events_data.extend([
+        {
+            'user_id': user_id,
+            'event_name': 'User Sign-Up',
+            'timestamp': base_time + timedelta(hours=5),
+            'event_properties': '{}',
+            'user_properties': '{}'
+        },
+        {
+            'user_id': user_id,
+            'event_name': 'Verify Email',  # This is the 3rd step, done out of order
+            'timestamp': base_time + timedelta(hours=5, minutes=10),
+            'event_properties': '{}',
+            'user_properties': '{}'
+        },
+        {
+            'user_id': user_id,
+            'event_name': 'Profile Setup',  # This is the 2nd step
+            'timestamp': base_time + timedelta(hours=5, minutes=20),
+            'event_properties': '{}',
+            'user_properties': '{}'
+        }
+    ])
+    
     df = pd.DataFrame(events_data)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     return df

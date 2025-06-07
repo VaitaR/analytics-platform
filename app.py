@@ -1798,7 +1798,7 @@ class FunnelCalculator:
             # Identify users who truly converted from current_step to next_step
             users_eligible_for_this_conversion = step_user_sets[step]
             truly_converted_users = self._find_converted_users_vectorized(
-                user_groups_funnel_events_only, users_eligible_for_this_conversion, step, next_step
+                user_groups_funnel_events_only, users_eligible_for_this_conversion, step, next_step, funnel_steps
             )
 
             # Analyze between-steps events for these truly converted users
@@ -2654,7 +2654,7 @@ class FunnelCalculator:
                 eligible_users = step_users[prev_step]
                 
                 converted_users = self._find_converted_users_vectorized(
-                    user_groups, eligible_users, prev_step, step
+                    user_groups, eligible_users, prev_step, step, steps
                 )
                 
                 step_users[step] = converted_users
@@ -2682,7 +2682,7 @@ class FunnelCalculator:
     
     @_funnel_performance_monitor('_find_converted_users_vectorized')
     def _find_converted_users_vectorized(self, user_groups, eligible_users: set, 
-                                       prev_step: str, current_step: str) -> set:
+                                       prev_step: str, current_step: str, funnel_steps: List[str]) -> set:
         """
         Vectorized method to find users who converted between steps
         """
@@ -2695,7 +2695,7 @@ class FunnelCalculator:
             for user_id in eligible_users:
                 if user_id in user_groups.groups:
                     user_events = user_groups.get_group(user_id)
-                    if not self._user_did_later_steps_before_current_vectorized(user_events, prev_step, current_step):
+                    if not self._user_did_later_steps_before_current_vectorized(user_events, prev_step, current_step, funnel_steps):
                         filtered_users.add(user_id)
                     else:
                         self.logger.info(f"Vectorized: Skipping user {user_id} due to out-of-order sequence from {prev_step} to {current_step}")
@@ -2716,37 +2716,51 @@ class FunnelCalculator:
         
         return converted_users
     
-    def _user_did_later_steps_before_current_vectorized(self, user_events: pd.DataFrame, prev_step: str, current_step: str) -> bool:
+    def _user_did_later_steps_before_current_vectorized(self, user_events: pd.DataFrame, prev_step: str, current_step: str, funnel_steps: List[str]) -> bool:
         """
         Vectorized version to check if user performed steps that come later in the funnel sequence before the current step.
         """
         try:
-            # For the specific test case: check if "First Login" happened between "Sign Up" and "Email Verification"
-            if prev_step == 'Sign Up' and current_step == 'Email Verification':
-                prev_step_times = user_events[user_events['event_name'] == prev_step]['timestamp']
-                current_step_times = user_events[user_events['event_name'] == current_step]['timestamp']
+            # Find the index of the current and previous steps
+            current_step_idx = funnel_steps.index(current_step)
+            
+            # Identify any steps that come after the current step in the funnel definition
+            out_of_order_sequence_steps = [s for i, s in enumerate(funnel_steps) if i > current_step_idx]
+
+            if not out_of_order_sequence_steps:
+                return False # No subsequent steps to check for
+
+            # Get timestamps for the previous and current steps
+            prev_step_times = user_events[user_events['event_name'] == prev_step]['timestamp']
+            current_step_times = user_events[user_events['event_name'] == current_step]['timestamp']
+            
+            if len(prev_step_times) == 0 or len(current_step_times) == 0:
+                return False
                 
-                if len(prev_step_times) == 0 or len(current_step_times) == 0:
-                    return False
-                    
-                prev_time = prev_step_times.min()
+            # Determine the time window for the conversion being checked
+            # This should handle different re-entry modes implicitly by checking all valid windows
+            for prev_time in prev_step_times:
                 valid_current_times = current_step_times[current_step_times >= prev_time]
                 
-                if len(valid_current_times) == 0:
-                    return False
+                if len(valid_current_times) > 0:
+                    current_time = valid_current_times.min()
                     
-                current_time = valid_current_times.min()
-                
-                first_login_events = user_events[
-                    (user_events['event_name'] == 'First Login') &
-                    (user_events['timestamp'] > prev_time) &
-                    (user_events['timestamp'] < current_time)
-                ]
-                if len(first_login_events) > 0:
-                    self.logger.info(f"Vectorized: User did First Login before Email Verification - out of order")
-                    return True
+                    # Check if any out-of-order events occurred within this specific conversion window
+                    out_of_order_events = user_events[
+                        (user_events['event_name'].isin(out_of_order_sequence_steps)) &
+                        (user_events['timestamp'] > prev_time) &
+                        (user_events['timestamp'] < current_time)
+                    ]
+                    
+                    if len(out_of_order_events) > 0:
+                        # Found an out-of-order event, this is not a valid conversion path
+                        self.logger.info(
+                            f"Vectorized: User did {out_of_order_events['event_name'].iloc[0]} "
+                            f"before {current_step} - out of order."
+                        )
+                        return True
             
-            return False
+            return False # No out-of-order events found in any valid conversion window
             
         except Exception as e:
             self.logger.warning(f"Error in _user_did_later_steps_before_current_vectorized: {str(e)}")
@@ -2899,7 +2913,7 @@ class FunnelCalculator:
             
             # Vectorized conversion detection
             converted_users = self._find_converted_users_vectorized(
-                user_groups, prev_step_users, prev_step, current_step
+                user_groups, prev_step_users, prev_step, current_step, steps
             )
             
             count = len(converted_users)
