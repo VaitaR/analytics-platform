@@ -393,90 +393,93 @@ def test_path_analysis_migration():
     print()
     
     # Final summary
-    if all_tests_passed:
-        print("🎉 All path analysis migration tests passed!")
-        print("✅ Polars implementation produces identical results to Pandas")
+    assert all_tests_passed, "Path analysis migration tests failed"
 
-        print("\n⏱️  Testing Time to Convert Migration")
-        print("=" * 50)
+    print("🎉 All path analysis migration tests passed!")
+    print("✅ Polars implementation produces identical results to Pandas")
 
-        # Test time to convert migration
-        pandas_config = FunnelConfig(
-            conversion_window_hours=168,
-            counting_method=CountingMethod.UNIQUE_USERS,
-            reentry_mode=ReentryMode.FIRST_ONLY,
-            funnel_order=FunnelOrder.ORDERED
-        )
+    print("\n⏱️  Testing Time to Convert Migration")
+    print("=" * 50)
 
-        polars_config = FunnelConfig(
-            conversion_window_hours=168,
-            counting_method=CountingMethod.UNIQUE_USERS,
-            reentry_mode=ReentryMode.FIRST_ONLY,
-            funnel_order=FunnelOrder.ORDERED
-        )
+    # Test time to convert migration
+    pandas_config = FunnelConfig(
+        conversion_window_hours=168,
+        counting_method=CountingMethod.UNIQUE_USERS,
+        reentry_mode=ReentryMode.FIRST_ONLY,
+        funnel_order=FunnelOrder.ORDERED
+    )
 
-        # Create calculators
-        pandas_calculator = FunnelCalculator(pandas_config, use_polars=False)
-        polars_calculator = FunnelCalculator(polars_config, use_polars=True)
+    polars_config = FunnelConfig(
+        conversion_window_hours=168,
+        counting_method=CountingMethod.UNIQUE_USERS,
+        reentry_mode=ReentryMode.FIRST_ONLY,
+        funnel_order=FunnelOrder.ORDERED
+    )
 
-        # Calculate time to convert stats with both engines
-        pandas_time_stats = pandas_calculator._calculate_time_to_convert_optimized(larger_df, funnel_steps)
-        polars_time_stats = polars_calculator._calculate_time_to_convert_optimized(larger_df, funnel_steps)
+    # Create calculators
+    pandas_calculator = FunnelCalculator(pandas_config, use_polars=False)
+    polars_calculator = FunnelCalculator(polars_config, use_polars=True)
 
-        # Compare results
-        def compare_time_to_convert_stats(pandas_stats, polars_stats):
-            """Compare time to convert statistics between Pandas and Polars"""
-            if len(pandas_stats) != len(polars_stats):
-                return False, f"Different number of stats: {len(pandas_stats)} vs {len(polars_stats)}"
+    # Calculate time to convert stats with both engines
+    pandas_time_stats = pandas_calculator._calculate_time_to_convert_optimized(larger_df, funnel_steps)
+    polars_time_stats = polars_calculator._calculate_time_to_convert_optimized(larger_df, funnel_steps)
+
+    # Compare results
+    def compare_time_to_convert_stats(pandas_stats, polars_stats):
+        """Compare time to convert statistics between Pandas and Polars"""
+        if len(pandas_stats) != len(polars_stats):
+            return False, f"Different number of stats: {len(pandas_stats)} vs {len(polars_stats)}"
+        
+        for i, (pandas_stat, polars_stat) in enumerate(zip(pandas_stats, polars_stats)):
+            # Compare step names
+            if pandas_stat.step_from != polars_stat.step_from or pandas_stat.step_to != polars_stat.step_to:
+                return False, f"Different step names at index {i}"
             
-            for i, (pandas_stat, polars_stat) in enumerate(zip(pandas_stats, polars_stats)):
-                # Compare step names
-                if pandas_stat.step_from != polars_stat.step_from or pandas_stat.step_to != polars_stat.step_to:
-                    return False, f"Different step names at index {i}"
-                
-                # Compare statistics (allow small floating point differences)
-                tolerance = 0.01  # 0.01 hours tolerance
-                
-                if abs(pandas_stat.mean_hours - polars_stat.mean_hours) > tolerance:
-                    return False, f"Mean hours differ: {pandas_stat.mean_hours} vs {polars_stat.mean_hours}"
-                
-                if abs(pandas_stat.median_hours - polars_stat.median_hours) > tolerance:
-                    return False, f"Median hours differ: {pandas_stat.median_hours} vs {polars_stat.median_hours}"
-                
-                # Compare conversion times count
-                if len(pandas_stat.conversion_times) != len(polars_stat.conversion_times):
-                    return False, f"Different number of conversion times: {len(pandas_stat.conversion_times)} vs {len(polars_stat.conversion_times)}"
+            # Compare statistics (allow small floating point differences)
+            tolerance = 0.01  # 0.01 hours tolerance
             
-            return True, "Time to convert stats match"
-
-        # Test the comparison
-        success, message = compare_time_to_convert_stats(pandas_time_stats, polars_time_stats)
-
-        if success:
-            print("✅ Time to convert migration test passed!")
-            print(f"📊 Found {len(pandas_time_stats)} step pairs with conversion time data")
+            if abs(pandas_stat.mean_hours - polars_stat.mean_hours) > tolerance:
+                return False, f"Mean hours differ: {pandas_stat.mean_hours} vs {polars_stat.mean_hours}"
             
-            # Display some stats
-            for stat in pandas_time_stats:
-                print(f"   {stat.step_from} → {stat.step_to}: {stat.mean_hours:.2f}h avg, {len(stat.conversion_times)} conversions")
-        else:
-            print(f"❌ Time to convert migration test failed: {message}")
-            print("\nPandas stats:")
-            for stat in pandas_time_stats:
-                print(f"   {stat.step_from} → {stat.step_to}: mean={stat.mean_hours:.2f}h, conversions={len(stat.conversion_times)}")
+            if abs(pandas_stat.median_hours - polars_stat.median_hours) > tolerance:
+                return False, f"Median hours differ: {pandas_stat.median_hours} vs {polars_stat.median_hours}"
             
-            print("\nPolars stats:")
-            for stat in polars_time_stats:
-                print(f"   {stat.step_from} → {stat.step_to}: mean={stat.mean_hours:.2f}h, conversions={len(stat.conversion_times)}")
+            # Compare conversion times count
+            if len(pandas_stat.conversion_times) != len(polars_stat.conversion_times):
+                return False, f"Different number of conversion times: {len(pandas_stat.conversion_times)} vs {len(polars_stat.conversion_times)}"
+        
+        return True, "Time to convert stats match"
 
-        print("\n🎉 All migration tests completed!")
-        print("✅ Polars implementations produce identical results to Pandas")
-        return True
+    # Test the comparison
+    success, message = compare_time_to_convert_stats(pandas_time_stats, polars_time_stats)
+
+    if success:
+        print("✅ Time to convert migration test passed!")
+        print(f"📊 Found {len(pandas_time_stats)} step pairs with conversion time data")
+        
+        # Display some stats
+        for stat in pandas_time_stats:
+            print(f"   {stat.step_from} → {stat.step_to}: {stat.mean_hours:.2f}h avg, {len(stat.conversion_times)} conversions")
     else:
-        print("❌ Some path analysis migration tests failed!")
-        print("🔧 Please review the implementation")
-        return False
+        print(f"❌ Time to convert migration test failed: {message}")
+        print("\nPandas stats:")
+        for stat in pandas_time_stats:
+            print(f"   {stat.step_from} → {stat.step_to}: mean={stat.mean_hours:.2f}h, conversions={len(stat.conversion_times)}")
+        
+        print("\nPolars stats:")
+        for stat in polars_time_stats:
+            print(f"   {stat.step_from} → {stat.step_to}: mean={stat.mean_hours:.2f}h, conversions={len(stat.conversion_times)}")
+
+    assert success, f"Time to convert migration test failed: {message}"
+
+    print("\n🎉 All migration tests completed!")
+    print("✅ Polars implementations produce identical results to Pandas")
+
 
 if __name__ == "__main__":
-    success = test_path_analysis_migration()
-    sys.exit(0 if success else 1) 
+    try:
+        test_path_analysis_migration()
+        sys.exit(0)
+    except AssertionError as e:
+        print(f"❌ Test Failed: {e}", file=sys.stderr)
+        sys.exit(1) 
