@@ -111,7 +111,11 @@ def run_no_reload_tests():
 
 def run_polars_tests():
     """Run Polars engine and migration tests."""
-    cmd = ["python", "-m", "pytest", "tests/test_polars_engine.py", "tests/test_polars_path_analysis.py", "-v"]
+    cmd = ["python", "-m", "pytest", 
+           "tests/test_polars_engine.py",
+           "tests/test_polars_path_analysis.py",
+           "tests/test_polars_pandas_comparison.py",
+           "-v"]
     return run_command(cmd, "Running Polars engine and migration tests")
 
 
