@@ -2328,9 +2328,10 @@ class FunnelCalculator:
                     return set()
 
                 # Apply conversion window filter
+                # For FIRST_ONLY, allow simultaneous events and use < for window
                 converted = user_events.filter(
-                    (pl.col("current_time") > pl.col("prev_time")) &
-                    ((pl.col("current_time") - pl.col("prev_time")) <= conversion_window)
+                    (pl.col("current_time") >= pl.col("prev_time")) &
+                    (pl.col("current_time") < pl.col("prev_time") + conversion_window)
                 )
 
             elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
@@ -2348,9 +2349,10 @@ class FunnelCalculator:
                     return set()
                 
                 # Filter: current event after prev event and within window
+                # For OPTIMIZED_REENTRY, require current > prev and use < for window
                 valid_conversions = user_combinations.filter(
                     (pl.col("current_time") > pl.col("prev_time")) &
-                    ((pl.col("current_time") - pl.col("prev_time")) <= conversion_window)
+                    (pl.col("current_time") < pl.col("prev_time") + conversion_window)
                 )
                 
                 converted = valid_conversions
@@ -2371,6 +2373,7 @@ class FunnelCalculator:
             if user_combinations.height == 0:
                 return set()
                 
+            # For UNORDERED, use abs() and <= for window
             converted = user_combinations.filter(
                 (pl.col("current_time") - pl.col("prev_time")).abs() <= conversion_window
             )
