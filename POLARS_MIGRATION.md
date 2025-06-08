@@ -109,6 +109,33 @@ def _to_pandas(self, df: pl.DataFrame) -> pd.DataFrame:
   - Avoided Python operators (`and`, `or`, `in`) with Polars expressions in all cases
 - **Result**: Polars engine now runs without expression evaluation errors
 
+## Python timedelta vs Polars Duration Issue Fixed
+
+One of the key issues we encountered during the migration was handling time differences between events. 
+Polars uses its own `Duration` type which has a `.nanoseconds()` method, while Python's standard `timedelta` 
+objects do not have this method, causing errors when the code attempted to call `.nanoseconds()` on Python timedelta objects.
+
+### Problem
+When calculating conversion windows and time differences between events, the code was failing with:
+```
+'datetime.timedelta' object has no attribute 'nanoseconds'
+```
+
+This occurred primarily in the following situations:
+- When handling zero or very small conversion windows
+- When checking if events were within the conversion window boundary
+- At the boundary condition where we need to check if an event is exactly at the window limit
+
+### Solution
+- Added a helper method `_to_nanoseconds()` that works with both Polars Duration and Python timedelta objects
+- Made all time difference calculations use this helper method
+- Added proper error handling with logging
+- Created comprehensive tests for edge cases around conversion windows
+
+This ensures that both engines produce consistent results and can handle all conversion window configurations.
+
+# Fixed in commit Mon Jun 10 12:31:37 EDT 2024
+
 ## Usage
 
 ### User Control
@@ -190,3 +217,23 @@ calculator = FunnelCalculator(config, use_polars=False)
 - [ ] **Phase 4**: JSON property expansion optimization
 - [ ] **Phase 5**: Caching optimization for Polars
 - [ ] **Phase 6**: Performance benchmarking and fine-tuning 
+
+## Recent Fixes (June 2025)
+
+The following issues were identified and fixed in the Polars implementation:
+
+1. **Method Name Mismatches**:
+   - Changed `with_column()` to `with_columns()` to match the correct Polars API
+   - Changed `sort_by()` to `sort()` to match the correct Polars API
+   - Changed `list.lengths()` to `list.len()` to match the correct Polars API (previously fixed)
+
+2. **Conversion Window Handling**:
+   - Fixed the conversion window boundary handling to make it exclusive (events exactly at the boundary should not be included)
+   - Added special handling for zero conversion window cases (only exact timestamp matches should be included)
+   - Ensured consistent behavior between Pandas and Polars implementations
+
+3. **Out-of-Order Events**:
+   - Added a check in the Polars implementation to properly handle out-of-order events in ordered funnels
+   - Implemented `_user_did_later_steps_before_current_polars` function to check for events that happen out of sequence
+
+These fixes ensure that the Polars implementation produces identical results to the Pandas implementation, allowing for a smooth migration path while maintaining backward compatibility with existing analytics. # Fixed in commit Sun Jun  8 17:02:49 +03 2025
