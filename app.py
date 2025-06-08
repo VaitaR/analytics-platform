@@ -1465,6 +1465,29 @@ class FunnelCalculator:
         from_times = from_events.to_series().to_list()
         to_times = to_events.to_series().to_list()
         
+        # For FIRST_ONLY mode, we use the first event from both sets in original data order
+        # This should mirror the behavior in the Pandas implementation
+        if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
+            if not from_times or not to_times:
+                return None
+            
+            # Use the first event from each set based on original order
+            from_time = from_times[0]
+            to_time = to_times[0]
+            
+            # Check if conversion is valid
+            if to_time > from_time:
+                time_diff = to_time - from_time
+                hours_diff = time_diff.total_seconds() / 3600.0
+                if hours_diff <= conversion_window_hours:
+                    return hours_diff
+            # Handle the case of simultaneous events (to_time == from_time)
+            elif to_time == from_time:
+                return 0.0
+                
+            return None
+        
+        # Normal case for other reentry modes
         for from_time in from_times:
             # Find valid to_events within window (use pure Python datetime operations)
             valid_to_events = []
@@ -2369,9 +2392,9 @@ class FunnelCalculator:
                     converted = prev_events.join(current_events, on="user_id", how="inner").filter(pl.col("current_time") == pl.col("prev_time"))
             
             elif self.config.reentry_mode == ReentryMode.FIRST_ONLY:
-                # Get the first event based on its original position in the file.
-                # Assumes '_original_order' column exists from preprocessing.
-                first_events = relevant_events.sort("_original_order").group_by(["user_id", "event_name"], maintain_order=True).first()
+                # Sort events by original order first, not by timestamp
+                # This is critical to match the behavior with pandas implementation
+                first_events = relevant_events.sort(['user_id', '_original_order']).group_by(["user_id", "event_name"]).first()
 
                 # Create separate DataFrames for prev_step and current_step events
                 prev_events = first_events.filter(pl.col("event_name") == prev_step).select(["user_id", "timestamp"]).rename({"timestamp": "prev_time"})
@@ -2387,7 +2410,7 @@ class FunnelCalculator:
                     return set()
 
                 # Apply conversion window filter
-                # For FIRST_ONLY, allow simultaneous events and use < for window
+                # For FIRST_ONLY, allow simultaneous events (>= instead of >)
                 converted = user_events.filter(
                     (pl.col("current_time") >= pl.col("prev_time")) &
                     (pl.col("current_time") < pl.col("prev_time") + conversion_window)
@@ -2790,11 +2813,16 @@ class FunnelCalculator:
             
             # For FIRST_ONLY mode, use original order
             if self.config.reentry_mode == ReentryMode.FIRST_ONLY and '_original_order' in user_events.columns:
-                # Sort by original order to get first occurrence in data order
+                # Take the earliest prev_step event by original order (not by timestamp)
+                prev_events_sorted = prev_step_events.sort_values('_original_order')
+                prev_events = pd.Series([prev_events_sorted['timestamp'].iloc[0]])
+                
+                # Take the earliest current_step event by original order (not by timestamp)
                 current_step_events = current_step_events.sort_values('_original_order')
-            
-            prev_events = prev_step_events['timestamp']
-            current_events = current_step_events['timestamp']
+                current_events = pd.Series([current_step_events['timestamp'].iloc[0]])
+            else:
+                prev_events = prev_step_events['timestamp']
+                current_events = current_step_events['timestamp']
             
             # Vectorized conversion checking
             if self._check_conversion_vectorized(prev_events, current_events, conversion_window):
