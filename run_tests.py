@@ -119,6 +119,12 @@ def run_polars_tests():
     return run_command(cmd, "Running Polars engine and migration tests")
 
 
+def run_data_integrity_tests():
+    """Run data integrity tests comparing engines on large datasets."""
+    cmd = ["python", "-m", "pytest", "tests/", "-v", "-m", "data_integrity"]
+    return run_command(cmd, "Running data integrity tests")
+
+
 def run_all_tests(parallel=False, coverage=False, markers=None):
     """Run all tests with optional configurations."""
     cmd = ["python", "-m", "pytest", "tests/", "-v"]
@@ -245,6 +251,7 @@ def main():
 Examples:
   python run_tests.py                     # Run all tests
   python run_tests.py --basic            # Run basic scenario tests only
+  python run_tests.py --data-integrity   # Run data integrity tests
   python run_tests.py --coverage         # Run all tests with coverage
   python run_tests.py --parallel         # Run tests in parallel
   python run_tests.py --marker edge_case # Run edge case tests only
@@ -254,6 +261,7 @@ Examples:
     )
     
     # Test category options
+    parser.add_argument("--all", action="store_true", help="Run all tests (default action)")
     parser.add_argument("--basic", action="store_true", help="Run basic scenario tests")
     parser.add_argument("--conversion-window", action="store_true", help="Run conversion window tests")
     parser.add_argument("--counting-methods", action="store_true", help="Run counting method tests")
@@ -261,18 +269,18 @@ Examples:
     parser.add_argument("--segmentation", action="store_true", help="Run segmentation tests")
     parser.add_argument("--integration", action="store_true", help="Run integration tests for complete workflow")
     parser.add_argument("--no-reload", action="store_true", help="Run no-reload improvements tests")
-    parser.add_argument("--polars", action="store_true", help="Run Polars engine and migration tests")
+    parser.add_argument("--polars", action="store_true", help="Run polars engine tests")
     parser.add_argument("--performance", action="store_true", help="Run performance tests")
+    parser.add_argument("--smoke", action="store_true", help="Run a quick smoke test")
+    parser.add_argument("--check", action="store_true", help="Check test dependencies")
+    parser.add_argument("--validate", action="store_true", help="Validate test files")
+    parser.add_argument("--report", action="store_true", help="Generate a comprehensive test report")
+    parser.add_argument("--data-integrity", action="store_true", help="Run data integrity tests")
     
     # Test execution options
     parser.add_argument("--parallel", action="store_true", help="Run tests in parallel")
     parser.add_argument("--coverage", action="store_true", help="Generate coverage report")
     parser.add_argument("--marker", action="append", help="Run tests with specific marker (can be used multiple times)")
-    
-    # Utility options
-    parser.add_argument("--smoke", action="store_true", help="Run quick smoke test")
-    parser.add_argument("--report", action="store_true", help="Generate comprehensive test report")
-    parser.add_argument("--check", action="store_true", help="Check dependencies and test files")
     
     args = parser.parse_args()
     
@@ -291,38 +299,26 @@ Examples:
     success = True
     
     # Run specific test categories
-    if args.smoke:
-        success = run_smoke_tests()
-    elif args.basic:
-        success = run_basic_tests()
-    elif args.conversion_window:
-        success = run_conversion_window_tests()
-    elif args.counting_methods:
-        success = run_counting_method_tests()
-    elif args.edge_cases:
-        success = run_edge_case_tests()
-    elif args.segmentation:
-        success = run_segmentation_tests()
-    elif args.integration:
-        success = run_integration_tests()
-    elif args.no_reload:
-        success = run_no_reload_tests()
-    elif args.polars:
-        success = run_polars_tests()
-    elif args.performance:
-        success = run_performance_tests()
-    elif args.report:
-        success = generate_test_report()
-    elif any([args.parallel, args.coverage, args.marker]):
-        # Run all tests with specific options
-        success = run_all_tests(
-            parallel=args.parallel,
-            coverage=args.coverage,
-            markers=args.marker
-        )
-    else:
-        # Default: run all tests
+    actions = []
+    if args.edge_cases: actions.append(run_edge_case_tests)
+    if args.segmentation: actions.append(run_segmentation_tests)
+    if args.integration: actions.append(run_integration_tests)
+    if args.no_reload: actions.append(run_no_reload_tests)
+    if args.polars: actions.append(run_polars_tests)
+    if args.performance: actions.append(run_performance_tests)
+    if args.smoke: actions.append(run_smoke_tests)
+    if args.check: actions.append(check_test_dependencies)
+    if args.validate: actions.append(validate_test_files)
+    if args.report: actions.append(generate_test_report)
+    if args.data_integrity: actions.append(run_data_integrity_tests)
+
+    # If no specific tests are selected, run all tests (unless it's a marker run)
+    if not actions and not args.marker:
         success = run_all_tests()
+    else:
+        # Run selected tests
+        for action in actions:
+            success = action()
     
     # Print summary
     print("\n" + "=" * 50)
