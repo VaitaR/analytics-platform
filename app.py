@@ -2340,7 +2340,7 @@ class FunnelCalculator:
                             out_of_order_users = out_of_order_events.select('user_id').unique().to_series().to_list()
                             
                             if out_of_order_users:
-                                self.logger.info(f"Polars: Skipping users {out_of_order_users} for conversion '{prev_step}' -> '{current_step}' due to out-of-order events: {out_of_order_sequence_steps}")
+                                # self.logger.info(f"Polars: Skipping users {out_of_order_users} for conversion '{prev_step}' -> '{current_step}' due to out-of-order events: {out_of_order_sequence_steps}")
                                 eligible_users_list = [u for u in eligible_users_list if u not in out_of_order_users]
 
         if not eligible_users_list:
@@ -2698,7 +2698,8 @@ class FunnelCalculator:
                     if not self._user_did_later_steps_before_current_vectorized(user_events, prev_step, current_step, funnel_steps):
                         filtered_users.add(user_id)
                     else:
-                        self.logger.info(f"Vectorized: Skipping user {user_id} due to out-of-order sequence from {prev_step} to {current_step}")
+                        # self.logger.info(f"Vectorized: Skipping user {user_id} due to out-of-order sequence from {prev_step} to {current_step}")
+                        pass
             eligible_users = filtered_users
         
         # Process users in batches for memory efficiency
@@ -2754,10 +2755,10 @@ class FunnelCalculator:
                     
                     if len(out_of_order_events) > 0:
                         # Found an out-of-order event, this is not a valid conversion path
-                        self.logger.info(
-                            f"Vectorized: User did {out_of_order_events['event_name'].iloc[0]} "
-                            f"before {current_step} - out of order."
-                        )
+                        # self.logger.info(
+                        #     f"Vectorized: User did {out_of_order_events['event_name'].iloc[0]} "
+                        #     f"before {current_step} - out of order."
+                        # )
                         return True
             
             return False # No out-of-order events found in any valid conversion window
