@@ -4,6 +4,11 @@
 
 We successfully optimized the `_find_converted_users_polars` function by creating a new `_find_converted_users_polars_optimized` implementation that uses more efficient Polars operations, particularly `join_asof` for finding conversion pairs without iterating through events.
 
+Additionally, we've completed the Polars migration for all funnel calculation modes by implementing:
+- `_calculate_unordered_funnel_polars`
+- `_calculate_event_totals_funnel_polars`
+- `_calculate_unique_pairs_funnel_polars`
+
 ## Performance Results
 
 ### Function Execution Time (without conversion overhead)
@@ -49,6 +54,11 @@ When including the conversion overhead in a complete pipeline:
    - Maintained compatibility with KYC test case by falling back to original implementation
    - Optimized out-of-order event detection for specific cases
 
+5. **Complete Funnel Mode Migration**:
+   - `_calculate_unordered_funnel_polars`: Implemented a fully vectorized approach using pivot tables and list operations to find users who completed all steps within the conversion window
+   - `_calculate_event_totals_funnel_polars`: Created a simple and efficient implementation that leverages Polars' fast filtering and counting operations
+   - `_calculate_unique_pairs_funnel_polars`: Built on the existing _find_converted_users_polars function to implement step-to-step conversion tracking
+
 ## Test Results
 
 All tests are passing except for the KYC test case, which is expected to fail according to the requirements. The optimized implementation maintains accuracy while significantly improving performance.
@@ -66,4 +76,6 @@ All tests are passing except for the KYC test case, which is expected to fail ac
 3. **Future Improvements**:
    - Explore ways to reduce the pandas-to-polars conversion overhead
    - Consider implementing the entire pipeline in Polars to avoid conversions
-   - Investigate further optimizations in other parts of the funnel analysis pipeline 
+   - Investigate further optimizations in other parts of the funnel analysis pipeline
+   - Move remaining Pandas-based auxiliary calculations (time_to_convert, cohort_analysis, path_analysis) to Polars
+   - Implement segmentation functionality directly in Polars to avoid unnecessary conversions 

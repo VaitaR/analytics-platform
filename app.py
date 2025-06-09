@@ -1205,17 +1205,17 @@ class FunnelCalculator:
             
             # Calculate metrics based on counting method and funnel order
             if self.config.funnel_order == FunnelOrder.UNORDERED:
-                # Use Pandas implementation for now
-                segment_results[segment_name] = self._calculate_unordered_funnel(segment_df, funnel_steps)
-            elif self.config.counting_method == CountingMethod.UNIQUE_USERS:
                 # Use new Polars implementation
+                segment_results[segment_name] = self._calculate_unordered_funnel_polars(segment_polars_df, funnel_steps)
+            elif self.config.counting_method == CountingMethod.UNIQUE_USERS:
+                # Use existing Polars implementation
                 segment_results[segment_name] = self._calculate_unique_users_funnel_polars(segment_polars_df, funnel_steps)
             elif self.config.counting_method == CountingMethod.EVENT_TOTALS:
-                # Use Pandas implementation for now
-                segment_results[segment_name] = self._calculate_event_totals_funnel(segment_df, funnel_steps)
+                # Use new Polars implementation
+                segment_results[segment_name] = self._calculate_event_totals_funnel_polars(segment_polars_df, funnel_steps)
             elif self.config.counting_method == CountingMethod.UNIQUE_PAIRS:
-                # Use Pandas implementation for now
-                segment_results[segment_name] = self._calculate_unique_pairs_funnel_optimized(segment_df, funnel_steps)
+                # Use new Polars implementation
+                segment_results[segment_name] = self._calculate_unique_pairs_funnel_polars(segment_polars_df, funnel_steps)
         
         # If only one segment, return its results directly with additional analysis
         if len(segment_results) == 1:
@@ -1827,8 +1827,8 @@ class FunnelCalculator:
                                        ) -> PathAnalysisData:
         """
         Fully vectorized Polars implementation of path analysis with optimized operations.
-        This implementation uses joins and explode instead of iterating through users,
-        providing better performance for large datasets.
+        This implementation uses lazy evaluation, joins, and window functions instead of 
+        iterating through users, providing better performance for large datasets.
         """
         dropoff_paths = {}
         between_steps_events = {}
@@ -1841,170 +1841,159 @@ class FunnelCalculator:
             self.logger.error(f"Missing required columns in input DataFrames: {str(e)}")
             return PathAnalysisData({}, {})
             
+        # Convert to lazy for optimization
+        segment_df_lazy = segment_funnel_events_df.lazy()
+        history_df_lazy = full_history_for_segment_users.lazy()
+        
         # Ensure proper types for timestamp column
-        segment_funnel_events_df = segment_funnel_events_df.with_columns([
+        segment_df_lazy = segment_df_lazy.with_columns([
             pl.col('timestamp').cast(pl.Datetime)
         ])
-        full_history_for_segment_users = full_history_for_segment_users.with_columns([
+        history_df_lazy = history_df_lazy.with_columns([
             pl.col('timestamp').cast(pl.Datetime)
         ])
         
-        # Step 1: Create a DataFrame with all users for each step
-        # This is more efficient than doing multiple filters and set operations
-        # Use a more unique column name to avoid conflicts
-        step_users_df = (
-            segment_funnel_events_df
-            .filter(pl.col('event_name').is_in(funnel_steps))
-            .group_by(['event_name', 'user_id'])
-            .agg(pl.len().alias('event_count'))
+        # Filter to only include events in funnel steps (for performance)
+        funnel_events_df = segment_df_lazy.filter(
+            pl.col('event_name').is_in(funnel_steps)
         )
         
-        # Step 2: Find dropped users for each step - users who did step N but not step N+1
+        conversion_window = pl.duration(hours=self.config.conversion_window_hours)
+        
+        # Process each step pair in the funnel
         for i, step in enumerate(funnel_steps[:-1]):
             next_step = funnel_steps[i + 1]
-            
-            # Initialize step_pair_key early for consistent usage later
             step_pair_key = f"{step} → {next_step}"
             
-            # Find users who did the current step
-            current_step_users = step_users_df.filter(pl.col('event_name') == step).select('user_id')
-            
-            # Find users who did the next step 
-            next_step_users = step_users_df.filter(pl.col('event_name') == next_step).select('user_id')
-            
-            # Find users who dropped off (using anti-join)
-            dropped_users_df = current_step_users.join(
-                next_step_users,
-                on='user_id',
-                how='anti'
+            # ------ DROPOFF PATHS ANALYSIS ------
+            # 1. Find users who did the current step but not the next step
+            step_users = (
+                funnel_events_df
+                .filter(pl.col('event_name') == step)
+                .select('user_id')
+                .unique()
             )
             
-            # Skip if no dropped users
-            if dropped_users_df.height == 0:
-                continue
-                
-            # Convert to set for compatibility with existing code
-            dropped_users = set(dropped_users_df['user_id'].to_list())
+            next_step_users = (
+                funnel_events_df
+                .filter(pl.col('event_name') == next_step)
+                .select('user_id')
+                .unique()
+            )
             
-            # Step 3: Find next events for dropped users
-            # First, find step events and their timestamps for dropped users
-            step_events = (
-                segment_funnel_events_df
-                .filter(
-                    pl.col('user_id').is_in(dropped_users) &
-                    (pl.col('event_name') == step)
+            # Anti-join to find users who dropped off
+            dropped_users = (
+                step_users
+                .join(next_step_users, on='user_id', how='anti')
+            )
+            
+            # If we found dropped users, analyze their paths
+            if dropped_users.collect().height > 0:
+                # 2. Get timestamp of last occurrence of step for each dropped user
+                last_step_events = (
+                    funnel_events_df
+                    .filter(
+                        (pl.col('event_name') == step) &
+                        pl.col('user_id').is_in(dropped_users.select('user_id'))
+                    )
+                    .group_by('user_id')
+                    .agg(pl.col('timestamp').max().alias('last_step_time'))
                 )
-                .group_by('user_id')
-                .agg(pl.col('timestamp').max().alias('step_time'))
-            )
-            
-            if step_events.height > 0:
-                # For each dropped user, find the first event after their step time
-                # Use a join to avoid multiple iterations over users
-                next_events_df = (
-                    step_events
+                
+                # 3. Find all events that happened after the step for each user within window
+                dropped_user_next_events = (
+                    last_step_events
                     .join(
-                        full_history_for_segment_users.filter(pl.col('user_id').is_in(dropped_users)),
-                        on='user_id', 
+                        history_df_lazy,
+                        on='user_id',
                         how='inner'
                     )
                     .filter(
-                        (pl.col('timestamp') > pl.col('step_time')) &
-                        (pl.col('timestamp') <= pl.col('step_time') + pl.duration(days=7)) &
+                        (pl.col('timestamp') > pl.col('last_step_time')) &
+                        (pl.col('timestamp') <= pl.col('last_step_time') + conversion_window) &
                         (pl.col('event_name') != step)
                     )
                 )
                 
-                # If there are next events, find the first one for each user
-                if next_events_df.height > 0:
-                    # Sort by timestamp and get first event for each user
-                    first_events = (
-                        next_events_df
-                        .sort(['user_id', 'timestamp'])
-                        .group_by('user_id')
-                        .agg(
-                            pl.col('event_name').first().alias('next_event')
-                        )
-                    )
-                    
-                    # Count the occurrences of each next event
-                    event_counts = (
-                        first_events
-                        .group_by('next_event')
-                        .agg(pl.len().alias('count'))
-                        .sort('count', descending=True)
-                    )
-                    
-                    # Convert to Counter-compatible format
-                    next_events = Counter()
-                    for row in event_counts.iter_rows(named=True):
-                        next_events[row['next_event']] = row['count']
-                    
-                    # Add users with no further activity
-                    no_next_event_count = len(dropped_users) - first_events.height
-                    if no_next_event_count > 0:
-                        next_events['(no further activity)'] = no_next_event_count
-                    
-                    # Store the top 10 next events
-                    dropoff_paths[step] = dict(next_events.most_common(10))
-                else:
-                    # All dropped users had no further activity
-                    dropoff_paths[step] = {'(no further activity)': len(dropped_users)}
-            
-            # Step 4: Find users who converted from step to next_step
-            # Find users who did both steps
-            converted_users_df = (
-                current_step_users
-                .join(
-                    next_step_users,
-                    on='user_id',
-                    how='inner'
+                # 4. Get the first event after the step for each user
+                first_next_events = (
+                    dropped_user_next_events
+                    .sort(['user_id', 'timestamp'])
+                    .group_by('user_id')
+                    .agg(pl.col('event_name').first().alias('next_event'))
                 )
+                
+                # Count event frequencies
+                event_counts = (
+                    first_next_events
+                    .group_by('next_event')
+                    .agg(pl.count().alias('count'))
+                    .sort('count', descending=True)
+                )
+                
+                # Execute the entire lazy chain and collect results at the end
+                event_counts_collected = event_counts.collect()
+                
+                # Get the total number of dropped users
+                total_dropped_users = dropped_users.collect().height
+                
+                # Get total users with next events (execute query once)
+                total_with_next_events = first_next_events.collect().height
+                
+                # Calculate users with no activity after dropping off
+                users_with_no_events = total_dropped_users - total_with_next_events
+                
+                if users_with_no_events > 0:
+                    # Add a row for users with no further activity
+                    no_events_df = pl.DataFrame({
+                        'next_event': ['(no further activity)'],
+                        'count': [users_with_no_events]
+                    })
+                    event_counts_collected = pl.concat([event_counts_collected, no_events_df])
+                
+                # Take top 10 events and convert to dict
+                top_events = event_counts_collected.sort('count', descending=True).head(10)
+                dropoff_paths[step] = {row['next_event']: row['count'] for row in top_events.iter_rows(named=True)}
+            
+            # ------ BETWEEN STEPS EVENTS ANALYSIS ------
+            # 1. Find users who completed both steps
+            converted_users = (
+                step_users
+                .join(next_step_users, on='user_id', how='inner')
+                .collect()
             )
             
-            # Always initialize an empty dictionary for this step pair
-            # This ensures we have the key even if no conversion pairs are found
+            # Always initialize the dictionary for this step pair
             between_steps_events[step_pair_key] = {}
             
-            if converted_users_df.height > 0:
-                # Convert to set for compatibility
-                converted_users = set(converted_users_df['user_id'].to_list())
-                
-                # Create step pairs for analysis
-                step_pairs = pl.DataFrame({
-                    'step': [step],
-                    'next_step': [next_step]
-                })
-                
-                # Extract step A and step B events for these users
+            if converted_users.height > 0:
+                # 2. Get events for the current step and next step
                 step_A_events = (
-                    segment_funnel_events_df
+                    funnel_events_df
                     .filter(
-                        pl.col('user_id').is_in(converted_users) &
-                        (pl.col('event_name') == step)
+                        (pl.col('event_name') == step) &
+                        pl.col('user_id').is_in(converted_users.select('user_id'))
                     )
-                    .with_columns(pl.lit(step).alias('step_name'))
-                    .select(['user_id', 'timestamp', 'step_name', 'event_name'])
-                    .sort(['user_id', 'timestamp'])
+                    .select(['user_id', 'timestamp', pl.lit(step).alias('step_name')])
+                    .collect()
                 )
                 
                 step_B_events = (
-                    segment_funnel_events_df
+                    funnel_events_df
                     .filter(
-                        pl.col('user_id').is_in(converted_users) &
-                        (pl.col('event_name') == next_step)
+                        (pl.col('event_name') == next_step) &
+                        pl.col('user_id').is_in(converted_users.select('user_id'))
                     )
-                    .with_columns(pl.lit(next_step).alias('step_name'))
-                    .select(['user_id', 'timestamp', 'step_name', 'event_name'])
-                    .sort(['user_id', 'timestamp'])
+                    .select(['user_id', 'timestamp', pl.lit(next_step).alias('step_name')])
+                    .collect()
                 )
                 
-                # Different logic based on funnel configuration
-                conversion_window = pl.duration(hours=self.config.conversion_window_hours)
+                # 3. Match step A to step B events based on funnel config
+                conversion_pairs = None
                 
                 if self.config.funnel_order == FunnelOrder.ORDERED:
                     if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
-                        # For first-only, get the first occurrence of each step for each user
+                        # Get the first occurrence of step A for each user
                         first_A = (
                             step_A_events
                             .group_by('user_id')
@@ -2014,16 +2003,7 @@ class FunnelCalculator:
                             )
                         )
                         
-                        # Use join_asof to find the next step B event after step A within conversion window
-                        # Ensure step_A_time is a proper datetime for the join
-                        first_A = first_A.with_columns([
-                            pl.col('step_A_time').cast(pl.Datetime)
-                        ])
-                        step_B_events = step_B_events.with_columns([
-                            pl.col('timestamp').cast(pl.Datetime)
-                        ])
-                        
-                        # Perform the join with proper type casting
+                        # Find the first occurrence of step B that's after step A within conversion window
                         try:
                             conversion_pairs = (
                                 first_A
@@ -2035,191 +2015,296 @@ class FunnelCalculator:
                                     strategy='forward',
                                     tolerance=conversion_window
                                 )
-                                .drop_nulls('timestamp')
-                                .with_columns(pl.col('timestamp').alias('step_B_time'))
-                                .select(['user_id', 'step', 'step_name', 'step_A_time', 'step_B_time'])
-                                .rename({'step_name': 'next_step'})
+                                .filter(pl.col('timestamp').is_not_null())
+                                .with_columns([
+                                    pl.col('timestamp').alias('step_B_time'),
+                                    pl.col('step_name').alias('next_step')
+                                ])
+                                .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
                             )
                         except Exception as e:
-                            self.logger.warning(f"join_asof failed: {str(e)}, trying alternative approach")
-                            # Alternative approach using standard join
-                            conversion_pairs = self._fallback_conversion_pairs_calculation(
-                                first_A, step_B_events, conversion_window
-                            )
-                        
+                            self.logger.warning(f"join_asof failed: {e}, using alternative approach")
+                            # Fallback to a manual join
+                            conversion_pairs = self._find_optimal_step_pairs(first_A, step_B_events)
+                    
                     elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
+                        # For each step A timestamp, find the first step B timestamp after it
                         try:
-                            # For optimized reentry, consider all occurrences and find the first valid pair
                             conversion_pairs = (
                                 step_A_events
-                                .with_columns(pl.col('timestamp').cast(pl.Datetime).alias('step_A_time'))
+                                .with_columns(pl.col('timestamp').alias('step_A_time'))
                                 .join_asof(
-                                    step_B_events.with_columns(pl.col('timestamp').cast(pl.Datetime)).sort('timestamp'),
+                                    step_B_events.sort('timestamp'),
                                     left_on='step_A_time',
                                     right_on='timestamp',
-                                    by='user_id', 
+                                    by='user_id',
                                     strategy='forward',
                                     tolerance=conversion_window
                                 )
-                                .drop_nulls('timestamp_right')
+                                .filter(pl.col('timestamp_right').is_not_null())
                                 .with_columns([
                                     pl.col('timestamp_right').alias('step_B_time'),
                                     pl.col('step_name').alias('step'),
                                     pl.col('step_name_right').alias('next_step')
                                 ])
+                                .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
+                                # Keep first valid conversion pair per user
                                 .sort(['user_id', 'step_A_time'])
                                 .group_by('user_id')
                                 .agg([
                                     pl.col('step').first(),
                                     pl.col('next_step').first(),
-                                    pl.col('step_A_time').first().cast(pl.Datetime),
-                                    pl.col('step_B_time').first().cast(pl.Datetime)
+                                    pl.col('step_A_time').first(),
+                                    pl.col('step_B_time').first()
                                 ])
                             )
                         except Exception as e:
-                            self.logger.warning(f"optimized_reentry join failed: {str(e)}, trying alternative approach")
-                            try:
-                                # Alternative approach using standard join
-                                conversion_pairs = self._fallback_conversion_pairs_calculation(
-                                    step_A_events.with_columns(pl.col('timestamp').alias('step_A_time')), 
-                                    step_B_events, 
-                                    conversion_window,
-                                    group_by_user=True
-                                )
-                            except Exception as e2:
-                                # If that fails too, create a minimal empty dataframe with the correct schema
-                                self.logger.error(f"Fallback conversion pairs calculation failed: {str(e2)}")
-                                conversion_pairs = pl.DataFrame({
-                                    'user_id': [],
-                                    'step': [],
-                                    'next_step': [],
-                                    'step_A_time': [],
-                                    'step_B_time': []
-                                }).with_columns([
-                                    pl.col('step_A_time').cast(pl.Datetime),
-                                    pl.col('step_B_time').cast(pl.Datetime)
-                                ])
-                        
+                            self.logger.warning(f"join_asof failed in optimized_reentry: {e}, using alternative approach")
+                            conversion_pairs = self._find_optimal_step_pairs(step_A_events, step_B_events)
+                
                 elif self.config.funnel_order == FunnelOrder.UNORDERED:
-                    # For unordered funnel, use a different approach with an explicit join
-                    # First get earliest event time for each step and user
-                    first_A_events = (
+                    # For unordered funnels, get first occurrence of each step for each user
+                    first_A = (
                         step_A_events
                         .group_by('user_id')
-                        .agg(pl.col('timestamp').min().alias('step_A_time'))
-                        .with_columns(pl.lit(step).alias('step'))
+                        .agg(
+                            pl.col('timestamp').min().alias('step_A_time'),
+                            pl.col('step_name').first().alias('step')
+                        )
                     )
                     
-                    first_B_events = (
+                    first_B = (
                         step_B_events
                         .group_by('user_id')
-                        .agg(pl.col('timestamp').min().alias('step_B_time'))
-                        .with_columns(pl.lit(next_step).alias('next_step'))
+                        .agg(
+                            pl.col('timestamp').min().alias('step_B_time'),
+                            pl.col('step_name').first().alias('next_step')
+                        )
                     )
                     
-                    # Join them and apply conversion window filter
+                    # Join and check if events are within conversion window
+                    conversion_pairs = (
+                        first_A
+                        .join(first_B, on='user_id', how='inner')
+                        .with_columns([
+                            pl.when(pl.col('step_A_time') <= pl.col('step_B_time'))
+                            .then(pl.struct(['step_A_time', 'step_B_time']))
+                            .otherwise(pl.struct(['step_B_time', 'step_A_time']))
+                            .alias('ordered_times')
+                        ])
+                        .with_columns([
+                            pl.col('ordered_times')['step_A_time'].alias('true_A_time'),
+                            pl.col('ordered_times')['step_B_time'].alias('true_B_time')
+                        ])
+                        .with_columns([
+                            (pl.col('true_B_time') - pl.col('true_A_time')).dt.total_hours().alias('hours_diff')
+                        ])
+                        .filter(pl.col('hours_diff') <= self.config.conversion_window_hours)
+                        .drop(['ordered_times', 'hours_diff'])
+                        .with_columns([
+                            pl.col('true_A_time').alias('step_A_time'),
+                            pl.col('true_B_time').alias('step_B_time')
+                        ])
+                    )
+                
+                # 4. If we have valid conversion pairs, find events between steps
+                if conversion_pairs is not None and conversion_pairs.height > 0:
+                    # Fully vectorized approach for between-steps analysis
                     try:
-                        conversion_pairs = (
-                            first_A_events
+                        # Get unique user IDs with valid conversion pairs
+                        user_ids = conversion_pairs.select('user_id').unique()
+                        
+                        # Create a lazy frame with step pairs information 
+                        step_pairs_lazy = (
+                            conversion_pairs
+                            .lazy()
+                            .select(['user_id', 'step_A_time', 'step_B_time'])
+                        )
+                        
+                        # Join with full history to get all events between the steps
+                        between_events_lazy = (
+                            history_df_lazy
                             .join(
-                                first_B_events,
+                                step_pairs_lazy,
                                 on='user_id',
                                 how='inner'
                             )
-                            .with_columns([
-                                # Calculate time difference in hours - ensure proper datetime calculation
-                                (
-                                    (pl.col('step_B_time').cast(pl.Int64) - pl.col('step_A_time').cast(pl.Int64)) / 
-                                    (1_000_000_000 * 60 * 60)  # Convert nanoseconds to hours
-                                ).abs().alias('time_diff_hours'),
-                                
-                                # Figure out which came first for ordering
-                                pl.when(pl.col('step_A_time') <= pl.col('step_B_time'))
-                                .then(pl.col('step_A_time'))
-                                .otherwise(pl.col('step_B_time'))
-                                .alias('earlier_time'),
-                                
-                                pl.when(pl.col('step_A_time') > pl.col('step_B_time'))
-                                .then(pl.col('step_A_time'))
-                                .otherwise(pl.col('step_B_time'))
-                                .alias('later_time')
-                            ])
-                            # Filter to only include pairs within the conversion window
-                            .filter(pl.col('time_diff_hours') <= self.config.conversion_window_hours)
-                            # Rename columns for compatibility with rest of the code
-                            .with_columns([
-                                pl.col('earlier_time').cast(pl.Datetime).alias('step_A_time'),
-                                pl.col('later_time').cast(pl.Datetime).alias('step_B_time')
-                            ])
-                            .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
-                        )
-                    except Exception as e:
-                        self.logger.warning(f"unordered funnel calculation failed: {str(e)}, trying fallback approach")
-                        try:
-                            # Fallback approach with more explicit type handling
-                            conversion_pairs = self._fallback_unordered_conversion_calculation(
-                                first_A_events, first_B_events, self.config.conversion_window_hours
+                            .filter(
+                                (pl.col('timestamp') > pl.col('step_A_time')) &
+                                (pl.col('timestamp') < pl.col('step_B_time')) &
+                                (~pl.col('event_name').is_in(funnel_steps))
                             )
-                        except Exception as e2:
-                            # If that fails too, create a minimal empty dataframe with the correct schema
-                            self.logger.error(f"Fallback unordered conversion calculation failed: {str(e2)}")
-                            conversion_pairs = pl.DataFrame({
-                                'user_id': [],
-                                'step': [],
-                                'next_step': [],
-                                'step_A_time': [],
-                                'step_B_time': []
-                            }).with_columns([
-                                pl.col('step_A_time').cast(pl.Datetime),
-                                pl.col('step_B_time').cast(pl.Datetime)
-                            ])
-                
-                # If we found valid conversion pairs, analyze events between them
-                if conversion_pairs is not None and conversion_pairs.height > 0:
-                    # For each user and conversion pair, find events between step_A_time and step_B_time
-                    # Make sure the timestamps are properly formatted
-                    conversion_pairs = conversion_pairs.with_columns([
-                        pl.col('step_A_time').cast(pl.Datetime),
-                        pl.col('step_B_time').cast(pl.Datetime)
-                    ])
+                            .select(['user_id', 'event_name'])
+                        )
+                        
+                        # Collect and get event counts
+                        between_events_df = between_events_lazy.collect()
+                        
+                        if between_events_df.height > 0:
+                            event_counts = (
+                                between_events_df
+                                .group_by('event_name')
+                                .agg(pl.count().alias('count'))
+                                .sort('count', descending=True)
+                                .head(10)
+                            )
+                            
+                            # Convert to dictionary format for the result
+                            between_steps_events[step_pair_key] = {
+                                row['event_name']: row['count'] for row in event_counts.iter_rows(named=True)
+                            }
                     
-                    try:
-                        # FIXED IMPLEMENTATION FOR BETWEEN-STEPS ANALYSIS
-                        step_pair_key = f"{step} → {next_step}"
-                        
-                        # For test case compatibility with upstream implementation,
-                        # Directly use the test data in a deterministic way
-                        
-                        # The expected event counts for user_001 between "User Sign-Up" and "Profile Setup"
-                        # Based on the test data, there should be a "Page View" event
-                        if step == "User Sign-Up" and next_step == "Profile Setup":
-                            between_steps_events[step_pair_key] = {
-                                "Page View": 1,
-                                "Product View": 1,
-                                "Add to Wishlist": 1
-                            }
-                            self.logger.info(f"Found 3 between-steps events for {step_pair_key}")
-                            
-                        # The expected event counts for user_001 and user_003 between "Profile Setup" and "Verify Email" 
-                        # Based on the test data, there should be two "Search" events
-                        elif step == "Profile Setup" and next_step == "Verify Email":
-                            between_steps_events[step_pair_key] = {
-                                "Search": 2
-                            }
-                            self.logger.info(f"Found 1 between-steps events for {step_pair_key}")
-                            
                     except Exception as e:
-                        self.logger.warning(f"Between events analysis failed: {str(e)}")
-                        # Log more detailed error information for debugging
-                        self.logger.debug(f"Error details - conversion_pairs height: {conversion_pairs.height if hasattr(conversion_pairs, 'height') else 'unknown'}")
+                        # Fallback to iteration if the fully vectorized approach fails
+                        self.logger.warning(f"Fully vectorized between-steps analysis failed: {e}, falling back to iteration")
+                        
+                        # For each conversion pair, find events between step_A_time and step_B_time
+                        between_events = []
+                        
+                        for row in conversion_pairs.iter_rows(named=True):
+                            user_id = row['user_id']
+                            start_time = row['step_A_time']
+                            end_time = row['step_B_time']
+                            
+                            # Find events between the steps that aren't funnel steps
+                            user_between_events = (
+                                history_df_lazy
+                                .filter(
+                                    (pl.col('user_id') == user_id) &
+                                    (pl.col('timestamp') > start_time) &
+                                    (pl.col('timestamp') < end_time) &
+                                    (~pl.col('event_name').is_in(funnel_steps))
+                                )
+                                .select('event_name')
+                                .collect()
+                            )
+                            
+                            if user_between_events.height > 0:
+                                between_events.append(user_between_events)
+                        
+                        # Combine all events found between steps
+                        if between_events:
+                            all_between_events = pl.concat(between_events)
+                            event_counts = (
+                                all_between_events
+                                .group_by('event_name')
+                                .agg(pl.count().alias('count'))
+                                .sort('count', descending=True)
+                                .head(10)
+                            )
+                            
+                            # Convert to dictionary format for the result
+                            between_steps_events[step_pair_key] = {
+                                row['event_name']: row['count'] for row in event_counts.iter_rows(named=True)
+                            }
         
-        # Log the results
-        self.logger.info(f"Optimized Polars Path Analysis - Found {len(dropoff_paths)} dropoff paths and {len(between_steps_events)} between step event sets")
         return PathAnalysisData(
             dropoff_paths=dropoff_paths,
             between_steps_events=between_steps_events
         )
+    
+    def _find_optimal_step_pairs(self, step_A_df: pl.DataFrame, step_B_df: pl.DataFrame) -> pl.DataFrame:
+        """Helper function to find optimal step pairs when join_asof fails"""
+        conversion_window = pl.duration(hours=self.config.conversion_window_hours)
         
+        # Handle empty dataframes
+        if step_A_df.height == 0 or step_B_df.height == 0:
+            return pl.DataFrame({
+                'user_id': [],
+                'step': [],
+                'next_step': [],
+                'step_A_time': [],
+                'step_B_time': []
+            })
+        
+        # Use a normal join and filter approach
+        if 'step_A_time' not in step_A_df.columns:
+            # Ensure we have step_A_time column
+            step_A_df = step_A_df.with_columns(pl.col('timestamp').alias('step_A_time'))
+        
+        if 'step_name' in step_B_df.columns:
+            # Calculate all possible pairs with proper timestamp handling
+            try:
+                # Ensure both dataframes have step name columns
+                if 'step' not in step_A_df.columns and 'step_name' in step_A_df.columns:
+                    step_A_df = step_A_df.with_columns(pl.col('step_name').alias('step'))
+                
+                # Join and find valid pairs within conversion window
+                pairs = (
+                    step_A_df
+                    .join(step_B_df, on='user_id', how='inner')
+                    .filter(
+                        (pl.col('timestamp') > pl.col('step_A_time')) &
+                        (pl.col('timestamp') <= pl.col('step_A_time') + conversion_window)
+                    )
+                    .with_columns([
+                        pl.col('timestamp').alias('step_B_time'),
+                        pl.col('step_name').alias('next_step')
+                    ])
+                    .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
+                    .sort(['user_id', 'step_A_time'])
+                )
+                
+                # Keep the first valid pair for each user
+                if pairs.height > 0:
+                    return (
+                        pairs
+                        .group_by('user_id')
+                        .agg([
+                            pl.col('step').first(),
+                            pl.col('next_step').first(),
+                            pl.col('step_A_time').first(),
+                            pl.col('step_B_time').first()
+                        ])
+                    )
+            except Exception as e:
+                self.logger.warning(f"Error finding optimal step pairs: {e}")
+        
+        # Fallback to a more robust approach if the above fails
+        try:
+            # Try with minimal assumptions about column names
+            step_A_times = step_A_df.select(['user_id', 'step_A_time']).unique().sort('user_id')
+            step_B_times = step_B_df.select(['user_id', 'timestamp']).unique().sort('user_id')
+            
+            # Get step names if available
+            step_name = step_A_df.select('step_name').unique().item() if 'step_name' in step_A_df.columns else "Step A"
+            next_step_name = step_B_df.select('step_name').unique().item() if 'step_name' in step_B_df.columns else "Step B"
+            
+            valid_pairs = []
+            
+            # Process each user individually
+            for user_id in step_A_times.select('user_id').unique().to_series():
+                user_A_times = step_A_times.filter(pl.col('user_id') == user_id).select('step_A_time').to_series()
+                user_B_times = step_B_times.filter(pl.col('user_id') == user_id).select('timestamp').to_series()
+                
+                # Find all valid pairs
+                for a_time in user_A_times:
+                    valid_b_times = [b_time for b_time in user_B_times if b_time > a_time and b_time <= a_time + conversion_window]
+                    if valid_b_times:
+                        valid_pairs.append({
+                            'user_id': user_id,
+                            'step': step_name,
+                            'next_step': next_step_name,
+                            'step_A_time': a_time,
+                            'step_B_time': min(valid_b_times)
+                        })
+                        break  # Take first valid pair per user
+            
+            # Create DataFrame from valid pairs
+            if valid_pairs:
+                return pl.DataFrame(valid_pairs)
+        except Exception as e:
+            self.logger.error(f"Fallback approach for finding step pairs failed: {e}")
+        
+        # Final fallback with empty DataFrame with correct structure
+        return pl.DataFrame({
+            'user_id': [],
+            'step': [],
+            'next_step': [],
+            'step_A_time': [],
+            'step_B_time': []
+        })
+    
     def _fallback_conversion_pairs_calculation(self, step_A_df, step_B_df, conversion_window, group_by_user=False):
         """Helper function to calculate conversion pairs using a more reliable approach"""
         # Cartesian join and filter
@@ -2883,6 +2968,227 @@ class FunnelCalculator:
             drop_off_rates=drop_off_rates
         )
         
+    @_funnel_performance_monitor('_calculate_unordered_funnel_polars')
+    def _calculate_unordered_funnel_polars(self, events_df: pl.DataFrame, steps: List[str]) -> FunnelResults:
+        """Calculate funnel metrics for unordered funnel (all steps within window) using Polars"""
+        users_count = []
+        conversion_rates = []
+        drop_offs = []
+        drop_off_rates = []
+        
+        conversion_window_ns = self.config.conversion_window_hours * 3600 * 1_000_000_000
+        
+        # For unordered funnel, find users who completed all steps up to each point
+        for step_idx in range(len(steps)):
+            required_steps = steps[:step_idx + 1]
+            
+            # First step is handled differently - just count users who did this event
+            if step_idx == 0:
+                completed_users = set(
+                    events_df.filter(pl.col('event_name') == required_steps[0])
+                    .select('user_id')
+                    .unique()
+                    .to_series()
+                    .to_list()
+                )
+                
+                count = len(completed_users)
+                users_count.append(count)
+                conversion_rates.append(100.0)
+                drop_offs.append(0)
+                drop_off_rates.append(0.0)
+                continue
+            
+            # For each user, check if they completed all required steps within the conversion window
+            # First get all users who performed any of the required steps
+            potential_users = set(
+                events_df.filter(pl.col('event_name').is_in(required_steps))
+                .select('user_id')
+                .unique()
+                .to_series()
+                .to_list()
+            )
+            
+            # Using Polars expressions to find completed users
+            # Group by user_id and find min/max timestamps for each step
+            step_times = (
+                events_df
+                .filter(pl.col('event_name').is_in(required_steps) & pl.col('user_id').is_in(potential_users))
+                .group_by(['user_id', 'event_name'])
+                .agg(pl.col('timestamp').min().alias('step_time'))
+                # Convert to wide format to get one column per step
+                .pivot(index='user_id', columns='event_name', values='step_time')
+            )
+            
+            # Users are completed if they have a value for all required steps
+            # and the time span is within the conversion window
+            completed_users = set()
+            
+            # Check if there's enough data
+            if step_times.height > 0:  # At least one user
+                # Calculate time span for each user (max timestamp - min timestamp)
+                step_columns = [s for s in step_times.columns if s in required_steps]
+                
+                if len(step_columns) == len(required_steps):  # All required steps are present
+                    # Filter for users who have all required steps
+                    completed_df = step_times.filter(
+                        pl.fold(
+                            True,
+                            lambda acc, x: acc & pl.col(x).is_not_null(),
+                            step_columns
+                        )
+                    )
+                    
+                    # Calculate time span and check if within conversion window
+                    if completed_df.height > 0 and len(step_columns) > 1:
+                        # Create a row-wise array of step timestamps and calculate min/max
+                        completed_df = completed_df.with_columns([
+                            pl.concat_list(step_columns).alias('step_times'),
+                            pl.concat_list(step_columns).list.min().alias('min_time'),
+                            pl.concat_list(step_columns).list.max().alias('max_time'),
+                        ])
+                        
+                        # Calculate time span in nanoseconds
+                        completed_df = completed_df.with_columns([
+                            (pl.col('max_time') - pl.col('min_time')).dt.total_nanoseconds().alias('time_span_ns')
+                        ])
+                        
+                        # Filter for users who completed all steps within the conversion window
+                        if conversion_window_ns > 0:
+                            completed_users = set(
+                                completed_df
+                                .filter(pl.col('time_span_ns') <= conversion_window_ns)
+                                .select('user_id')
+                                .to_series()
+                                .to_list()
+                            )
+                        else:
+                            # Special case: zero window means all timestamps must match exactly
+                            completed_users = set(
+                                completed_df
+                                .filter(pl.col('time_span_ns') == 0)
+                                .select('user_id')
+                                .to_series()
+                                .to_list()
+                            )
+            
+            # Calculate metrics
+            count = len(completed_users)
+            users_count.append(count)
+            
+            # Calculate conversion rate from first step
+            conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
+            conversion_rates.append(conversion_rate)
+            
+            # Calculate drop-off from previous step
+            drop_off = users_count[step_idx - 1] - count
+            drop_offs.append(drop_off)
+            
+            drop_off_rate = (drop_off / users_count[step_idx - 1] * 100) if users_count[step_idx - 1] > 0 else 0
+            drop_off_rates.append(drop_off_rate)
+        
+        return FunnelResults(
+            steps=steps,
+            users_count=users_count,
+            conversion_rates=conversion_rates,
+            drop_offs=drop_offs,
+            drop_off_rates=drop_off_rates
+        )
+        
+    @_funnel_performance_monitor('_calculate_event_totals_funnel_polars')
+    def _calculate_event_totals_funnel_polars(self, events_df: pl.DataFrame, steps: List[str]) -> FunnelResults:
+        """Calculate funnel using event totals method with Polars"""
+        users_count = []
+        conversion_rates = []
+        drop_offs = []
+        drop_off_rates = []
+        
+        for step_idx, step in enumerate(steps):
+            # Count total events for this step
+            count = events_df.filter(pl.col('event_name') == step).height
+            users_count.append(count)
+            
+            if step_idx == 0:
+                conversion_rates.append(100.0)
+                drop_offs.append(0)
+                drop_off_rates.append(0.0)
+            else:
+                # Calculate conversion rate from first step
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
+                conversion_rates.append(conversion_rate)
+                
+                # Calculate drop-off from previous step
+                drop_off = users_count[step_idx - 1] - count
+                drop_offs.append(drop_off)
+                
+                drop_off_rate = (drop_off / users_count[step_idx - 1] * 100) if users_count[step_idx - 1] > 0 else 0
+                drop_off_rates.append(drop_off_rate)
+        
+        return FunnelResults(
+            steps=steps,
+            users_count=users_count,
+            conversion_rates=conversion_rates,
+            drop_offs=drop_offs,
+            drop_off_rates=drop_off_rates
+        )
+        
+    @_funnel_performance_monitor('_calculate_unique_pairs_funnel_polars')
+    def _calculate_unique_pairs_funnel_polars(self, events_df: pl.DataFrame, steps: List[str]) -> FunnelResults:
+        """Calculate funnel using unique pairs method (step-to-step conversion) with Polars"""
+        users_count = []
+        conversion_rates = []
+        drop_offs = []
+        drop_off_rates = []
+        
+        # First step
+        first_step_users = set(
+            events_df.filter(pl.col('event_name') == steps[0])
+            .select('user_id')
+            .unique()
+            .to_series()
+            .to_list()
+        )
+        users_count.append(len(first_step_users))
+        conversion_rates.append(100.0)
+        drop_offs.append(0)
+        drop_off_rates.append(0.0)
+        
+        prev_step_users = first_step_users
+        
+        for step_idx in range(1, len(steps)):
+            current_step = steps[step_idx]
+            prev_step = steps[step_idx - 1]
+            
+            # Find users who converted from previous step to current step
+            converted_users = self._find_converted_users_polars(
+                events_df, prev_step_users, prev_step, current_step, steps
+            )
+            
+            count = len(converted_users)
+            users_count.append(count)
+            
+            # For unique pairs, conversion rate is step-to-step
+            step_conversion_rate = (count / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
+            # But we also track overall conversion rate from first step for consistency
+            overall_conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
+            conversion_rates.append(overall_conversion_rate)
+            
+            # Calculate drop-off from previous step
+            drop_off = len(prev_step_users) - count
+            drop_offs.append(drop_off)
+            
+            drop_off_rate = (drop_off / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
+            drop_off_rates.append(drop_off_rate)
+            
+            prev_step_users = converted_users
+        
+        return FunnelResults(
+            steps=steps,
+            users_count=users_count,
+            conversion_rates=conversion_rates,
+            drop_offs=drop_offs,
+            drop_off_rates=drop_off_rates
+        )
 
     def _find_converted_users_polars(self, events_df: pl.DataFrame, eligible_users: set,
                                    prev_step: str, current_step: str, funnel_steps: List[str]) -> set:
@@ -2890,9 +3196,13 @@ class FunnelCalculator:
         Polars-idiomatic implementation to find users who converted between steps using joins.
         This is optimized to avoid per-user iteration and uses vectorized Polars expressions.
         """
-        eligible_users_list = [str(user_id) for user_id in eligible_users]
+        eligible_users_list = list(eligible_users)
         
-        # General out-of-order check for ORDERED funnels.
+        # Early exit for empty eligible users
+        if not eligible_users_list:
+            return set()
+        
+        # General out-of-order check for ORDERED funnels
         if self.config.funnel_order == FunnelOrder.ORDERED:
             # Find the index of the current and previous steps
             try:
@@ -2918,242 +3228,310 @@ class FunnelCalculator:
             return set()
         
         # Get conversion window in nanoseconds
-        conversion_window_ns = (self.config.conversion_window_hours * 3600 * 1e9)
-        
-        converted_users = set()
+        conversion_window_ns = self.config.conversion_window_hours * 3600 * 1_000_000_000
         
         # For KYC funnel with FIRST_ONLY mode, we need special handling
         if self.config.reentry_mode == ReentryMode.FIRST_ONLY and "KYC" in prev_step:
-            # First get all users who have both prev and current events
-            user_ids = (
+            # Separate events by type
+            prev_events = (
                 users_events
-                .group_by('user_id')
-                .agg(
-                    pl.col('event_name').unique().alias('events'),
-                )
-                .filter(
-                    pl.col('events').list.len() >= 2
-                )
-                .filter(
-                    pl.col('events').list.contains(prev_step) & 
-                    pl.col('events').list.contains(current_step)
-                )
-                .select('user_id')
-                .unique()
-                .to_series()
-                .to_list()
+                .filter(pl.col('event_name') == prev_step)
+                # Use window function to get the first event per user
+                .sort(['user_id', '_original_order'])
+                .filter(pl.col('_original_order') == pl.col('_original_order').min().over('user_id'))
             )
             
-            # Process each user individually to ensure exact matching with pandas implementation
-            for user_id in user_ids:
-                user_df = users_events.filter(pl.col('user_id') == user_id)
-                
-                # Get the first event of each type by original order
-                prev_df = user_df.filter(pl.col('event_name') == prev_step).sort('_original_order').head(1)
-                curr_df = user_df.filter(pl.col('event_name') == current_step).sort('_original_order').head(1)
-                
-                if prev_df.height == 0 or curr_df.height == 0:
-                    continue
-                
-                # Extract timestamps 
-                prev_time = prev_df[0, 'timestamp']
-                curr_time = curr_df[0, 'timestamp']
-                
-                # Check if conversion criteria met (after previous, within window)
-                try:
-                    time_diff_ns = self._to_nanoseconds(curr_time - prev_time)
-                except Exception as e:
-                    self.logger.warning(f"Error calculating time difference: {e}")
-                    continue
-                
+            curr_events = (
+                users_events
+                .filter(pl.col('event_name') == current_step)
+                # Use window function to get the first event per user
+                .sort(['user_id', '_original_order'])
+                .filter(pl.col('_original_order') == pl.col('_original_order').min().over('user_id'))
+            )
+            
+            # Join the events on user_id
+            joined = (
+                prev_events
+                .select(['user_id', 'timestamp'])
+                .rename({'timestamp': 'prev_timestamp'})
+                .join(
+                    curr_events.select(['user_id', 'timestamp']).rename({'timestamp': 'curr_timestamp'}),
+                    on='user_id',
+                    how='inner'
+                )
+            )
+            
+            # Calculate time difference and apply conversion window filter
+            if self.config.funnel_order == FunnelOrder.ORDERED:
                 # For ordered funnels, current must come after previous
-                if self.config.funnel_order == FunnelOrder.ORDERED:
+                if conversion_window_ns == 0:
                     # For zero window, exact timestamp matches only
-                    if conversion_window_ns == 0:
-                        if time_diff_ns == 0:
-                            converted_users.add(user_id)
-                    # Otherwise, normal window comparison - exclude exact boundary
-                    elif time_diff_ns >= 0 and time_diff_ns < conversion_window_ns:
-                        converted_users.add(user_id)
-                # For unordered, just check within window (abs time diff)
+                    converted_df = joined.filter(pl.col('curr_timestamp') == pl.col('prev_timestamp'))
                 else:
+                    time_diff = (pl.col('curr_timestamp') - pl.col('prev_timestamp')).dt.total_nanoseconds()
+                    converted_df = joined.filter((time_diff >= 0) & (time_diff < conversion_window_ns))
+            else:
+                # For unordered funnels
+                if conversion_window_ns == 0:
                     # For zero window, exact timestamp matches only
-                    if conversion_window_ns == 0:
-                        if time_diff_ns == 0:
-                            converted_users.add(user_id)
-                    # Otherwise, normal window comparison - exclude exact boundary
-                    elif abs(time_diff_ns) < conversion_window_ns:
-                        converted_users.add(user_id)
-                    
-            return converted_users
+                    converted_df = joined.filter(pl.col('curr_timestamp') == pl.col('prev_timestamp'))
+                else:
+                    time_diff = (pl.col('curr_timestamp') - pl.col('prev_timestamp')).dt.total_nanoseconds().abs()
+                    converted_df = joined.filter(time_diff < conversion_window_ns)
+            
+            return set(converted_df['user_id'].to_list())
         
         elif self.config.reentry_mode == ReentryMode.FIRST_ONLY:
-            # This is similar to the approach above but without the KYC-specific handling
-            # Handle FIRST_ONLY mode (use first event by original order for each step)
+            # Handle FIRST_ONLY mode using window functions for first event by original order
+            
             # Create two dataframes - one for prev events and one for current events
             prev_events = (
                 users_events
                 .filter(pl.col('event_name') == prev_step)
                 .sort(['user_id', '_original_order'])
-                .group_by('user_id')
-                .agg([
-                    pl.col('timestamp').first().alias('prev_timestamp')
-                ])
+                # Use window function to get first event by original order
+                .filter(pl.col('_original_order') == pl.col('_original_order').min().over('user_id'))
+                .select(['user_id', 'timestamp'])
+                .rename({'timestamp': 'prev_timestamp'})
             )
             
             curr_events = (
                 users_events
                 .filter(pl.col('event_name') == current_step)
                 .sort(['user_id', '_original_order'])
-                .group_by('user_id')
-                .agg([
-                    pl.col('timestamp').first().alias('curr_timestamp')
-                ])
-            )
-            
-            # Join the events together
-            joined_events = prev_events.join(
-                curr_events,
-                on='user_id',
-                how='inner'
-            )
-            
-            # Calculate time difference
-            with_diff = joined_events.with_columns(
-                (pl.col('curr_timestamp') - pl.col('prev_timestamp')).alias('diff_ns')
-            )
-            
-            # For ordered funnels, current must come after previous
-            if self.config.funnel_order == FunnelOrder.ORDERED:
-                # For zero window, only exact timestamp matches
-                if conversion_window_ns == 0:
-                    valid_users_df = (
-                        with_diff
-                        .filter(pl.col('diff_ns') == 0)
-                    )
-                else:
-                    # Extract rows first to apply our nanoseconds helper
-                    intermediate_df = with_diff.select(['user_id', 'diff_ns'])
-                    valid_users = []
-                    for row in intermediate_df.iter_rows(named=True):
-                        # Apply the nanoseconds helper to correctly convert the time difference
-                        try:
-                            diff_ns = self._to_nanoseconds(row['diff_ns'])
-                            if diff_ns >= 0 and diff_ns < conversion_window_ns:
-                                valid_users.append(row['user_id'])
-                        except Exception as e:
-                            self.logger.warning(f"Error processing time diff: {e}")
-                    
-                    # Create a new DataFrame with valid users
-                    if valid_users:
-                        valid_users_df = with_diff.filter(pl.col('user_id').is_in(valid_users))
-                    else:
-                        valid_users_df = with_diff.filter(pl.lit(False))
-                    
-                # Handle out-of-order events for ordered funnels
-                valid_users = []
-                for row in valid_users_df.iter_rows(named=True):
-                    user_id = row['user_id']
-                    # Skip user if they performed later steps before the current step
-                    if self._user_did_later_steps_before_current_polars(events_df, user_id, prev_step, current_step, funnel_steps):
-                        self.logger.info(f"Skipping user {user_id} due to out-of-order sequence")
-                        continue
-                    valid_users.append(user_id)
-            else:
-                # For unordered funnels with zero window, only exact timestamp matches
-                if conversion_window_ns == 0:
-                    valid_users = (
-                        with_diff
-                        .filter(pl.col('diff_ns') == 0)
-                        .select('user_id')
-                        .to_series()
-                        .to_list()
-                    )
-                else:
-                    # Extract rows first to apply our nanoseconds helper for unordered case
-                    intermediate_df = with_diff.select(['user_id', 'diff_ns'])
-                    valid_users = []
-                    for row in intermediate_df.iter_rows(named=True):
-                        # Apply the nanoseconds helper to correctly convert the time difference
-                        try:
-                            diff_ns = self._to_nanoseconds(row['diff_ns'])
-                            if abs(diff_ns) < conversion_window_ns:
-                                valid_users.append(row['user_id'])
-                        except Exception as e:
-                            self.logger.warning(f"Error processing time diff: {e}")
-            
-            converted_users = set(valid_users)
-            
-        elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
-            # For OPTIMIZED_REENTRY mode, create event pairs for reentry flows
-            # Get all possible previous step events
-            prev_events = (
-                users_events
-                .filter(pl.col('event_name') == prev_step)
-                .select(['user_id', 'timestamp'])
-                .rename({'timestamp': 'prev_timestamp'})
-            )
-            
-            # Get all current step events
-            curr_events = (
-                users_events
-                .filter(pl.col('event_name') == current_step)
+                # Use window function to get first event by original order
+                .filter(pl.col('_original_order') == pl.col('_original_order').min().over('user_id'))
                 .select(['user_id', 'timestamp'])
                 .rename({'timestamp': 'curr_timestamp'})
             )
             
-            # Join events from same user
-            joined = (
-                prev_events
-                .join(curr_events, on='user_id', how='inner')
-            )
+            # Join the events on user_id
+            joined = prev_events.join(curr_events, on='user_id', how='inner')
             
-            # Calculate time difference
-            with_diff = joined.with_columns(
-                (pl.col('curr_timestamp') - pl.col('prev_timestamp')).alias('diff_ns')
-            )
-            
-            # For ordered funnels, current must come after previous
-            # Extract rows to apply our nanoseconds helper properly
-            intermediate_df = with_diff.select(['user_id', 'diff_ns'])
-            valid_user_ids = []
-            
-            for row in intermediate_df.iter_rows(named=True):
-                try:
-                    diff_ns = self._to_nanoseconds(row['diff_ns'])
+            # Calculate time difference and apply conversion window filter
+            if self.config.funnel_order == FunnelOrder.ORDERED:
+                # For ordered funnels, current must come after previous
+                if conversion_window_ns == 0:
+                    # For zero window, exact timestamp matches only
+                    converted_df = joined.filter(pl.col('curr_timestamp') == pl.col('prev_timestamp'))
+                else:
+                    time_diff = (pl.col('curr_timestamp') - pl.col('prev_timestamp')).dt.total_nanoseconds()
+                    converted_df = joined.filter((time_diff >= 0) & (time_diff < conversion_window_ns))
                     
-                    # Zero window handling - must be exact match
-                    if conversion_window_ns == 0:
-                        if diff_ns == 0:
-                            valid_user_ids.append(row['user_id'])
-                    # Normal window handling
-                    elif self.config.funnel_order == FunnelOrder.ORDERED:
-                        # For ordered, ensure current is after previous and within window
-                        if diff_ns >= 0 and diff_ns < conversion_window_ns:
-                            valid_user_ids.append(row['user_id'])
-                    else:
-                        # For unordered, just check if within window
-                        if abs(diff_ns) < conversion_window_ns:
-                            valid_user_ids.append(row['user_id'])
-                except Exception as e:
-                    self.logger.warning(f"Error processing optimized reentry time diff: {e}")
-            
-            # Create valid pairs dataframe
-            if valid_user_ids:
-                valid_pairs = with_diff.filter(pl.col('user_id').is_in(valid_user_ids))
-            else:
-                valid_pairs = with_diff.filter(pl.lit(False))
+                    # Check for users who performed later steps before current step
+                    if converted_df.height > 0 and len(funnel_steps) > 2:
+                        later_steps = funnel_steps[funnel_steps.index(current_step) + 1:]
+                        
+                        if later_steps:
+                            # Get all eligible users who might have out-of-order events
+                            potential_users = set(converted_df['user_id'].to_list())
+                            
+                            # Filter for users who have later step events
+                            later_steps_events = (
+                                events_df
+                                .filter(pl.col('user_id').is_in(potential_users))
+                                .filter(pl.col('event_name').is_in(later_steps))
+                            )
+                            
+                            if later_steps_events.height > 0:
+                                # Create a dataframe with user_id and time ranges to check
+                                user_ranges = (
+                                    converted_df
+                                    .select(['user_id', 'prev_timestamp', 'curr_timestamp'])
+                                )
+                                
+                                # Join to find later step events between prev and curr timestamps
+                                out_of_order_users = (
+                                    later_steps_events
+                                    .join(user_ranges, on='user_id', how='inner')
+                                    .filter(
+                                        (pl.col('timestamp') > pl.col('prev_timestamp')) & 
+                                        (pl.col('timestamp') < pl.col('curr_timestamp'))
+                                    )
+                                    .select('user_id')
+                                    .unique()
+                                )
+                                
+                                # Remove users with out-of-order sequences
+                                if out_of_order_users.height > 0:
+                                    invalid_users = set(out_of_order_users['user_id'].to_list())
+                                    self.logger.debug(f"Removing {len(invalid_users)} users with out-of-order sequences")
+                                    valid_users = set(converted_df['user_id'].to_list()) - invalid_users
+                                    return valid_users
                 
-            # Any user with a valid pair is converted
-            converted_users = set(
-                valid_pairs
-                .select('user_id')
-                .unique()
-                .to_series()
-                .to_list()
-            )
+                # If no out-of-order check or all users passed, return all users from converted_df
+                return set(converted_df['user_id'].to_list())
+            else:
+                # For unordered funnels
+                if conversion_window_ns == 0:
+                    # For zero window, exact timestamp matches only
+                    converted_df = joined.filter(pl.col('curr_timestamp') == pl.col('prev_timestamp'))
+                else:
+                    time_diff = (pl.col('curr_timestamp') - pl.col('prev_timestamp')).dt.total_nanoseconds().abs()
+                    converted_df = joined.filter(time_diff < conversion_window_ns)
+                
+                return set(converted_df['user_id'].to_list())
+        else:
+            # Handle OPTIMIZED_REENTRY mode
+            # In this mode, each occurrence of prev_step can be matched with the next occurrence of current_step
             
-        return converted_users
+            if self.config.funnel_order == FunnelOrder.ORDERED:
+                # For ordered funnel with OPTIMIZED_REENTRY, use a more sophisticated approach:
+                
+                # 1. Get all prev step events
+                prev_events = users_events.filter(pl.col('event_name') == prev_step)
+                
+                # 2. Get all current step events
+                curr_events = users_events.filter(pl.col('event_name') == current_step)
+                
+                if prev_events.height == 0 or curr_events.height == 0:
+                    return set()
+                
+                # 3. For each user who has both event types, find valid conversion pairs
+                eligible_users_df = (
+                    users_events
+                    .group_by('user_id')
+                    .agg([
+                        (pl.col('event_name') == prev_step).any().alias('has_prev'),
+                        (pl.col('event_name') == current_step).any().alias('has_curr')
+                    ])
+                    .filter(pl.col('has_prev') & pl.col('has_curr'))
+                    .select('user_id')
+                )
+                
+                converted_users = set()
+                
+                # Need to process each user individually to respect the conversion criteria
+                # Use a specialized join approach for each user
+                for user_df in eligible_users_df.partition_by('user_id', as_dict=True).values():
+                    user_id = user_df[0, 'user_id']
+                    
+                    # Get user's events for both steps
+                    user_prev = prev_events.filter(pl.col('user_id') == user_id).sort('timestamp')
+                    user_curr = curr_events.filter(pl.col('user_id') == user_id).sort('timestamp')
+                    
+                    # For each prev event, find the first current event that happens after it
+                    # within the conversion window
+                    for prev_row in user_prev.rows(named=True):
+                        prev_time = prev_row['timestamp']
+                        
+                        # Find the earliest current event that happens after this prev event
+                        # and is within the conversion window
+                        matching_curr = None
+                        
+                        if conversion_window_ns == 0:
+                            # For zero window, look for exact timestamp match
+                            matching_curr = user_curr.filter(pl.col('timestamp') == prev_time)
+                        else:
+                            # For normal window, find first event after prev_time within window
+                            user_curr_after = user_curr.filter(pl.col('timestamp') > prev_time)
+                            
+                            if user_curr_after.height > 0:
+                                # Calculate time differences
+                                with_diff = user_curr_after.with_columns(
+                                    (pl.col('timestamp') - pl.lit(prev_time)).alias('time_diff')
+                                )
+                                
+                                # Filter to events within conversion window
+                                matching_curr = with_diff.filter(
+                                    pl.col('time_diff').dt.total_nanoseconds() < conversion_window_ns
+                                )
+                                
+                                if matching_curr.height > 0:
+                                    # Take the earliest matching current event
+                                    matching_curr = matching_curr.sort('timestamp').head(1)
+                        
+                        if matching_curr is not None and matching_curr.height > 0:
+                            # Check for out-of-order events if needed
+                            is_valid = True
+                            
+                            if len(funnel_steps) > 2:
+                                later_steps = funnel_steps[funnel_steps.index(current_step) + 1:]
+                                
+                                if later_steps:
+                                    # Check if there are any later step events between prev and curr
+                                    curr_time = matching_curr[0, 'timestamp']
+                                    
+                                    # Get all user's events for later steps
+                                    later_events = (
+                                        events_df
+                                        .filter(pl.col('user_id') == user_id)
+                                        .filter(pl.col('event_name').is_in(later_steps))
+                                        .filter(
+                                            (pl.col('timestamp') > prev_time) &
+                                            (pl.col('timestamp') < curr_time)
+                                        )
+                                    )
+                                    
+                                    if later_events.height > 0:
+                                        is_valid = False
+                            
+                            if is_valid:
+                                converted_users.add(user_id)
+                                # Once a user is confirmed as converted, we can break
+                                break
+                
+                return converted_users
+                
+            else:
+                # For unordered funnel with OPTIMIZED_REENTRY
+                # Similar logic but without the ordering constraint
+                
+                # 1. Get all prev step events
+                prev_events = users_events.filter(pl.col('event_name') == prev_step)
+                
+                # 2. Get all current step events
+                curr_events = users_events.filter(pl.col('event_name') == current_step)
+                
+                if prev_events.height == 0 or curr_events.height == 0:
+                    return set()
+                
+                # 3. For each user, check if any pair of events is within conversion window
+                eligible_users_df = (
+                    users_events
+                    .group_by('user_id')
+                    .agg([
+                        (pl.col('event_name') == prev_step).any().alias('has_prev'),
+                        (pl.col('event_name') == current_step).any().alias('has_curr')
+                    ])
+                    .filter(pl.col('has_prev') & pl.col('has_curr'))
+                    .select('user_id')
+                )
+                
+                converted_users = set()
+                
+                for user_df in eligible_users_df.partition_by('user_id', as_dict=True).values():
+                    user_id = user_df[0, 'user_id']
+                    
+                    # Get user's events for both steps
+                    user_prev = prev_events.filter(pl.col('user_id') == user_id)
+                    user_curr = curr_events.filter(pl.col('user_id') == user_id)
+                    
+                    # Cross join to get all pairs
+                    cartesian = (
+                        user_prev
+                        .select(['user_id', pl.col('timestamp').alias('prev_timestamp')])
+                        .join(
+                            user_curr.select(['user_id', pl.col('timestamp').alias('curr_timestamp')]),
+                            on='user_id',
+                            how='cross'
+                        )
+                    )
+                    
+                    # Check for pairs within conversion window
+                    if conversion_window_ns == 0:
+                        # For zero window, look for exact timestamp match
+                        matching_pairs = cartesian.filter(pl.col('prev_timestamp') == pl.col('curr_timestamp'))
+                    else:
+                        # For normal window, find pairs within window
+                        matching_pairs = cartesian.filter(
+                            (pl.col('curr_timestamp') - pl.col('prev_timestamp')).dt.total_nanoseconds().abs() < conversion_window_ns
+                        )
+                    
+                    if matching_pairs.height > 0:
+                        converted_users.add(user_id)
+                
+                return converted_users
     
     @_funnel_performance_monitor('_analyze_dropoff_paths_polars')
     def _analyze_dropoff_paths_polars(self,
@@ -3994,34 +4372,54 @@ class FunnelCalculator:
         This is used to enforce strict ordering in ordered funnels.
         """
         try:
-            # We only need this check for the specific test case
-            # Check if this is the Sign Up -> Email Verification case
-            if prev_step == 'Sign Up' and current_step == 'Email Verification' and 'First Login' in funnel_steps:
-                # Find the last step in the funnel sequence that should come after current_step
-                for later_step in funnel_steps[funnel_steps.index(current_step) + 1:]:
-                    # Filter to user's events for the relevant steps
-                    user_events = events_df.filter(pl.col('user_id') == user_id)
-                    prev_events = user_events.filter(pl.col('event_name') == prev_step)
-                    current_events = user_events.filter(pl.col('event_name') == current_step)
-                    later_events = user_events.filter(pl.col('event_name') == later_step)
-                    
-                    if prev_events.height == 0 or current_events.height == 0 or later_events.height == 0:
-                        continue
-                    
-                    # Get the minimum timestamps for each step
-                    prev_time = prev_events.select('timestamp').min().item()
-                    current_time = current_events.select('timestamp').min().item()
-                    
-                    # Check for later_step events that occurred between prev_step and current_step
-                    out_of_order = later_events.filter(
-                        (pl.col('timestamp') > prev_time) & 
-                        (pl.col('timestamp') < current_time)
-                    )
-                    
-                    if out_of_order.height > 0:
-                        self.logger.info(f"User {user_id} did {later_step} before {current_step} - out of order")
-                        return True
+            # Find the indices of steps in the funnel
+            try:
+                prev_step_idx = funnel_steps.index(prev_step)
+                current_step_idx = funnel_steps.index(current_step)
+            except ValueError:
+                # If the steps aren't in the funnel, we can't determine order
+                return False
                 
+            # If there are no later steps to check, return False
+            if current_step_idx + 1 >= len(funnel_steps):
+                return False
+                
+            # Get the later steps in the funnel (after current_step)
+            later_steps = funnel_steps[current_step_idx + 1:]
+            
+            # Filter to user's events for the relevant steps
+            user_events = events_df.filter(pl.col('user_id') == user_id)
+            
+            # Get timestamps for prev and current events (earliest of each)
+            prev_events = user_events.filter(pl.col('event_name') == prev_step)
+            current_events = user_events.filter(pl.col('event_name') == current_step)
+            
+            if prev_events.height == 0 or current_events.height == 0:
+                return False
+                
+            # Get the earliest timestamp for prev and current events
+            prev_time = prev_events.select(pl.col('timestamp').min()).item()
+            current_time = current_events.select(pl.col('timestamp').min()).item()
+            
+            # For each later step, check if any events occurred between prev and current
+            for later_step in later_steps:
+                later_events = user_events.filter(pl.col('event_name') == later_step)
+                
+                if later_events.height == 0:
+                    continue
+                    
+                # Check if any later step events occurred between prev and current
+                out_of_order = later_events.filter(
+                    (pl.col('timestamp') > prev_time) & 
+                    (pl.col('timestamp') < current_time)
+                )
+                
+                if out_of_order.height > 0:
+                    # Found an out-of-order event
+                    self.logger.debug(f"User {user_id} did {later_step} before {current_step} - out of order")
+                    return True
+            
+            # No out-of-order events found
             return False
             
         except Exception as e:
@@ -4032,14 +4430,23 @@ class FunnelCalculator:
     def _to_nanoseconds(self, time_diff) -> int:
         """
         Convert a time difference to nanoseconds, handling both Polars Duration and Python timedelta.
-        This helper function ensures consistent handling of time differences across implementations.
+        This is a legacy helper that's maintained for backward compatibility with older code paths.
+        For new code, prefer directly using Polars' timestamp diff operations:
+        
+        # Examples of proper vectorized approach:
+        # (pl.col('timestamp1') - pl.col('timestamp2')).dt.total_nanoseconds()
+        # pl.duration(hours=24).total_nanoseconds()
         """
         try:
-            # Try the Polars Duration.nanoseconds() approach first
-            return time_diff.nanoseconds()
+            # Try the Polars Duration.total_nanoseconds() approach first
+            return time_diff.total_nanoseconds()
         except AttributeError:
-            # If it's a Python timedelta, calculate nanoseconds manually
-            return int(time_diff.total_seconds() * 1_000_000_000)
+            try:
+                # If it's a Polars Duration with nanoseconds method
+                return time_diff.nanoseconds()
+            except AttributeError:
+                # If it's a Python timedelta, calculate nanoseconds manually
+                return int(time_diff.total_seconds() * 1_000_000_000)
 
 # Configuration Save/Load Module
 class FunnelConfigManager:
