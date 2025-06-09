@@ -26,8 +26,10 @@ import sys
 import os
 import subprocess
 import argparse
+import re
+import json
 from pathlib import Path
-from typing import List, Dict, Callable, Optional, Tuple, Set, Union
+from typing import List, Dict, Callable, Optional, Tuple, Set, Union, Any
 
 
 class TestCategory:
@@ -78,36 +80,51 @@ def setup_environment() -> bool:
     return True
 
 
-def run_command(cmd: List[str], description: str = "") -> bool:
-    """Run a command and return the result."""
+def run_command(cmd: List[str], description: str = "", capture_output: bool = True) -> Tuple[bool, str, str]:
+    """
+    Run a command and return the result.
+    
+    Args:
+        cmd: Command to run as a list of strings
+        description: Description of the command
+        capture_output: Whether to capture and return stdout/stderr
+    
+    Returns:
+        Tuple of (success, stdout, stderr)
+    """
     if description:
         print(f"🔄 {description}")
     
     print(f"   Running: {' '.join(cmd)}")
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        
-        if result.returncode == 0:
-            print(f"✅ {description or 'Command'} completed successfully")
-            if result.stdout:
-                print(result.stdout)
+        if capture_output:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            
+            if result.returncode == 0:
+                print(f"✅ {description or 'Command'} completed successfully")
+                if result.stdout and len(result.stdout) < 1000:  # Only print short outputs
+                    print(result.stdout)
+            else:
+                print(f"❌ {description or 'Command'} failed")
+                if result.stderr and len(result.stderr) < 1000:
+                    print("STDERR:", result.stderr)
+                if result.stdout and len(result.stdout) < 1000:
+                    print("STDOUT:", result.stdout)
+            
+            return result.returncode == 0, result.stdout, result.stderr
         else:
-            print(f"❌ {description or 'Command'} failed")
-            if result.stderr:
-                print("STDERR:", result.stderr)
-            if result.stdout:
-                print("STDOUT:", result.stdout)
-        
-        return result.returncode == 0
+            # Run without capturing output (directly to terminal)
+            result = subprocess.run(cmd, check=False)
+            return result.returncode == 0, "", ""
     
     except FileNotFoundError:
         print(f"❌ Command not found: {cmd[0]}")
         print("   Make sure pytest is installed: pip install pytest")
-        return False
+        return False, "", f"Command not found: {cmd[0]}"
     except Exception as e:
         print(f"❌ Error running command: {e}")
-        return False
+        return False, "", str(e)
 
 
 def run_pytest(test_files: List[str], description: str, 
@@ -115,7 +132,9 @@ def run_pytest(test_files: List[str], description: str,
                coverage: bool = False, 
                markers: Optional[List[str]] = None,
                specific_marker: Optional[str] = None,
-               verbose: bool = True) -> bool:
+               verbose: bool = True,
+               capture_output: bool = True,
+               extra_args: Optional[List[str]] = None) -> Tuple[bool, str, str]:
     """
     Run pytest with specified test files and options.
     
@@ -127,6 +146,11 @@ def run_pytest(test_files: List[str], description: str,
         markers: Additional markers to filter tests
         specific_marker: A specific marker to use for this test run
         verbose: Whether to use verbose output
+        capture_output: Whether to capture output or stream directly to terminal
+        extra_args: Additional pytest arguments
+    
+    Returns:
+        Tuple of (success, stdout, stderr)
     """
     cmd = ["python", "-m", "pytest"]
     
@@ -156,6 +180,10 @@ def run_pytest(test_files: List[str], description: str,
             for marker in markers:
                 cmd.extend(["-m", marker])
     
+    # Add any extra arguments
+    if extra_args:
+        cmd.extend(extra_args)
+    
     # Update description with options
     full_description = description
     if parallel:
@@ -167,7 +195,7 @@ def run_pytest(test_files: List[str], description: str,
     if specific_marker and not markers:
         full_description += f" with marker: {specific_marker}"
     
-    return run_command(cmd, full_description)
+    return run_command(cmd, full_description, capture_output)
 
 
 def check_test_dependencies() -> bool:
@@ -239,7 +267,7 @@ def generate_test_report() -> bool:
         "-v"
     ]
     
-    success = run_command(cmd, "Generating test report")
+    success, _, _ = run_command(cmd, "Generating test report")
     
     if success:
         print("\n📋 Test Report Generated:")
@@ -248,6 +276,210 @@ def generate_test_report() -> bool:
         print("   📄 JUnit XML Report: test-results.xml")
     
     return success
+
+
+def parse_fallback_test_output(output: str) -> Dict[str, Any]:
+    """
+    Parse the output from fallback tests to extract structured information about failures.
+    
+    Args:
+        output: stdout/stderr output from pytest
+        
+    Returns:
+        Dictionary with structured information about fallbacks
+    """
+    results = {
+        "config_combinations": [],
+        "failures": [],
+        "error_types": {
+            "nested_object_types": 0,
+            "original_order": 0,
+            "cross_join_keys": 0,
+            "other": 0
+        },
+        "component_stats": {
+            "path_analysis": {"total": 0, "failures": 0},
+            "time_to_convert": {"total": 0, "failures": 0},
+            "cohort_analysis": {"total": 0, "failures": 0}
+        },
+        "success_rate": 0.0
+    }
+    
+    # Extract all test configurations and their errors
+    fallback_pattern = r"Fallback detected in (\w+) for: (\w+), (\w+), (\w+)\. Fallback messages: (.+)"
+    fallback_matches = re.findall(fallback_pattern, output)
+    
+    # Process each fallback
+    for component, funnel_order, reentry_mode, counting_method, error_messages in fallback_matches:
+        config = f"{funnel_order}-{reentry_mode}-{counting_method}"
+        
+        # Add unique configs
+        if config not in [c["config"] for c in results["config_combinations"]]:
+            results["config_combinations"].append({
+                "config": config,
+                "funnel_order": funnel_order,
+                "reentry_mode": reentry_mode,
+                "counting_method": counting_method
+            })
+        
+        # Track component stats
+        if component in results["component_stats"]:
+            results["component_stats"][component]["total"] += 1
+            results["component_stats"][component]["failures"] += 1
+        
+        # Categorize error types
+        error_type = "other"
+        if "nested object types" in error_messages.lower():
+            error_type = "nested_object_types"
+            results["error_types"]["nested_object_types"] += 1
+        elif "_original_order" in error_messages:
+            error_type = "original_order"
+            results["error_types"]["original_order"] += 1
+        elif "cross join" in error_messages.lower():
+            error_type = "cross_join_keys"
+            results["error_types"]["cross_join_keys"] += 1
+        else:
+            results["error_types"]["other"] += 1
+        
+        results["failures"].append({
+            "component": component,
+            "config": config,
+            "funnel_order": funnel_order,
+            "reentry_mode": reentry_mode,
+            "counting_method": counting_method,
+            "error_type": error_type,
+            "error_messages": error_messages
+        })
+    
+    # Calculate success rates
+    total_tests = 0
+    for component in results["component_stats"]:
+        # Each component is tested with each configuration
+        component_tests = len(results["config_combinations"]) if results["config_combinations"] else 12  # Default to 12 combinations
+        results["component_stats"][component]["total"] = component_tests
+        total_tests += component_tests
+    
+    total_failures = len(results["failures"])
+    results["success_rate"] = 0 if total_tests == 0 else (total_tests - total_failures) / total_tests * 100
+    
+    return results
+
+
+def generate_fallback_report(results: Dict[str, Any]) -> str:
+    """
+    Generate a human-readable report from fallback test results.
+    
+    Args:
+        results: Results dictionary from parse_fallback_test_output
+        
+    Returns:
+        Formatted report string
+    """
+    report = []
+    report.append("# Fallback Detection Report")
+    report.append("\n## Summary")
+    
+    # Calculate overall success rate
+    success_rate = results["success_rate"]
+    report.append(f"- Overall success rate: {success_rate:.1f}%")
+    report.append(f"- Total fallbacks detected: {len(results['failures'])}")
+    
+    # Component summary
+    report.append("\n## Component Performance")
+    for component, stats in results["component_stats"].items():
+        if stats["total"] > 0:
+            failure_rate = (stats["failures"] / stats["total"]) * 100
+            report.append(f"- {component}: {stats['failures']} fallbacks out of {stats['total']} tests ({failure_rate:.1f}% failure rate)")
+    
+    # Error type summary
+    report.append("\n## Error Types")
+    for error_type, count in results["error_types"].items():
+        if count > 0:
+            report.append(f"- {error_type}: {count} occurrences")
+    
+    # Configuration patterns
+    report.append("\n## Configuration Patterns")
+    report.append("Configurations with fallbacks:")
+    
+    # Group by config
+    config_failures = {}
+    for failure in results["failures"]:
+        config = failure["config"]
+        if config not in config_failures:
+            config_failures[config] = []
+        config_failures[config].append(failure)
+    
+    for config, failures in config_failures.items():
+        report.append(f"\n### {config}")
+        report.append(f"- Total fallbacks: {len(failures)}")
+        
+        # Group by error type within config
+        error_types = {}
+        for failure in failures:
+            error_type = failure["error_type"]
+            if error_type not in error_types:
+                error_types[error_type] = []
+            error_types[error_type].append(failure)
+        
+        for error_type, type_failures in error_types.items():
+            report.append(f"- {error_type}: {len(type_failures)} occurrences")
+    
+    # Recommendations based on patterns
+    report.append("\n## Recommendations")
+    
+    if results["error_types"]["nested_object_types"] > 0:
+        report.append("- Fix nested object types errors by using `strict=False` when converting pandas to polars")
+    
+    if results["error_types"]["original_order"] > 0:
+        report.append("- Fix original_order errors by preserving row indices when working with polars DataFrames")
+    
+    if results["error_types"]["cross_join_keys"] > 0:
+        report.append("- Fix cross join errors by using proper cross join syntax in polars (don't pass join keys)")
+    
+    return "\n".join(report)
+
+
+def run_fallback_report() -> bool:
+    """
+    Run the fallback tests and generate a comprehensive report of the fallbacks.
+    
+    Returns:
+        True if the report was generated successfully
+    """
+    print("📊 Running fallback tests and generating report...")
+    
+    # Run the fallback tests with additional args to capture all output
+    success, stdout, stderr = run_pytest(
+        ["tests/test_fallback_comprehensive.py"], 
+        "Running fallback detection tests", 
+        capture_output=True,
+        extra_args=["-v"]
+    )
+    
+    # Combine stdout and stderr
+    output = stdout + stderr
+    
+    # Parse the output
+    results = parse_fallback_test_output(output)
+    
+    # Generate the report
+    report = generate_fallback_report(results)
+    
+    # Write to file
+    report_path = Path("FALLBACK_REPORT.md")
+    report_path.write_text(report)
+    
+    print(f"\n📋 Fallback Report Generated: {report_path}")
+    print("Here's a summary of the findings:")
+    print(f"- Overall success rate: {results['success_rate']:.1f}%")
+    print(f"- Total fallbacks detected: {len(results['failures'])}")
+    
+    for component, stats in results["component_stats"].items():
+        if stats["total"] > 0:
+            failure_rate = (stats["failures"] / stats["total"]) * 100
+            print(f"- {component}: {failure_rate:.1f}% failure rate")
+    
+    return True
 
 
 # Define test categories and their tests
@@ -360,6 +592,11 @@ FALLBACK_TESTS.add_test(
     "Running all fallback detection tests and generating report",
     "documentation"
 )
+FALLBACK_TESTS.add_test(
+    "fallback_report", 
+    ["tests/test_fallback_comprehensive.py"], 
+    "Generating fallback report from comprehensive tests"
+)
 
 # Benchmark tests
 BENCHMARK_TESTS.add_test(
@@ -424,7 +661,8 @@ def run_all_tests(parallel=False, coverage=False, markers=None) -> bool:
             unique_files.append(file)
     
     description = "Running all tests"
-    return run_pytest(unique_files, description, parallel, coverage, markers)
+    success, _, _ = run_pytest(unique_files, description, parallel, coverage, markers)
+    return success
 
 
 def run_tests_by_category(category_name: str, parallel=False, coverage=False, markers=None) -> bool:
@@ -439,7 +677,8 @@ def run_tests_by_category(category_name: str, parallel=False, coverage=False, ma
     all_test_files = list(category.get_all_test_files())
     
     description = f"Running all {category.description.lower()}"
-    return run_pytest(all_test_files, description, parallel, coverage, markers)
+    success, _, _ = run_pytest(all_test_files, description, parallel, coverage, markers)
+    return success
 
 
 def run_specific_test(category_name: str, test_name: str, 
@@ -455,8 +694,13 @@ def run_specific_test(category_name: str, test_name: str,
         print(f"❌ Unknown test in category {category_name}: {test_name}")
         return False
     
+    # Special case for fallback report
+    if category_name == "fallback" and test_name == "fallback_report":
+        return run_fallback_report()
+    
     test_files, description, specific_marker = category.test_functions[test_name]
-    return run_pytest(test_files, description, parallel, coverage, markers, specific_marker)
+    success, _, _ = run_pytest(test_files, description, parallel, coverage, markers, specific_marker)
+    return success
 
 
 def run_all_benchmarks(parallel=False) -> bool:
@@ -483,6 +727,7 @@ def print_test_summary(categories=None):
     print("   python run_tests.py --basic-all")
     print("   python run_tests.py --fallback comprehensive_fallback")
     print("   python run_tests.py --benchmark performance --parallel")
+    print("   python run_tests.py --fallback fallback_report")
 
 
 def main():
@@ -515,6 +760,7 @@ Examples:
   python run_tests.py --smoke             # Run quick smoke test
   python run_tests.py --report            # Generate comprehensive report
   python run_tests.py --list              # List all available tests
+  python run_tests.py --fallback fallback_report  # Generate fallback detection report
         """
     )
     
@@ -532,7 +778,7 @@ Examples:
     parser.add_argument("--advanced", metavar="TEST", help="Run specific advanced test: edge_cases, segmentation, integration, no_reload")
     parser.add_argument("--polars", metavar="TEST", help="Run specific Polars test: polars_engine")
     parser.add_argument("--comprehensive", metavar="TEST", help="Run specific comprehensive test: comprehensive_all, config_combinations, comprehensive_edge")
-    parser.add_argument("--fallback", metavar="TEST", help="Run specific fallback test: fallback_detection, path_analysis_fix, comprehensive_fallback, all_fallback")
+    parser.add_argument("--fallback", metavar="TEST", help="Run specific fallback test: fallback_detection, path_analysis_fix, comprehensive_fallback, all_fallback, fallback_report")
     parser.add_argument("--benchmark", metavar="TEST", help="Run specific benchmark: performance, comprehensive_performance, data_integrity, polars_fallback")
     
     # Specific named tests for backward compatibility
@@ -542,12 +788,14 @@ Examples:
     parser.add_argument("--validate", action="store_true", help="Validate test files")
     parser.add_argument("--report", action="store_true", help="Generate a comprehensive test report")
     parser.add_argument("--list", action="store_true", help="List all available tests with descriptions")
+    parser.add_argument("--fallback-report", action="store_true", help="Generate fallback detection report")
     
     # Test execution options
     parser.add_argument("--parallel", action="store_true", help="Run tests in parallel")
     parser.add_argument("--coverage", action="store_true", help="Generate coverage report")
     parser.add_argument("--marker", action="append", help="Run tests with specific marker (can be used multiple times)")
     parser.add_argument("--quiet", action="store_true", help="Less verbose output")
+    parser.add_argument("--no-capture", action="store_true", help="Don't capture output, show all test output directly")
     
     args = parser.parse_args()
     
@@ -575,6 +823,11 @@ Examples:
     
     success = True
     actions_performed = False
+    
+    # Generate fallback report if requested
+    if args.fallback_report:
+        success = run_fallback_report() and success
+        actions_performed = True
     
     # Run category groups
     if args.basic_all:

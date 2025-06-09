@@ -19,13 +19,13 @@
 ## Detailed Fallback Report by Configuration
 | Funnel Order | Reentry Mode | Counting Method | Component | Fallback | Error Types |
 |-------------|-------------|----------------|-----------|----------|-------------|
-| ordered | first_only | event_totals | path_analysis | ✓ Yes | original_order, nested_object_types |
+| ordered | first_only | event_totals | path_analysis | ✓ Yes | nested_object_types, original_order |
 | ordered | first_only | event_totals | time_to_convert | ✗ No |  |
 | ordered | first_only | event_totals | cohort_analysis | ✗ No |  |
-| ordered | first_only | unique_pairs | path_analysis | ✓ Yes | original_order, nested_object_types |
+| ordered | first_only | unique_pairs | path_analysis | ✓ Yes | nested_object_types, original_order |
 | ordered | first_only | unique_pairs | time_to_convert | ✗ No |  |
 | ordered | first_only | unique_pairs | cohort_analysis | ✗ No |  |
-| ordered | first_only | unique_users | path_analysis | ✓ Yes | original_order, nested_object_types |
+| ordered | first_only | unique_users | path_analysis | ✓ Yes | nested_object_types, original_order |
 | ordered | first_only | unique_users | time_to_convert | ✗ No |  |
 | ordered | first_only | unique_users | cohort_analysis | ✗ No |  |
 | ordered | optimized_reentry | event_totals | path_analysis | ✓ Yes | nested_object_types |
@@ -37,13 +37,13 @@
 | ordered | optimized_reentry | unique_users | path_analysis | ✓ Yes | nested_object_types |
 | ordered | optimized_reentry | unique_users | time_to_convert | ✗ No |  |
 | ordered | optimized_reentry | unique_users | cohort_analysis | ✗ No |  |
-| unordered | first_only | event_totals | path_analysis | ✓ Yes | original_order, nested_object_types |
+| unordered | first_only | event_totals | path_analysis | ✓ Yes | nested_object_types, original_order |
 | unordered | first_only | event_totals | time_to_convert | ✗ No |  |
 | unordered | first_only | event_totals | cohort_analysis | ✗ No |  |
-| unordered | first_only | unique_pairs | path_analysis | ✓ Yes | original_order, nested_object_types |
+| unordered | first_only | unique_pairs | path_analysis | ✓ Yes | nested_object_types, original_order |
 | unordered | first_only | unique_pairs | time_to_convert | ✗ No |  |
 | unordered | first_only | unique_pairs | cohort_analysis | ✗ No |  |
-| unordered | first_only | unique_users | path_analysis | ✓ Yes | original_order, nested_object_types |
+| unordered | first_only | unique_users | path_analysis | ✓ Yes | nested_object_types, original_order |
 | unordered | first_only | unique_users | time_to_convert | ✗ No |  |
 | unordered | first_only | unique_users | cohort_analysis | ✗ No |  |
 | unordered | optimized_reentry | event_totals | path_analysis | ✓ Yes | cross_join_keys, nested_object_types |
