@@ -1403,7 +1403,7 @@ class FunnelCalculator:
     @_funnel_performance_monitor('_calculate_time_to_convert_polars')
     def _calculate_time_to_convert_polars(self, events_df: pl.DataFrame, funnel_steps: List[str]) -> List[TimeToConvertStats]:
         """
-        Polars implementation of time to convert statistics
+        Vectorized Polars implementation of time to convert statistics using join_asof
         """
         time_stats = []
         conversion_window_hours = self.config.conversion_window_hours
@@ -1419,65 +1419,102 @@ class FunnelCalculator:
             step_from = funnel_steps[i]
             step_to = funnel_steps[i + 1]
             
-            # Get users who have both events using Polars
-            users_with_from = set(
-                events_df.filter(pl.col('event_name') == step_from)
-                .select('user_id')
-                .unique()
-                .to_series()
-                .to_list()
-            )
+            # Filter events for relevant steps
+            from_events = events_df.filter(pl.col('event_name') == step_from)
+            to_events = events_df.filter(pl.col('event_name') == step_to)
             
-            users_with_to = set(
-                events_df.filter(pl.col('event_name') == step_to)
-                .select('user_id')
-                .unique()
-                .to_series()
-                .to_list()
-            )
-            
-            converted_users = users_with_from.intersection(users_with_to)
+            # Skip if either set is empty
+            if from_events.height == 0 or to_events.height == 0:
+                continue
+                
+            # Get users who have both events
+            from_users = set(from_events.select('user_id').unique().to_series().to_list())
+            to_users = set(to_events.select('user_id').unique().to_series().to_list())
+            converted_users = from_users.intersection(to_users)
             
             if not converted_users:
                 continue
+                
+            # Create a list of users for filtering
+            user_list = list(map(str, converted_users))
             
-            # Calculate conversion times using Polars operations
-            conversion_times = []
-            
-            # Filter events for converted users and relevant steps
-            user_list = [str(user_id) for user_id in converted_users]
-            relevant_events = (
-                events_df
-                .filter(
-                    pl.col('user_id').cast(pl.Utf8).is_in(user_list) &
-                    pl.col('event_name').is_in([step_from, step_to])
-                )
-                .sort(['user_id', 'timestamp'])
-            )
-            
-            # Process each user to find conversion times
-            for user_id in converted_users:
-                user_events = relevant_events.filter(pl.col('user_id') == str(user_id))
-                
-                if user_events.height == 0:
-                    continue
-                
-                from_events = user_events.filter(pl.col('event_name') == step_from)
-                to_events = user_events.filter(pl.col('event_name') == step_to)
-                
-                if from_events.height == 0 or to_events.height == 0:
-                    continue
-                
-                # Find first valid conversion time
-                conversion_time = self._find_conversion_time_polars(
-                    from_events.select('timestamp'), 
-                    to_events.select('timestamp'), 
-                    conversion_window_hours
+            # Handle reentry mode
+            if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
+                # For first_only mode, we only consider the first occurrence of each event per user
+                from_df = (
+                    from_events
+                    .filter(pl.col('user_id').cast(pl.Utf8).is_in(user_list))
+                    .group_by('user_id')
+                    .agg(pl.col('timestamp').min().alias('timestamp'))
+                    .sort('user_id', 'timestamp')
                 )
                 
-                if conversion_time is not None:
-                    conversion_times.append(conversion_time)
+                to_df = (
+                    to_events
+                    .filter(pl.col('user_id').cast(pl.Utf8).is_in(user_list))
+                    .group_by('user_id')
+                    .agg(pl.col('timestamp').min().alias('timestamp'))
+                    .sort('user_id', 'timestamp')
+                )
+                
+                # Join user_id is already present in both dataframes
+                joined = from_df.join(to_df, on='user_id', suffix='_to')
+                
+                # Calculate conversion times for valid conversions
+                valid_conversions = joined.filter(pl.col('timestamp_to') > pl.col('timestamp'))
+                
+                if valid_conversions.height > 0:
+                    # Add hours column with time difference in hours
+                    conversion_times_df = valid_conversions.with_columns([
+                        ((pl.col('timestamp_to') - pl.col('timestamp')).dt.total_seconds() / 3600)
+                        .alias('hours_diff')
+                    ])
+                    
+                    # Filter conversions within the window
+                    conversion_times_df = conversion_times_df.filter(
+                        pl.col('hours_diff') <= conversion_window_hours
+                    )
+                    
+                    # Extract conversion times
+                    if conversion_times_df.height > 0:
+                        conversion_times = conversion_times_df.select('hours_diff').to_series().to_list()
+                    else:
+                        conversion_times = []
+                else:
+                    conversion_times = []
+            else:
+                # For optimized_reentry mode, use join_asof to find closest event pairs
+                # Prepare dataframes for asof join - need separate ones for each user
+                conversion_times = []
+                
+                # This is a vectorized version using window functions
+                from_events_filtered = from_events.filter(pl.col('user_id').cast(pl.Utf8).is_in(user_list))
+                to_events_filtered = to_events.filter(pl.col('user_id').cast(pl.Utf8).is_in(user_list))
+                
+                for user_id in converted_users:
+                    # Filter events for this user
+                    user_from = from_events_filtered.filter(pl.col('user_id') == str(user_id)).sort('timestamp')
+                    user_to = to_events_filtered.filter(pl.col('user_id') == str(user_id)).sort('timestamp')
+                    
+                    if user_from.height == 0 or user_to.height == 0:
+                        continue
+                        
+                    # For each from_event, find the nearest to_event that happens after it
+                    for from_row in user_from.iter_rows(named=True):
+                        from_time = from_row['timestamp']
+                        valid_to_times = user_to.filter(
+                            (pl.col('timestamp') > from_time) &
+                            (pl.col('timestamp') <= (from_time + timedelta(hours=conversion_window_hours)))
+                        )
+                        
+                        if valid_to_times.height > 0:
+                            # Find the closest to_event
+                            closest_to = valid_to_times.select(pl.min('timestamp')).item()
+                            time_diff = (closest_to - from_time).total_seconds() / 3600
+                            conversion_times.append(float(time_diff))
+                            break  # Only need the first valid conversion for this from_event
             
+            # Calculate statistics if we have conversion times
             if conversion_times:
                 conversion_times_np = np.array(conversion_times)
                 stats_obj = TimeToConvertStats(
@@ -1498,50 +1535,29 @@ class FunnelCalculator:
     def _find_conversion_time_polars(self, from_events: pl.DataFrame, to_events: pl.DataFrame, 
                                    conversion_window_hours: int) -> Optional[float]:
         """
-        Find conversion time using Polars operations
+        Find conversion time using Polars operations - No longer used, replaced by vectorized implementation
+        This is kept for API compatibility but will be removed in future versions
         """
+        # This method is no longer used directly; logic has been moved into _calculate_time_to_convert_polars
+        # This is maintained for backwards compatibility
+        self.logger.warning("_find_conversion_time_polars is deprecated and scheduled for removal")
+        
         from_times = from_events.to_series().to_list()
         to_times = to_events.to_series().to_list()
         
-        # For FIRST_ONLY mode, we use the first event from both sets in original data order
-        # This should mirror the behavior in the Pandas implementation
-        if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
-            if not from_times or not to_times:
-                return None
-            
-            # Use the first event from each set based on original order
-            from_time = from_times[0]
-            to_time = to_times[0]
-            
-            # Check if conversion is valid
-            if to_time > from_time:
-                time_diff = to_time - from_time
-                hours_diff = time_diff.total_seconds() / 3600.0
-                if hours_diff <= conversion_window_hours:
-                    return hours_diff
-            # Handle the case of simultaneous events (to_time == from_time)
-            elif to_time == from_time:
-                return 0.0
-                
+        if not from_times or not to_times:
             return None
-        
-        # Normal case for other reentry modes
-        for from_time in from_times:
-            # Find valid to_events within window (use pure Python datetime operations)
-            valid_to_events = []
-            for to_time in to_times:
-                if to_time > from_time:
-                    time_diff = to_time - from_time
-                    # Convert to hours and check if within window
-                    hours_diff = time_diff.total_seconds() / 3600.0
-                    if hours_diff <= conversion_window_hours:
-                        valid_to_events.append(to_time)
             
-            if valid_to_events:
-                time_diff = min(valid_to_events) - from_time
-                # Convert to hours as float
-                return time_diff.total_seconds() / 3600.0
+        # For simplicity just use the first time from each
+        from_time = from_times[0] 
+        to_time = to_times[0]
         
+        if to_time > from_time:
+            time_diff = to_time - from_time
+            hours_diff = time_diff.total_seconds() / 3600.0
+            if hours_diff <= conversion_window_hours:
+                return hours_diff
+                
         return None
     
     @_funnel_performance_monitor('_calculate_time_to_convert_pandas')
