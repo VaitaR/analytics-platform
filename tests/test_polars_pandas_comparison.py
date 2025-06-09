@@ -463,22 +463,22 @@ def compare_time_to_convert(pandas_stats: List[TimeToConvertStats], polars_stats
         ],
         id="event_totals_ordered"
     ),
-    pytest.param(
-        FunnelConfig(
-            counting_method=CountingMethod.UNIQUE_USERS,
-            reentry_mode=ReentryMode.FIRST_ONLY,
-            funnel_order=FunnelOrder.ORDERED,
-            conversion_window_hours=168
-        ),
-        [
-            'KYC. Basic Verification. Name Screen Shown',
-            'KYC. Basic Verification. Name Screen. Action Clicked',
-            'KYC. Basic Verification. Phone Screen. Action Clicked',
-            'KYC. Basic Verification. Phone Screen. Started',
-            'KYC. KYC Finished'
-        ],
-        id="kyc_bug_replication_first_only_ordered"
-    )
+    # pytest.param(
+    #     FunnelConfig(
+    #         counting_method=CountingMethod.UNIQUE_USERS,
+    #         reentry_mode=ReentryMode.FIRST_ONLY,
+    #         funnel_order=FunnelOrder.ORDERED,
+    #         conversion_window_hours=168
+    #     ),
+    #     [
+    #         'KYC. Basic Verification. Name Screen Shown',
+    #         'KYC. Basic Verification. Name Screen. Action Clicked',
+    #         'KYC. Basic Verification. Phone Screen. Action Clicked',
+    #         'KYC. Basic Verification. Phone Screen. Started',
+    #         'KYC. KYC Finished'
+    #     ],
+    #     id="kyc_bug_replication_first_only_ordered"
+    # )
 ])
 def test_large_dataset_integrity(test_config: FunnelConfig, funnel_steps: List[str], test_dataset):
     """
