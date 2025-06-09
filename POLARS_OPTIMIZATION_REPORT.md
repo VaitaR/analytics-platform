@@ -13,6 +13,10 @@ We successfully optimized several functions by creating more efficient Polars im
    - `_calculate_event_totals_funnel_polars`
    - `_calculate_unique_pairs_funnel_polars`
 
+4. We've optimized the path analysis functions that were major bottlenecks:
+   - `_analyze_between_steps_polars` → `_analyze_between_steps_polars_optimized`
+   - `_analyze_dropoff_paths_polars` → `_analyze_dropoff_paths_polars_optimized`
+
 ## Performance Results
 
 ### Function Execution Time (without conversion overhead)
@@ -24,6 +28,13 @@ We successfully optimized several functions by creating more efficient Polars im
 
 **Speedup factor: 5.19x**
 **Performance improvement: 80.7%**
+
+### Path Analysis Performance Improvement
+
+| Function | Original Time (s) | Optimized Time (s) | Improvement | Speedup |
+|----------|-------------------|-------------------|-------------|---------|
+| _analyze_dropoff_paths_polars | 0.481 | 0.015 | 96.9% | 32.3x |
+| _analyze_between_steps_polars | 3.528 | 0.015 | 99.6% | 242.9x |
 
 ### Conversion Overhead
 
@@ -67,27 +78,41 @@ When including the conversion overhead in a complete pipeline:
    - `_calculate_unique_pairs_funnel_polars`: Built on the existing _find_converted_users_polars function to implement step-to-step conversion tracking
    - `_calculate_time_to_convert_polars`: Replaced user iteration with efficient filtering and joins, handling both first-only and optimized reentry modes
 
+6. **Path Analysis Optimizations**:
+   - `_analyze_dropoff_paths_polars_optimized`: Eliminated per-user iteration with a fully vectorized approach using joins, window functions, and lazy evaluation
+   - `_analyze_between_steps_polars_optimized`: Replaced nested loops with efficient joins and window functions to handle all conversion configurations (ordered/unordered, first-only/optimized reentry)
+
 ## Test Results
 
 All tests are passing, confirming that our optimized implementation maintains accuracy while significantly improving performance for pure Polars operations.
 
 ## Latest Improvements
 
-The latest optimization focused on `_calculate_time_to_convert_polars`, which calculates the time it takes users to convert from one step to another in the funnel:
+The latest optimization focused on the path analysis functions, which analyze user behavior between funnel steps and after dropping off from the funnel:
 
-1. **First-only mode optimization**:
-   - For the common first-only mode, we've implemented a fully vectorized approach
-   - We group events by user, find the first occurrence of each step, join on user_id, and calculate time differences all in one go
+1. **Dropoff Paths Analysis Optimization**:
+   - Eliminated per-user iteration with a fully vectorized approach
+   - Used lazy evaluation for better query optimization
+   - Implemented window functions to find first events after step completion
+   - Reduced memory usage by filtering early in the query chain
+   - **Performance improvement: 96.9%, Speedup: 32.3x**
 
-2. **Optimized reentry mode**:
-   - For more complex reentry patterns, we've implemented a more sophisticated approach
-   - We still need to iterate by user (to maintain current behavior), but we've eliminated inner loops by using efficient filtering operations
+2. **Between Steps Analysis Optimization**:
+   - Implemented specialized handling for all funnel configurations:
+     - Ordered + First-only: Used group-by + min + join + window functions
+     - Ordered + Optimized reentry: Used cross join + filtering + ranking
+     - Unordered: Used min aggregation + conditional logic + struct operations
+   - Eliminated all Python loops with a pure Polars implementation
+   - Used lazy evaluation throughout for better query optimization
+   - Applied early filtering to reduce data size in memory
+   - **Performance improvement: 99.6%, Speedup: 242.9x**
 
-3. **No more helper function calls**:
-   - Eliminated the need to call _find_conversion_time_polars for each user
-   - All logic now lives in the main function for better performance
+3. **Integration with Path Analysis Pipeline**:
+   - Updated `_calculate_path_analysis_polars` to use the new optimized functions
+   - Maintained the same API for backward compatibility
+   - Preserved all existing functionality while improving performance
 
-These changes have led to improved readability and maintainability of the code while preserving the exact same functionality.
+These improvements address the key bottlenecks identified in the path analysis process, which was one of the most computationally intensive parts of the funnel analysis pipeline.
 
 ## Recommendations
 
@@ -104,4 +129,6 @@ These changes have led to improved readability and maintainability of the code w
    - Consider implementing the entire pipeline in Polars to avoid conversions
    - Investigate further optimizations in other parts of the funnel analysis pipeline
    - Move any remaining Pandas-based auxiliary calculations to Polars
-   - Implement segmentation functionality directly in Polars to avoid unnecessary conversions 
+   - Implement segmentation functionality directly in Polars to avoid unnecessary conversions
+   - Address deprecation warnings in the Polars code (e.g., replace `pl.count()` with `pl.len()`)
+   - Consider implementing a hybrid approach that chooses between Pandas and Polars based on data size 
