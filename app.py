@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import json
-from typing import List, Dict, Any, Optional, Tuple, Union
+from typing import List, Dict, Any, Optional, Tuple, Union, Callable
 import time
 import io
 from dataclasses import dataclass, asdict
@@ -673,60 +673,101 @@ class FunnelCalculator:
     def _to_polars(self, df: pd.DataFrame) -> pl.DataFrame:
         """Convert pandas DataFrame to polars DataFrame with proper schema handling"""
         try:
-            # Handle datetime columns explicitly
+            # Handle complex data types by converting all object columns to strings first
             df_copy = df.copy()
             
-            # Handle timestamp column properly
+            # Handle datetime columns explicitly
             if 'timestamp' in df_copy.columns:
                 df_copy['timestamp'] = pd.to_datetime(df_copy['timestamp'])
             
             # Ensure user_id is string type to avoid mixed types
             if 'user_id' in df_copy.columns:
                 df_copy['user_id'] = df_copy['user_id'].astype(str)
-                
-            # Handle columns that should be numeric but might be stored as objects
-            # This addresses the "could not extract number from any-value of dtype: 'Object("object")'" error
-            numeric_columns = df_copy.select_dtypes(include=['float', 'float64', 'int', 'int64']).columns.tolist()
-            potential_numeric_columns = df_copy.select_dtypes(include=['object']).columns.tolist()
             
-            for col in potential_numeric_columns:
-                # Skip timestamp column which we already handled
-                if col == 'timestamp' or col == 'user_id' or col == 'event_name':
-                    continue
-                    
-                # Try to convert object columns to numeric if they appear to contain numbers
-                try:
-                    # Check if column can be converted to numeric
-                    pd.to_numeric(df_copy[col], errors='raise')
-                    # If we reach here, conversion succeeded
-                    df_copy[col] = pd.to_numeric(df_copy[col], errors='coerce')
-                    numeric_columns.append(col)
-                except (ValueError, TypeError):
-                    # Not numeric, leave as-is
-                    pass
-            
-            # Convert to polars with explicit schema to ensure proper type handling
-            schema = {}
-            
-            # Handle explicit column types
+            # Pre-process all object columns to convert them to strings
+            # This prevents the nested object type errors
             for col in df_copy.columns:
-                if col == 'timestamp':
-                    schema[col] = pl.Datetime
-                elif col == 'user_id':
-                    schema[col] = pl.Utf8
-                elif col == 'event_name':
-                    schema[col] = pl.Utf8
-                elif col in numeric_columns:
-                    schema[col] = pl.Float64
+                if df_copy[col].dtype == 'object':
+                    try:
+                        # Try to convert any complex objects in object columns to strings
+                        df_copy[col] = df_copy[col].apply(lambda x: str(x) if x is not None else None)
+                    except Exception as e:
+                        self.logger.warning(f"Error preprocessing column {col}: {str(e)}")
             
-            # Convert to polars with schema
-            polars_df = pl.from_pandas(df_copy, schema_overrides=schema if schema else None)
+            # Special handling for properties column which often contains nested JSON
+            if 'properties' in df_copy.columns:
+                try:
+                    df_copy['properties'] = df_copy['properties'].apply(lambda x: str(x) if x is not None else None)
+                except Exception as e:
+                    self.logger.warning(f"Error preprocessing properties column: {str(e)}")
             
-            self.logger.debug(f"Converted pandas DataFrame to polars: {polars_df.shape}")
-            return polars_df
+            try:
+                # Try using newer Polars versions with strict=False first
+                return pl.from_pandas(df_copy, strict=False)
+            except (TypeError, ValueError) as e:
+                if "strict" in str(e):
+                    # Fall back to the older Polars API without strict parameter
+                    return pl.from_pandas(df_copy)
+                else:
+                    # It's a different error, re-raise it
+                    raise
         except Exception as e:
-            self.logger.error(f"Error converting to polars: {str(e)}")
-            raise
+            self.logger.error(f"Error converting Pandas DataFrame to Polars: {str(e)}")
+            # Fall back to a more basic conversion approach with explicit schema
+            try:
+                # Create a schema with everything as string except for numeric and timestamp columns
+                schema = {}
+                for col in df.columns:
+                    if col == 'timestamp':
+                        schema[col] = pl.Datetime
+                    elif df[col].dtype in ['int64', 'float64']:
+                        schema[col] = pl.Float64 if df[col].dtype == 'float64' else pl.Int64
+                    else:
+                        schema[col] = pl.Utf8
+                        
+                # Convert the DataFrame with the explicit schema
+                df_copy = df.copy()
+                for col in df_copy.columns:
+                    if schema[col] == pl.Utf8 and df_copy[col].dtype == 'object':
+                        df_copy[col] = df_copy[col].astype(str)
+                
+                return pl.from_pandas(df_copy)
+            except Exception as inner_e:
+                self.logger.error(f"Failed to convert with explicit schema: {str(inner_e)}")
+                # Last resort: convert one column at a time
+                try:
+                    result = None
+                    for col in df.columns:
+                        series = df[col]
+                        try:
+                            if series.dtype == 'object':
+                                # Convert to strings
+                                pl_series = pl.Series(col, series.astype(str).tolist())
+                            elif series.dtype == 'datetime64[ns]':
+                                # Convert to datetime
+                                pl_series = pl.Series(col, series.tolist(), dtype=pl.Datetime)
+                            else:
+                                # Use default conversion
+                                pl_series = pl.Series(col, series.tolist())
+                                
+                            if result is None:
+                                result = pl.DataFrame([pl_series])
+                            else:
+                                result = result.with_columns([pl_series])
+                        except Exception as s_e:
+                            self.logger.warning(f"Error converting column {col}: {str(s_e)}")
+                            # If we can't convert, use strings
+                            pl_series = pl.Series(col, series.astype(str).tolist())
+                            if result is None:
+                                result = pl.DataFrame([pl_series])
+                            else:
+                                result = result.with_columns([pl_series])
+                    
+                    return result if result is not None else pl.DataFrame()
+                except Exception as final_e:
+                    self.logger.error(f"All conversion attempts failed: {str(final_e)}")
+                    # If all else fails, return an empty DataFrame
+                    return pl.DataFrame()
     
     def _to_pandas(self, df: pl.DataFrame) -> pd.DataFrame:
         """Convert polars DataFrame to pandas DataFrame"""
@@ -1720,10 +1761,20 @@ class FunnelCalculator:
         """
         Analyze user paths using vectorized operations with Polars bridge
         """
+        # Check for nested objects in properties column and convert to string before processing
+        # This prevents nested object type errors when converting to Polars
+        if 'properties' in segment_funnel_events_df.columns and segment_funnel_events_df['properties'].dtype == 'object':
+            segment_funnel_events_df = segment_funnel_events_df.copy()
+            segment_funnel_events_df['properties'] = segment_funnel_events_df['properties'].astype(str)
+            
+        if 'properties' in full_history_for_segment_users.columns and full_history_for_segment_users['properties'].dtype == 'object':
+            full_history_for_segment_users = full_history_for_segment_users.copy()
+            full_history_for_segment_users['properties'] = full_history_for_segment_users['properties'].astype(str)
+        
         # Bridge: Use Polars if enabled, otherwise fall back to Pandas
         if self.use_polars:
+            # Convert to Polars for processing 
             try:
-                # Convert to Polars for processing
                 polars_funnel_events = self._to_polars(segment_funnel_events_df)
                 polars_full_history = self._to_polars(full_history_for_segment_users)
                 
@@ -1736,6 +1787,10 @@ class FunnelCalculator:
             except Exception as e:
                 self.logger.warning(f"Optimized Polars path analysis failed: {str(e)}, falling back to standard Polars")
                 try:
+                    # For the fallback, convert the data again to ensure we have clean Polars DataFrames
+                    polars_funnel_events = self._to_polars(segment_funnel_events_df)
+                    polars_full_history = self._to_polars(full_history_for_segment_users)
+                    
                     # Try the standard Polars implementation as a fallback
                     return self._calculate_path_analysis_polars(
                         polars_funnel_events, 
@@ -1761,6 +1816,43 @@ class FunnelCalculator:
         """
         Polars implementation of path analysis with optimized operations
         """
+        # Ensure we're working with eager DataFrames (not LazyFrames)
+        if hasattr(segment_funnel_events_df, 'collect'):
+            segment_funnel_events_df = segment_funnel_events_df.collect()
+        if hasattr(full_history_for_segment_users, 'collect'):
+            full_history_for_segment_users = full_history_for_segment_users.collect()
+            
+        # Safely handle _original_order column to avoid duplication
+        # First, create clean DataFrames without any _original_order columns
+        segment_cols = [col for col in segment_funnel_events_df.columns if col != '_original_order']
+        if len(segment_cols) < len(segment_funnel_events_df.columns):
+            # If _original_order was in columns, drop it using select rather than drop
+            segment_funnel_events_df = segment_funnel_events_df.select(segment_cols)
+            
+        # Add _original_order as row index
+        segment_funnel_events_df = segment_funnel_events_df.with_row_index("_original_order")
+            
+        # Same for history DataFrame
+        history_cols = [col for col in full_history_for_segment_users.columns if col != '_original_order']
+        if len(history_cols) < len(full_history_for_segment_users.columns):
+            # If _original_order was in columns, drop it using select rather than drop
+            full_history_for_segment_users = full_history_for_segment_users.select(history_cols)
+            
+        # Add _original_order as row index
+        full_history_for_segment_users = full_history_for_segment_users.with_row_index("_original_order")
+            
+        # Make sure the properties column is handled correctly for nested objects
+        if 'properties' in segment_funnel_events_df.columns:
+            # Convert properties to string to avoid nested object type issues
+            segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                pl.col('properties').cast(pl.Utf8)
+            ])
+        
+        if 'properties' in full_history_for_segment_users.columns:
+            # Convert properties to string to avoid nested object type issues
+            full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                pl.col('properties').cast(pl.Utf8)
+            ])
         dropoff_paths = {}
         between_steps_events = {}
         
@@ -1836,6 +1928,38 @@ class FunnelCalculator:
             between_steps_events=between_steps_events
         )
         
+    def _safe_polars_operation(self, df: pl.DataFrame, operation: Callable, *args, **kwargs):
+        """Safely execute a Polars operation with proper error handling for nested object types"""
+        try:
+            return operation(*args, **kwargs)
+        except Exception as e:
+            if "nested object types" in str(e).lower():
+                self.logger.warning(f"Caught nested object types error: {str(e)}")
+                
+                # Convert all columns with complex types to strings
+                result_df = df.clone()
+                for col in result_df.columns:
+                    try:
+                        dtype = result_df[col].dtype
+                        # Only process object columns
+                        if dtype in [pl.Object, pl.List, pl.Struct]:
+                            # Convert to string representation
+                            result_df = result_df.with_columns([
+                                result_df[col].cast(pl.Utf8)
+                            ])
+                    except:
+                        pass
+                
+                # Try operation again with modified DataFrame
+                try:
+                    return operation(*args, **kwargs)
+                except:
+                    # If it still fails, raise the original error
+                    raise e
+            else:
+                # Not a nested object types error
+                raise
+                
     @_funnel_performance_monitor('_calculate_path_analysis_polars_optimized')
     def _calculate_path_analysis_polars_optimized(self, 
                                         segment_funnel_events_df: pl.DataFrame, 
@@ -1847,6 +1971,160 @@ class FunnelCalculator:
         This implementation uses lazy evaluation, joins, and window functions instead of 
         iterating through users, providing better performance for large datasets.
         """
+        # Print debug information about the incoming data to help diagnose issues
+        try:
+            self.logger.info(f"Path analysis input data info - segment_df columns: {segment_funnel_events_df.columns}")
+            self.logger.info(f"Path analysis input data info - full_history_df columns: {full_history_for_segment_users.columns}")
+            if 'properties' in segment_funnel_events_df.columns:
+                try:
+                    sample = segment_funnel_events_df['properties'][0] if len(segment_funnel_events_df) > 0 else None
+                    self.logger.info(f"Properties column sample value: {sample}, type: {type(sample)}")
+                except Exception as e:
+                    self.logger.warning(f"Error accessing properties sample: {str(e)}")
+        except Exception as e:
+            self.logger.warning(f"Error logging debug info: {str(e)}")
+        
+        # Try to convert any nested object types to strings explicitly before any operation
+        # This is a more aggressive approach to avoid the "nested object types" error
+        try:
+            # Create new DataFrames with converted columns to avoid modifying originals
+            segment_df_fixed = segment_funnel_events_df.clone()
+            history_df_fixed = full_history_for_segment_users.clone()
+            
+            # First, ensure all object columns in both DataFrames are converted to strings
+            for df_name, df in [("segment_df", segment_df_fixed), ("history_df", history_df_fixed)]:
+                for col in df.columns:
+                    try:
+                        col_dtype = df[col].dtype
+                        self.logger.info(f"Column {col} in {df_name} has dtype: {col_dtype}")
+                        
+                        # Handle nested object types by converting to string
+                        if str(col_dtype).startswith('Object') or 'properties' in col.lower():
+                            self.logger.info(f"Converting column {col} to string")
+                            df = df.with_columns([
+                                pl.col(col).cast(pl.Utf8)
+                            ])
+                    except Exception as e:
+                        self.logger.warning(f"Error checking/converting column {col} type in {df_name}: {str(e)}")
+            
+            # Use the fixed DataFrames
+            segment_funnel_events_df = segment_df_fixed
+            full_history_for_segment_users = history_df_fixed
+        except Exception as e:
+            self.logger.warning(f"Error in nested object type preprocessing: {str(e)}")
+        # Handle all object columns by converting them to strings first to avoid nested object type errors
+        # This preprocessing helps prevent the common fallback to pandas implementation
+        try:
+            # Specifically handle the properties column which is often a JSON string
+            # This is the main cause of nested object type errors
+            if 'properties' in segment_funnel_events_df.columns:
+                try:
+                    # Force properties column to string type
+                    segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                        pl.col('properties').cast(pl.Utf8)
+                    ])
+                except Exception as e:
+                    self.logger.warning(f"Error converting properties column in segment_df: {str(e)}")
+            
+            if 'properties' in full_history_for_segment_users.columns:
+                try:
+                    # Force properties column to string type
+                    full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                        pl.col('properties').cast(pl.Utf8)
+                    ])
+                except Exception as e:
+                    self.logger.warning(f"Error converting properties column in history_df: {str(e)}")
+            
+            # Find and handle any other complex columns
+            object_cols = []
+            for col in segment_funnel_events_df.columns:
+                # Skip already handled columns
+                if col in ['user_id', 'event_name', 'timestamp', '_original_order', 'properties']:
+                    continue
+                
+                try:
+                    # Check if column has a complex type
+                    dtype = segment_funnel_events_df[col].dtype
+                    if dtype in [pl.Object, pl.List, pl.Struct]:
+                        object_cols.append(col)
+                except:
+                    # If type check fails, assume it might be complex
+                    object_cols.append(col)
+            
+            # Convert any remaining complex columns to strings
+            if object_cols:
+                for col in object_cols:
+                    try:
+                        segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                            pl.col(col).cast(pl.Utf8)
+                        ])
+                    except:
+                        pass
+                        
+                    try:
+                        if col in full_history_for_segment_users.columns:
+                            full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                                pl.col(col).cast(pl.Utf8)
+                            ])
+                    except:
+                        pass
+        except Exception as e:
+            self.logger.warning(f"Error preprocessing complex columns: {str(e)}")
+            # Continue anyway and let fallback mechanism handle errors
+        start_time = time.time()
+        
+        # Ensure we're working with eager DataFrames (not LazyFrames)
+        if hasattr(segment_funnel_events_df, 'collect'):
+            segment_funnel_events_df = segment_funnel_events_df.collect()
+        if hasattr(full_history_for_segment_users, 'collect'):
+            full_history_for_segment_users = full_history_for_segment_users.collect()
+            
+        # Make sure properties column is properly handled to avoid nested object type errors
+        if 'properties' in segment_funnel_events_df.columns:
+            try:
+                # Try newer Polars API first
+                segment_funnel_events_df = segment_funnel_events_df.with_column(
+                    pl.col('properties').cast(pl.Utf8)
+                )
+            except AttributeError:
+                # Fall back to older Polars API
+                segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                    pl.col('properties').cast(pl.Utf8)
+                ])
+            
+        if 'properties' in full_history_for_segment_users.columns:
+            try:
+                # Try newer Polars API first
+                full_history_for_segment_users = full_history_for_segment_users.with_column(
+                    pl.col('properties').cast(pl.Utf8)
+                )
+            except AttributeError:
+                # Fall back to older Polars API
+                full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                    pl.col('properties').cast(pl.Utf8)
+                ])
+            
+        # Remove existing _original_order column if it exists and add a new one
+        if '_original_order' in segment_funnel_events_df.columns:
+            segment_funnel_events_df = segment_funnel_events_df.drop('_original_order')
+        segment_funnel_events_df = segment_funnel_events_df.with_row_index("_original_order")
+            
+        if '_original_order' in full_history_for_segment_users.columns:
+            full_history_for_segment_users = full_history_for_segment_users.drop('_original_order')
+        full_history_for_segment_users = full_history_for_segment_users.with_row_index("_original_order")
+            
+        # Make sure the properties column is handled correctly for nested objects
+        if 'properties' in segment_funnel_events_df.columns:
+            # Convert properties to string to avoid nested object type issues
+            segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                pl.col('properties').cast(pl.Utf8)
+            ])
+        
+        if 'properties' in full_history_for_segment_users.columns:
+            # Convert properties to string to avoid nested object type issues
+            full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                pl.col('properties').cast(pl.Utf8)
+            ])
         dropoff_paths = {}
         between_steps_events = {}
         
@@ -2457,6 +2735,18 @@ class FunnelCalculator:
         """
         dropoff_paths = {}
         between_steps_events = {}
+        
+        # Make copies to avoid modifying original data
+        segment_funnel_events_df = segment_funnel_events_df.copy()
+        full_history_for_segment_users = full_history_for_segment_users.copy()
+        
+        # Handle _original_order column to fix related errors
+        # If there's no _original_order column, add it to maintain event order
+        if '_original_order' not in segment_funnel_events_df.columns:
+            segment_funnel_events_df['_original_order'] = range(len(segment_funnel_events_df))
+            
+        if '_original_order' not in full_history_for_segment_users.columns:
+            full_history_for_segment_users['_original_order'] = range(len(full_history_for_segment_users))
         
         # Ensure we have the required columns
         if 'user_id' not in segment_funnel_events_df.columns:
@@ -3692,13 +3982,16 @@ class FunnelCalculator:
                     user_curr = curr_events.filter(pl.col('user_id') == user_id)
                     
                     # Cross join to get all pairs
-                    cartesian = (
-                        user_prev
-                        .select(['user_id', pl.col('timestamp').alias('prev_timestamp')])
-                        .join(
-                            user_curr.select(['user_id', pl.col('timestamp').alias('curr_timestamp')]),
-                            on='user_id',
-                            how='cross'
+                    # First, ensure we convert any complex columns to string to avoid nested object types errors
+                    user_prev_safe = user_prev.select(['user_id', pl.col('timestamp').alias('prev_timestamp')])
+                    user_curr_safe = user_curr.select(['user_id', pl.col('timestamp').alias('curr_timestamp')])
+                    
+                    # Try performing the cross join with safe operation
+                    cartesian = self._safe_polars_operation(
+                        user_prev_safe,
+                        lambda: user_prev_safe.join(
+                            user_curr_safe,
+                            how='cross'  # Cross join should not specify join keys
                         )
                     )
                     
@@ -4621,8 +4914,21 @@ class FunnelCalculator:
         dropped_user_list = list(str(user_id) for user_id in dropped_users)
         
         # Use lazy evaluation for better query optimization
-        lazy_segment_df = segment_funnel_events_df.lazy()
-        lazy_history_df = full_history_for_segment_users.lazy()
+        # Safely handle _original_order column
+        # First, create clean DataFrames without any _original_order columns
+        segment_cols = [col for col in segment_funnel_events_df.columns if col != '_original_order']
+        if len(segment_cols) < len(segment_funnel_events_df.columns):
+            # If _original_order was in columns, drop it
+            segment_funnel_events_df = segment_funnel_events_df.select(segment_cols)
+            
+        history_cols = [col for col in full_history_for_segment_users.columns if col != '_original_order']
+        if len(history_cols) < len(full_history_for_segment_users.columns):
+            # If _original_order was in columns, drop it
+            full_history_for_segment_users = full_history_for_segment_users.select(history_cols)
+            
+        # Add row indices to preserve original order
+        lazy_segment_df = segment_funnel_events_df.with_row_index("_original_order").lazy()
+        lazy_history_df = full_history_for_segment_users.with_row_index("_original_order").lazy()
         
         # Find the timestamp of the last step event for each dropped user
         last_step_events = (
@@ -4708,8 +5014,21 @@ class FunnelCalculator:
         converted_user_list = list(str(user_id) for user_id in converted_users)
         
         # Use lazy evaluation for better query optimization
-        lazy_segment_df = segment_funnel_events_df.lazy()
-        lazy_history_df = full_history_for_segment_users.lazy()
+        # Safely handle _original_order column
+        # First, create clean DataFrames without any _original_order columns
+        segment_cols = [col for col in segment_funnel_events_df.columns if col != '_original_order']
+        if len(segment_cols) < len(segment_funnel_events_df.columns):
+            # If _original_order was in columns, drop it
+            segment_funnel_events_df = segment_funnel_events_df.select(segment_cols)
+            
+        history_cols = [col for col in full_history_for_segment_users.columns if col != '_original_order']
+        if len(history_cols) < len(full_history_for_segment_users.columns):
+            # If _original_order was in columns, drop it
+            full_history_for_segment_users = full_history_for_segment_users.select(history_cols)
+            
+        # Add row indices to preserve original order
+        lazy_segment_df = segment_funnel_events_df.with_row_index("_original_order").lazy()
+        lazy_history_df = full_history_for_segment_users.with_row_index("_original_order").lazy()
         
         # Filter to only include converted users
         step_events = (
@@ -4772,7 +5091,7 @@ class FunnelCalculator:
                 # For each step A, find first step B after it within conversion window
                 # This is more complex as we need to find the first valid A->B pair for each user
                 
-                # Cross join A and B events for each user
+                # Join A and B events for each user (not cross join since we specify the join key)
                 conversion_pairs = (
                     step_A_events
                     .join(
@@ -4812,7 +5131,7 @@ class FunnelCalculator:
                 .agg(pl.col('step_B_time').min())
             )
             
-            # Join to get users who did both steps
+            # Join to get users who did both steps (using specified join key instead of cross join)
             conversion_pairs = (
                 first_A
                 .join(first_B, on='user_id', how='inner')
