@@ -28,8 +28,21 @@ import subprocess
 import argparse
 import re
 import json
+import tempfile
 from pathlib import Path
-from typing import List, Dict, Callable, Optional, Tuple, Set, Union, Any
+from typing import List, Dict, Callable, Optional, Tuple, Set, Union, Any, TypedDict
+
+
+class TestResult(TypedDict):
+    """Structured result of a test run."""
+    group: str
+    status: str  # 'SUCCESS', 'FAILURE', 'ERROR'
+    summary: str
+    passed: int
+    failed: int
+    skipped: int
+    duration: float
+    failed_tests: List[str]
 
 
 class TestCategory:
@@ -134,7 +147,7 @@ def run_pytest(test_files: List[str], description: str,
                specific_marker: Optional[str] = None,
                verbose: bool = True,
                capture_output: bool = True,
-               extra_args: Optional[List[str]] = None) -> Tuple[bool, str, str]:
+               extra_args: Optional[List[str]] = None) -> TestResult:
     """
     Run pytest with specified test files and options.
     
@@ -150,8 +163,12 @@ def run_pytest(test_files: List[str], description: str,
         extra_args: Additional pytest arguments
     
     Returns:
-        Tuple of (success, stdout, stderr)
+        TestResult: Structured information about the test run
     """
+    # Create a temporary file for the JSON report
+    with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as tmp_file:
+        json_report_file = tmp_file.name
+    
     cmd = ["python", "-m", "pytest"]
     
     # Add test files
@@ -180,6 +197,9 @@ def run_pytest(test_files: List[str], description: str,
             for marker in markers:
                 cmd.extend(["-m", marker])
     
+    # Add JSON report arguments
+    cmd.extend(["--json-report", f"--json-report-file={json_report_file}"])
+    
     # Add any extra arguments
     if extra_args:
         cmd.extend(extra_args)
@@ -195,27 +215,94 @@ def run_pytest(test_files: List[str], description: str,
     if specific_marker and not markers:
         full_description += f" with marker: {specific_marker}"
     
-    return run_command(cmd, full_description, capture_output)
+    # Run the command
+    success, stdout, stderr = run_command(cmd, full_description, capture_output)
+    
+    # Initialize default result
+    result = TestResult(
+        group=description,
+        status="SUCCESS" if success else "FAILURE",
+        summary="Unknown result",
+        passed=0,
+        failed=0,
+        skipped=0,
+        duration=0.0,
+        failed_tests=[]
+    )
+    
+    # Try to read the JSON report
+    try:
+        if os.path.exists(json_report_file):
+            with open(json_report_file, 'r') as f:
+                report_data = json.load(f)
+            
+            # Extract data from the report
+            summary = report_data.get('summary', {})
+            result['passed'] = summary.get('passed', 0)
+            result['failed'] = summary.get('failed', 0)
+            result['skipped'] = summary.get('skipped', 0)
+            result['duration'] = summary.get('duration', 0.0)
+            
+            # Update the summary text
+            result['summary'] = (
+                f"{result['passed']} passed, {result['failed']} failed, "
+                f"{result['skipped']} skipped in {result['duration']:.2f}s"
+            )
+            
+            # Extract failed test nodeids
+            result['failed_tests'] = [
+                test['nodeid'] for test in report_data.get('tests', [])
+                if test.get('outcome') == 'failed'
+            ]
+            
+            # Update status based on results
+            if result['failed'] > 0:
+                result['status'] = "FAILURE"
+            else:
+                result['status'] = "SUCCESS"
+            
+    except Exception as e:
+        print(f"❌ Error reading JSON report: {e}")
+        # Try to extract basic info from stdout/stderr if JSON parsing failed
+        result['summary'] = "Error parsing results"
+        if "failed" in stdout.lower() or "failed" in stderr.lower():
+            result['status'] = "FAILURE"
+    
+    # Delete the temporary JSON report file
+    try:
+        os.unlink(json_report_file)
+    except Exception:
+        pass
+    
+    return result
 
 
 def check_test_dependencies() -> bool:
     """Check if all test dependencies are installed."""
     print("🔍 Checking test dependencies...")
     
-    dependencies = ["pytest", "pandas", "numpy", "scipy", "polars"]
+    dependencies = ["pytest", "pandas", "numpy", "scipy", "polars", "pytest-json-report"]
     missing = []
     
     for dep in dependencies:
         try:
-            __import__(dep)
-            print(f"   ✅ {dep}")
-        except ImportError:
+            if dep.startswith("pytest-"):
+                # For pytest plugins, check differently
+                import pkg_resources
+                pkg_resources.require(dep)
+                print(f"   ✅ {dep}")
+            else:
+                __import__(dep)
+                print(f"   ✅ {dep}")
+        except (ImportError, pkg_resources.DistributionNotFound):
             print(f"   ❌ {dep}")
             missing.append(dep)
     
     if missing:
         print(f"\n❌ Missing dependencies: {', '.join(missing)}")
         print("   Install with: pip install -r requirements.txt")
+        if "pytest-json-report" in missing:
+            print("   For enhanced reporting, install: pip install pytest-json-report")
         return False
     
     print("✅ All dependencies available")
@@ -253,7 +340,7 @@ def validate_test_files() -> bool:
     return True
 
 
-def generate_test_report() -> bool:
+def generate_test_report() -> TestResult:
     """Generate a comprehensive test report."""
     print("📊 Generating comprehensive test report...")
     
@@ -267,7 +354,20 @@ def generate_test_report() -> bool:
         "-v"
     ]
     
-    success, _, _ = run_command(cmd, "Generating test report")
+    # Run the command
+    success, stdout, stderr = run_command(cmd, "Generating test report")
+    
+    # Create a TestResult
+    result = TestResult(
+        group="Comprehensive Report",
+        status="SUCCESS" if success else "FAILURE",
+        summary="Generated test report" if success else "Failed to generate test report",
+        passed=0,  # We don't have detailed info here
+        failed=0,
+        skipped=0,
+        duration=0.0,
+        failed_tests=[]
+    )
     
     if success:
         print("\n📋 Test Report Generated:")
@@ -275,7 +375,7 @@ def generate_test_report() -> bool:
         print("   📄 XML Coverage Report: coverage.xml")
         print("   📄 JUnit XML Report: test-results.xml")
     
-    return success
+    return result
 
 
 def parse_fallback_test_output(output: str) -> Dict[str, Any]:
@@ -439,47 +539,85 @@ def generate_fallback_report(results: Dict[str, Any]) -> str:
     return "\n".join(report)
 
 
-def run_fallback_report() -> bool:
+def run_fallback_report() -> TestResult:
     """
     Run the fallback tests and generate a comprehensive report of the fallbacks.
     
     Returns:
-        True if the report was generated successfully
+        TestResult with information about the test run
     """
     print("📊 Running fallback tests and generating report...")
     
-    # Run the fallback tests with additional args to capture all output
-    success, stdout, stderr = run_pytest(
-        ["tests/test_fallback_comprehensive.py"], 
-        "Running fallback detection tests", 
-        capture_output=True,
-        extra_args=["-v"]
-    )
+    # Create a temporary file for the test output
+    with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as tmp_file:
+        output_file = tmp_file.name
     
-    # Combine stdout and stderr
-    output = stdout + stderr
+    try:
+        # Run the fallback tests with custom output capture
+        cmd = [
+            "python", "-m", "pytest", "tests/test_fallback_comprehensive.py",
+            "-v", f"--capture=tee-sys", f"--log-cli-level=DEBUG"
+        ]
+        
+        # Run the command and capture output
+        success, stdout, stderr = run_command(cmd, "Running fallback detection tests", capture_output=True)
+        
+        # Save the output to a file
+        with open(output_file, 'w') as f:
+            f.write(stdout + "\n" + stderr)
+        
+        # Run the tests with pytest-json-report for structured result
+        result = run_pytest(
+            ["tests/test_fallback_comprehensive.py"], 
+            "fallback:fallback_report", 
+            extra_args=["-v"]
+        )
+        
+        # Parse the output from the file
+        with open(output_file, 'r') as f:
+            output = f.read()
+        
+        # If the test run was successful, generate the report
+        parsed_results = parse_fallback_test_output(output)
+        report = generate_fallback_report(parsed_results)
+        
+        # Write to file
+        report_path = Path("FALLBACK_REPORT.md")
+        report_path.write_text(report)
+        
+        print(f"\n📋 Fallback Report Generated: {report_path}")
+        print("Here's a summary of the findings:")
+        print(f"- Overall success rate: {parsed_results['success_rate']:.1f}%")
+        print(f"- Total fallbacks detected: {len(parsed_results['failures'])}")
+        
+        for component, stats in parsed_results["component_stats"].items():
+            if stats["total"] > 0:
+                failure_rate = (stats["failures"] / stats["total"]) * 100
+                print(f"- {component}: {failure_rate:.1f}% failure rate")
+        
+        # Update the result with report-specific information
+        result["summary"] += f" (Success rate: {parsed_results['success_rate']:.1f}%)"
+        
+    except Exception as e:
+        print(f"❌ Error generating fallback report: {e}")
+        result = TestResult(
+            group="fallback:fallback_report",
+            status="ERROR",
+            summary=f"Error generating fallback report: {str(e)}",
+            passed=0,
+            failed=1,
+            skipped=0,
+            duration=0.0,
+            failed_tests=["Failed to generate fallback report"]
+        )
     
-    # Parse the output
-    results = parse_fallback_test_output(output)
+    # Clean up the temporary file
+    try:
+        os.unlink(output_file)
+    except Exception:
+        pass
     
-    # Generate the report
-    report = generate_fallback_report(results)
-    
-    # Write to file
-    report_path = Path("FALLBACK_REPORT.md")
-    report_path.write_text(report)
-    
-    print(f"\n📋 Fallback Report Generated: {report_path}")
-    print("Here's a summary of the findings:")
-    print(f"- Overall success rate: {results['success_rate']:.1f}%")
-    print(f"- Total fallbacks detected: {len(results['failures'])}")
-    
-    for component, stats in results["component_stats"].items():
-        if stats["total"] > 0:
-            failure_rate = (stats["failures"] / stats["total"]) * 100
-            print(f"- {component}: {failure_rate:.1f}% failure rate")
-    
-    return True
+    return result
 
 
 # Define test categories and their tests
@@ -647,12 +785,19 @@ TEST_CATEGORIES = {
 }
 
 
-def run_all_tests(parallel=False, coverage=False, markers=None) -> bool:
+def run_all_tests(parallel=False, coverage=False, markers=None) -> TestResult:
     """Run all tests with optional configurations."""
     # Collect all test files from all categories
     all_test_files = []
     for category in TEST_CATEGORIES.values():
         all_test_files.extend(list(category.get_all_test_files()))
+    
+    # Add any test files that might not be explicitly listed in categories
+    tests_dir = Path("tests")
+    if tests_dir.exists():
+        for file_path in tests_dir.glob("test_*.py"):
+            if str(file_path) not in all_test_files:
+                all_test_files.append(str(file_path))
     
     # Remove any duplicates while preserving order
     unique_files = []
@@ -661,49 +806,81 @@ def run_all_tests(parallel=False, coverage=False, markers=None) -> bool:
             unique_files.append(file)
     
     description = "Running all tests"
-    success, _, _ = run_pytest(unique_files, description, parallel, coverage, markers)
-    return success
+    result = run_pytest(unique_files, description, parallel, coverage, markers)
+    return result
 
 
-def run_tests_by_category(category_name: str, parallel=False, coverage=False, markers=None) -> bool:
+def run_tests_by_category(category_name: str, parallel=False, coverage=False, markers=None) -> TestResult:
     """Run all tests in a specific category."""
     if category_name not in TEST_CATEGORIES:
+        result = TestResult(
+            group=f"Category: {category_name}",
+            status="ERROR",
+            summary=f"Unknown category: {category_name}",
+            passed=0,
+            failed=0,
+            skipped=0,
+            duration=0.0,
+            failed_tests=[f"ERROR: Unknown category {category_name}"]
+        )
         print(f"❌ Unknown test category: {category_name}")
-        return False
+        return result
     
     category = TEST_CATEGORIES[category_name]
     
     # Get all test files from this category
     all_test_files = list(category.get_all_test_files())
     
-    description = f"Running all {category.description.lower()}"
-    success, _, _ = run_pytest(all_test_files, description, parallel, coverage, markers)
-    return success
+    description = f"Category: {category_name}"
+    result = run_pytest(all_test_files, description, parallel, coverage, markers)
+    return result
 
 
 def run_specific_test(category_name: str, test_name: str, 
-                     parallel=False, coverage=False, markers=None) -> bool:
+                     parallel=False, coverage=False, markers=None) -> TestResult:
     """Run a specific test from a category."""
     if category_name not in TEST_CATEGORIES:
+        result = TestResult(
+            group=f"Category: {category_name}, Test: {test_name}",
+            status="ERROR",
+            summary=f"Unknown category: {category_name}",
+            passed=0,
+            failed=0,
+            skipped=0,
+            duration=0.0,
+            failed_tests=[f"ERROR: Unknown category {category_name}"]
+        )
         print(f"❌ Unknown test category: {category_name}")
-        return False
+        return result
     
     category = TEST_CATEGORIES[category_name]
     
     if test_name not in category.test_functions:
+        result = TestResult(
+            group=f"Category: {category_name}, Test: {test_name}",
+            status="ERROR",
+            summary=f"Unknown test in category {category_name}: {test_name}",
+            passed=0,
+            failed=0,
+            skipped=0,
+            duration=0.0,
+            failed_tests=[f"ERROR: Unknown test {test_name} in category {category_name}"]
+        )
         print(f"❌ Unknown test in category {category_name}: {test_name}")
-        return False
+        return result
     
     # Special case for fallback report
     if category_name == "fallback" and test_name == "fallback_report":
         return run_fallback_report()
     
     test_files, description, specific_marker = category.test_functions[test_name]
-    success, _, _ = run_pytest(test_files, description, parallel, coverage, markers, specific_marker)
-    return success
+    group_name = f"{category_name}:{test_name}"
+    
+    result = run_pytest(test_files, group_name, parallel, coverage, markers, specific_marker)
+    return result
 
 
-def run_all_benchmarks(parallel=False) -> bool:
+def run_all_benchmarks(parallel=False) -> TestResult:
     """Run all benchmark tests."""
     return run_tests_by_category("benchmark", parallel=parallel)
 
@@ -728,6 +905,104 @@ def print_test_summary(categories=None):
     print("   python run_tests.py --fallback comprehensive_fallback")
     print("   python run_tests.py --benchmark performance --parallel")
     print("   python run_tests.py --fallback fallback_report")
+
+
+def print_final_summary(test_results: List[TestResult]):
+    """
+    Print a nicely formatted final summary of all test runs.
+    
+    Args:
+        test_results: List of TestResult objects from all test runs
+    """
+    if not test_results:
+        print("\n⚠️ No tests were run!")
+        return
+    
+    print("\n" + "=" * 74)
+    print("==================== 📊 Final Test Results Summary ====================")
+    
+    # Print table header
+    print("Status     | Group                                 | Summary")
+    print("-" * 74)
+    
+    # Track overall status
+    overall_status = "SUCCESS"
+    failed_groups = []
+    
+    # Print each test result
+    for result in test_results:
+        # Format status with emoji
+        if result["status"] == "SUCCESS":
+            status_str = "✅ SUCCESS"
+        elif result["status"] == "FAILURE":
+            status_str = "❌ FAILURE"
+            overall_status = "FAILURE"
+            failed_groups.append(result)
+        else:
+            status_str = "⚠️ ERROR"
+            overall_status = "FAILURE"
+            failed_groups.append(result)
+        
+        # Truncate group name if too long
+        group = result["group"]
+        if len(group) > 35:
+            group = group[:32] + "..."
+        
+        # Print the row
+        print(f"{status_str:10} | {group:35} | {result['summary']}")
+    
+    print("-" * 74)
+    
+    # Print failed tests details if there are any
+    if failed_groups:
+        print("\n======================= 🔬 Failed Tests Details =======================")
+        
+        for result in failed_groups:
+            if result["failed_tests"]:
+                print(f"\n--- Group: {result['group']} ---")
+                for test in result["failed_tests"]:
+                    print(f"  - {test}")
+    
+    # Print overall status
+    print("\n" + "=" * 50)
+    if overall_status == "SUCCESS":
+        print("✅ Overall Status: ALL TESTS PASSED")
+    else:
+        print("❌ Overall Status: SOME TESTS FAILED")
+    
+    # Print machine-readable summary for LLM agents and automation
+    print_llm_agent_summary(test_results, overall_status)
+
+
+def print_llm_agent_summary(test_results: List[TestResult], overall_status: str):
+    """
+    Print a machine-readable JSON summary for LLM agents and automation.
+    
+    Args:
+        test_results: List of TestResult objects
+        overall_status: Overall status of all tests
+    """
+    # Build the summary object
+    summary = {
+        "overall_status": overall_status,
+        "total_runs": len(test_results),
+        "failed_runs_count": sum(1 for r in test_results if r["status"] != "SUCCESS"),
+        "failed_groups": []
+    }
+    
+    # Add details for failed groups
+    for result in test_results:
+        if result["status"] != "SUCCESS":
+            summary["failed_groups"].append({
+                "group": result["group"],
+                "summary": result["summary"],
+                "failed_tests": result["failed_tests"]
+            })
+    
+    # Print the summary block
+    print("\n--- LLM AGENT SUMMARY ---")
+    print(json.dumps(summary, indent=2))
+    print("--- END LLM AGENT SUMMARY ---")
 
 
 def main():
@@ -821,93 +1096,108 @@ Examples:
         if not validate_test_files():
             sys.exit(1)
     
-    success = True
+    # Track all test results
+    test_results = []
     actions_performed = False
     
     # Generate fallback report if requested
     if args.fallback_report:
-        success = run_fallback_report() and success
+        result = run_fallback_report()
+        test_results.append(result)
         actions_performed = True
     
     # Run category groups
     if args.basic_all:
-        success = run_tests_by_category("basic", args.parallel, args.coverage, args.marker) and success
+        result = run_tests_by_category("basic", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.advanced_all:
-        success = run_tests_by_category("advanced", args.parallel, args.coverage, args.marker) and success
+        result = run_tests_by_category("advanced", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.polars_all:
-        success = run_tests_by_category("polars", args.parallel, args.coverage, args.marker) and success
+        result = run_tests_by_category("polars", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.comprehensive_all:
-        success = run_tests_by_category("comprehensive", args.parallel, args.coverage, args.marker) and success
+        result = run_tests_by_category("comprehensive", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.fallback_all:
-        success = run_tests_by_category("fallback", args.parallel, args.coverage, args.marker) and success
+        result = run_tests_by_category("fallback", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.benchmarks:
-        success = run_all_benchmarks(args.parallel) and success
+        result = run_all_benchmarks(args.parallel)
+        test_results.append(result)
         actions_performed = True
     
     # Run specific tests from categories
     if args.basic:
-        success = run_specific_test("basic", args.basic, args.parallel, args.coverage, args.marker) and success
+        result = run_specific_test("basic", args.basic, args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.advanced:
-        success = run_specific_test("advanced", args.advanced, args.parallel, args.coverage, args.marker) and success
+        result = run_specific_test("advanced", args.advanced, args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.polars:
-        success = run_specific_test("polars", args.polars, args.parallel, args.coverage, args.marker) and success
+        result = run_specific_test("polars", args.polars, args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.comprehensive:
-        success = run_specific_test("comprehensive", args.comprehensive, args.parallel, args.coverage, args.marker) and success
+        result = run_specific_test("comprehensive", args.comprehensive, args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.fallback:
-        success = run_specific_test("fallback", args.fallback, args.parallel, args.coverage, args.marker) and success
+        result = run_specific_test("fallback", args.fallback, args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.benchmark:
-        success = run_specific_test("benchmark", args.benchmark, args.parallel, args.coverage, args.marker) and success
+        result = run_specific_test("benchmark", args.benchmark, args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     # Handle specific named tests for backward compatibility
     if args.smoke:
-        success = run_specific_test("utility", "smoke", args.parallel, args.coverage, args.marker) and success
+        result = run_specific_test("utility", "smoke", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.data_integrity:
-        success = run_specific_test("benchmark", "data_integrity", args.parallel, args.coverage, args.marker) and success
+        result = run_specific_test("benchmark", "data_integrity", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
         actions_performed = True
     
     if args.report:
-        success = generate_test_report() and success
+        result = generate_test_report()
+        test_results.append(result)
         actions_performed = True
     
     # If no specific tests are selected, run all tests (unless it's a marker run)
     if not actions_performed and not args.marker:
-        success = run_all_tests(args.parallel, args.coverage)
+        result = run_all_tests(args.parallel, args.coverage)
+        test_results.append(result)
     
-    # Print summary
-    print("\n" + "=" * 50)
+    # Print final summary
+    print_final_summary(test_results)
+    
+    # Determine exit code
+    success = all(result["status"] == "SUCCESS" for result in test_results)
+    
     if success:
-        print("✅ All tests completed successfully!")
         sys.exit(0)
     else:
-        print("❌ Some tests failed or encountered errors.")
-        print("\nNext steps:")
-        print("1. Review the test output above")
-        print("2. Check for any missing dependencies")
-        print("3. Verify test data and fixtures")
-        print("4. Run individual test categories to isolate issues")
         sys.exit(1)
 
 
