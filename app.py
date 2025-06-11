@@ -1370,6 +1370,89 @@ class FunnelCalculator:
             return empty_segments
         
         return segments if segments else {'All Users': events_df}
+        
+    @_funnel_performance_monitor('segment_events_data_polars')
+    def segment_events_data_polars(self, events_df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
+        """Segment events data based on configuration with optimized filtering using Polars"""
+        if not self.config.segment_by or not self.config.segment_values:
+            return {'All Users': events_df}
+        
+        segments = {}
+        # Extract property name correctly
+        if self.config.segment_by.startswith('event_properties_'):
+            prop_name = self.config.segment_by[len('event_properties_'):]
+        elif self.config.segment_by.startswith('user_properties_'):
+            prop_name = self.config.segment_by[len('user_properties_'):]
+        else:
+            prop_name = self.config.segment_by
+        
+        # Use expanded columns if available for faster filtering
+        expanded_col = f"{self.config.segment_by}_{prop_name}"
+        if expanded_col in events_df.columns:
+            # Use Polars filtering on expanded column
+            for segment_value in self.config.segment_values:
+                segment_df = events_df.filter(pl.col(expanded_col) == segment_value)
+                if segment_df.height > 0:
+                    segments[f"{prop_name}={segment_value}"] = segment_df
+        else:
+            # Fallback to JSON property filtering
+            prop_type = 'event_properties' if self.config.segment_by.startswith('event_') else 'user_properties'
+            for segment_value in self.config.segment_values:
+                segment_df = self._filter_by_property_polars_native(events_df, prop_name, segment_value, prop_type)
+                if segment_df.height > 0:
+                    segments[f"{prop_name}={segment_value}"] = segment_df
+        
+        # If specific segment values were requested but none found, return empty segments
+        if self.config.segment_values and not segments:
+            # Return empty segments for each requested value
+            empty_segments = {}
+            for segment_value in self.config.segment_values:
+                empty_segments[f"{prop_name}={segment_value}"] = pl.DataFrame(schema=events_df.schema)
+            return empty_segments
+        
+        return segments if segments else {'All Users': events_df}
+    
+    def _filter_by_property_polars_native(self, df: pl.DataFrame, prop_name: str, prop_value: str, prop_type: str) -> pl.DataFrame:
+        """Filter DataFrame by property value using native Polars operations"""
+        if prop_type not in df.columns:
+            return pl.DataFrame(schema=df.schema)
+            
+        # Check if there's an expanded column for this property - faster path
+        expanded_col = f"{prop_type}_{prop_name}"
+        if expanded_col in df.columns:
+            return df.filter(pl.col(expanded_col) == prop_value)
+        
+        # Filter nulls
+        filtered_df = df.filter(pl.col(prop_type).is_not_null())
+        
+        try:
+            # Create a more robust expression to handle JSON strings
+            # First attempt: Use JSON path expression to extract the property
+            return filtered_df.filter(
+                pl.col(prop_type).str.json_extract_scalar(f"$.{prop_name}") == prop_value
+            )
+        except Exception as e:
+            self.logger.warning(f"JSON path extraction failed: {str(e)}")
+            
+            try:
+                # Second attempt: Parse JSON and check field
+                return filtered_df.filter(
+                    pl.col(prop_type).str.json_decode().struct.field(prop_name) == prop_value
+                )
+            except Exception as e:
+                self.logger.warning(f"JSON struct field extraction failed: {str(e)}")
+                
+                try:
+                    # Third attempt: Manual string matching as fallback
+                    # This is less efficient but more robust for simple cases
+                    pattern = f'"{prop_name}": ?"{prop_value}"'
+                    return filtered_df.filter(
+                        pl.col(prop_type).str.contains(pattern)
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Polars property filtering failed completely: {str(e)}")
+                    # Return empty DataFrame with same schema
+                    return pl.DataFrame(schema=df.schema)
     
     def _filter_by_property(self, df: pd.DataFrame, prop_name: str, prop_value: str, prop_type: str) -> pd.DataFrame:
         """Filter DataFrame by property value"""
@@ -1500,18 +1583,12 @@ class FunnelCalculator:
         
         self.logger.info(f"Polars preprocessing completed in {preprocess_time:.4f} seconds. Processing {preprocessed_polars_df.height} relevant events.")
         
-        # For now, convert back to Pandas for segmentation and other advanced features
-        # TODO: Implement these in Polars in future iterations
-        preprocessed_pandas_df = self._to_pandas(preprocessed_polars_df)
-        
-        # Segment data if configured (using existing Pandas implementation)
-        segments = self.segment_events_data(preprocessed_pandas_df)
+        # Use the new Polars segmentation method
+        segments = self.segment_events_data_polars(preprocessed_polars_df)
         
         # Calculate base funnel metrics for each segment
         segment_results = {}
-        for segment_name, segment_df in segments.items():
-            # Convert back to Polars for core calculation
-            segment_polars_df = self._to_polars(segment_df)
+        for segment_name, segment_polars_df in segments.items():
             
             # Calculate metrics based on counting method and funnel order
             if self.config.funnel_order == FunnelOrder.UNORDERED:
@@ -1530,7 +1607,7 @@ class FunnelCalculator:
         # If only one segment, return its results directly with additional analysis
         if len(segment_results) == 1:
             main_result = list(segment_results.values())[0]
-            segment_df = list(segments.values())[0]
+            segment_polars_df = list(segments.values())[0]
             
             # If segmentation was configured, add segment data even for single segment
             if self.config.segment_by and self.config.segment_values:
@@ -1539,20 +1616,57 @@ class FunnelCalculator:
                     for segment_name, result in segment_results.items()
                 }
             
-            # Add advanced analysis using existing Pandas methods (TODO: convert to Polars)
-            main_result.time_to_convert = self._calculate_time_to_convert_optimized(segment_df, funnel_steps)
-            main_result.cohort_data = self._calculate_cohort_analysis_optimized(segment_df, funnel_steps)
+            # Add advanced analysis using Polars methods
+            main_result.time_to_convert = self._calculate_time_to_convert_polars(segment_polars_df, funnel_steps)
+            
+            # For cohort analysis, we still need to use the pandas version for now
+            # Convert segment data to pandas for this specific analysis
+            segment_pandas_df = self._to_pandas(segment_polars_df)
+            main_result.cohort_data = self._calculate_cohort_analysis_optimized(segment_pandas_df, funnel_steps)
             
             # Get all user_ids from this segment
-            segment_user_ids = segment_df['user_id'].unique()
-            # Filter the *original* events_df for these users to get their full history
-            full_history_for_segment_users = original_events_df[original_events_df['user_id'].isin(segment_user_ids)].copy()
+            segment_user_ids = set(segment_polars_df.select('user_id').unique().to_series().to_list())
             
-            main_result.path_analysis = self._calculate_path_analysis_optimized(
-                segment_df, # Funnel events for users in this segment
-                funnel_steps,
-                full_history_for_segment_users # Full event history for these users
+            # Filter the *original* events_df for these users to get their full history
+            # Convert original_events_df to Polars if it's not already
+            if isinstance(original_events_df, pd.DataFrame):
+                original_polars_df = self._to_polars(original_events_df)
+            else:
+                original_polars_df = original_events_df
+            
+            # Ensure consistent data types between DataFrames
+            # Get the schema of segment_polars_df
+            segment_schema = segment_polars_df.schema
+            
+            # Cast user_id in both DataFrames to string to ensure consistent types
+            segment_polars_df = segment_polars_df.with_columns(
+                pl.col('user_id').cast(pl.Utf8).alias('user_id')
             )
+            
+            full_history_for_segment_users = original_polars_df.filter(
+                pl.col('user_id').is_in(segment_user_ids)
+            ).with_columns(
+                pl.col('user_id').cast(pl.Utf8).alias('user_id')
+            )
+            
+            try:
+                # Use the Polars path analysis implementation
+                main_result.path_analysis = self._calculate_path_analysis_polars_optimized(
+                    segment_polars_df, # Funnel events for users in this segment
+                    funnel_steps,
+                    full_history_for_segment_users # Full event history for these users
+                )
+            except Exception as e:
+                self.logger.warning(f"Polars path analysis failed: {str(e)}, falling back to pandas path analysis")
+                # Convert to pandas for fallback
+                segment_pandas_df = self._to_pandas(segment_polars_df)
+                full_history_pandas_df = self._to_pandas(full_history_for_segment_users)
+                
+                main_result.path_analysis = self._calculate_path_analysis_optimized(
+                    segment_pandas_df,
+                    funnel_steps,
+                    full_history_pandas_df
+                )
             
             return main_result
         
