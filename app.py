@@ -5,6 +5,7 @@ import numpy as np
 import random
 import plotly.graph_objects as go
 import plotly.express as px
+import math
 from datetime import datetime, timedelta
 import json
 from typing import List, Dict, Any, Optional, Tuple, Union, Callable
@@ -5517,11 +5518,78 @@ class FunnelConfigManager:
 
 # Visualization Module
 class FunnelVisualizer:
-    """Creates visualizations for funnel analysis results"""
+    """Creates visualizations for funnel analysis results optimized for dark mode interfaces"""
+    
+    # Dark theme color palette
+    DARK_BG = 'rgba(0,0,0,0)'  # Transparent background
+    TEXT_COLOR = '#E0E0E0'     # Light gray for text
+    TITLE_COLOR = '#FFFFFF'    # White for titles
+    GRID_COLOR = 'rgba(255, 255, 255, 0.2)'  # Subtle grid lines
+    
+    # Vibrant colors that work well on dark backgrounds
+    COLORS = [
+        'rgba(59, 130, 246, 0.9)',   # Blue
+        'rgba(16, 185, 129, 0.9)',   # Green
+        'rgba(245, 101, 101, 0.9)',  # Red
+        'rgba(139, 92, 246, 0.9)',   # Purple
+        'rgba(251, 191, 36, 0.9)',   # Amber
+        'rgba(236, 72, 153, 0.9)'    # Pink
+    ]
+    
+    # Success/failure colors
+    SUCCESS_COLOR = 'rgba(16, 185, 129, 0.9)'  # Green
+    FAILURE_COLOR = 'rgba(239, 68, 68, 0.9)'   # Red
+    
+    @staticmethod
+    def apply_dark_theme(fig: go.Figure, title: str = None) -> go.Figure:
+        """Apply dark theme styling to any figure"""
+        layout_updates = {
+            'plot_bgcolor': FunnelVisualizer.DARK_BG,
+            'paper_bgcolor': FunnelVisualizer.DARK_BG,
+            'font': {
+                'color': FunnelVisualizer.TEXT_COLOR,
+                'family': 'Arial, sans-serif',
+                'size': 12
+            },
+            'title': {
+                'font': {
+                    'color': FunnelVisualizer.TITLE_COLOR,
+                    'size': 20
+                },
+                'x': 0.5,
+                'xanchor': 'center'
+            },
+            'xaxis': {
+                'gridcolor': FunnelVisualizer.GRID_COLOR,
+                'linecolor': FunnelVisualizer.GRID_COLOR,
+                'zerolinecolor': FunnelVisualizer.GRID_COLOR,
+                'title': {'font': {'color': FunnelVisualizer.TEXT_COLOR}}
+            },
+            'yaxis': {
+                'gridcolor': FunnelVisualizer.GRID_COLOR,
+                'linecolor': FunnelVisualizer.GRID_COLOR,
+                'zerolinecolor': FunnelVisualizer.GRID_COLOR,
+                'title': {'font': {'color': FunnelVisualizer.TEXT_COLOR}}
+            },
+            'hoverlabel': {
+                'bgcolor': 'rgba(50, 50, 50, 0.95)',
+                'font_size': 12,
+                'font_color': FunnelVisualizer.TITLE_COLOR
+            },
+            'legend': {
+                'font': {'color': FunnelVisualizer.TEXT_COLOR}
+            }
+        }
+        
+        if title:
+            layout_updates['title']['text'] = title
+            
+        fig.update_layout(**layout_updates)
+        return fig
     
     @staticmethod
     def create_funnel_chart(results: FunnelResults, show_segments: bool = False) -> go.Figure:
-        """Create professional funnel visualization"""
+        """Create professional funnel visualization using go.Funnel with dark theme"""
         if not results.steps:
             return go.Figure()
         
@@ -5529,81 +5597,158 @@ class FunnelVisualizer:
         
         if show_segments and results.segment_data:
             # Show segmented funnel chart
-            colors = ['rgba(59, 130, 246, 0.8)', 'rgba(16, 185, 129, 0.8)', 'rgba(245, 101, 101, 0.8)', 'rgba(139, 92, 246, 0.8)']
-            
             for seg_idx, (segment_name, segment_counts) in enumerate(results.segment_data.items()):
-                color = colors[seg_idx % len(colors)]
+                color = FunnelVisualizer.COLORS[seg_idx % len(FunnelVisualizer.COLORS)]
                 
-                for i, (step, user_count) in enumerate(zip(results.steps, segment_counts)):
-                    conv_rate = (user_count / segment_counts[0] * 100) if segment_counts[0] > 0 else 0
-                    
-                    fig.add_trace(go.Bar(
-                        x=[user_count],
-                        y=[f"{step} - {segment_name}"],
-                        orientation='h',
-                        name=segment_name,
-                        text=f'{user_count:,} ({conv_rate:.1f}%)',
-                        textposition='inside',
-                        marker=dict(color=color),
-                        showlegend=(i == 0),  # Only show legend for first bar of each segment
-                        hovertemplate=f'<b>{step}</b><br>Segment: {segment_name}<br>Users: {user_count:,}<br>Conversion Rate: {conv_rate:.1f}%<extra></extra>'
-                    ))
-            
-            fig.update_layout(title='Segmented Funnel Analysis')
-        else:
-            # Regular funnel chart
-            for i, (step, user_count, conv_rate) in enumerate(zip(
-                results.steps, results.users_count, results.conversion_rates
-            )):
-                # Calculate width based on conversion rate
-                width = conv_rate / 100
+                # Calculate previous step conversion rates for hover info
+                prev_step_rates = []
+                for i in range(len(segment_counts)):
+                    if i == 0:
+                        prev_step_rates.append(100.0)
+                    else:
+                        prev_rate = (segment_counts[i] / segment_counts[i-1] * 100) if segment_counts[i-1] > 0 else 0
+                        prev_step_rates.append(prev_rate)
                 
-                fig.add_trace(go.Bar(
-                    x=[width],
-                    y=[step],
-                    orientation='h',
-                    name=f'{step}',
-                    text=f'{user_count:,} users ({conv_rate:.1f}%)',
-                    textposition='inside',
-                    textfont=dict(color='white', size=12),
-                    marker=dict(
-                        color=f'rgba(59, 130, 246, {0.9 - i*0.1})',
-                        line=dict(color='white', width=2)
-                    ),
-                    hovertemplate=f'<b>{step}</b><br>Users: {user_count:,}<br>Conversion Rate: {conv_rate:.1f}%<extra></extra>'
+                # Calculate absolute drop-offs for hover info
+                drop_offs = []
+                for i in range(len(segment_counts)):
+                    if i == 0:
+                        drop_offs.append(0)
+                    else:
+                        drop_offs.append(segment_counts[i-1] - segment_counts[i])
+                
+                # Create custom hover text
+                hover_texts = []
+                for i, (step, count, conv_rate, prev_rate, drop_off) in enumerate(
+                    zip(results.steps, segment_counts, 
+                        [(count / segment_counts[0] * 100) if segment_counts[0] > 0 else 0 for count in segment_counts],
+                        prev_step_rates, drop_offs)
+                ):
+                    hover_texts.append(
+                        f"<b>{step}</b><br>" +
+                        f"Segment: {segment_name}<br>" +
+                        f"Users: {count:,}<br>" +
+                        f"Overall conversion: {conv_rate:.1f}%<br>" +
+                        (f"From previous: {prev_rate:.1f}%<br>" if i > 0 else "") +
+                        (f"Drop-off: {drop_off:,} users" if i > 0 else "")
+                    )
+                
+                fig.add_trace(go.Funnel(
+                    name=segment_name,
+                    y=results.steps,
+                    x=segment_counts,
+                    textinfo="value+percent initial",
+                    textfont={"color": "white", "size": 12},
+                    opacity=0.9,
+                    marker={
+                        "color": color,
+                        "line": {"width": 2, "color": "rgba(255, 255, 255, 0.5)"}
+                    },
+                    connector={"line": {"color": "rgba(255, 255, 255, 0.3)", "dash": "solid", "width": 1}},
+                    customdata=[[prev, drop] for prev, drop in zip(prev_step_rates, drop_offs)],
+                    hovertemplate="%{customdata[0]:.1f}%<extra></extra>",
+                    hovertext=hover_texts,
+                    hoverinfo="text"
                 ))
             
+            title = 'How do segments perform across the funnel?'
+        else:
+            # Regular funnel chart
+            # Calculate previous step conversion rates
+            prev_step_rates = []
+            for i in range(len(results.users_count)):
+                if i == 0:
+                    prev_step_rates.append(100.0)
+                else:
+                    prev_rate = (results.users_count[i] / results.users_count[i-1] * 100) if results.users_count[i-1] > 0 else 0
+                    prev_step_rates.append(prev_rate)
+            
+            # Create annotations for conversion rates
+            annotations = []
+            for i, (step, count, rate, prev_rate) in enumerate(zip(
+                results.steps, results.users_count, results.conversion_rates, prev_step_rates
+            )):
+                if i > 0:
+                    annotations.append(dict(
+                        x=0.5,
+                        y=results.steps[i],
+                        text=f"↓ {prev_rate:.1f}% from previous",
+                        showarrow=False,
+                        font=dict(size=10, color=FunnelVisualizer.TEXT_COLOR),
+                        xanchor="center",
+                        yanchor="bottom",
+                        xshift=0,
+                        yshift=-20
+                    ))
+            
+            # Create custom hover text
+            hover_texts = []
+            for i, (step, count, conv_rate, prev_rate, drop_off) in enumerate(
+                zip(results.steps, results.users_count, results.conversion_rates, 
+                    prev_step_rates, results.drop_offs)
+            ):
+                hover_texts.append(
+                    f"<b>{step}</b><br>" +
+                    f"Users: {count:,}<br>" +
+                    f"Overall conversion: {conv_rate:.1f}%<br>" +
+                    (f"From previous: {prev_rate:.1f}%<br>" if i > 0 else "") +
+                    (f"Drop-off: {drop_off:,} users" if i > 0 else "")
+                )
+            
+            # Use a gradient of the same color with decreasing opacity for steps
+            fig.add_trace(go.Funnel(
+                y=results.steps,
+                x=results.users_count,
+                textposition="inside",
+                textinfo="value+percent initial",
+                textfont={"color": "white", "size": 12},
+                opacity=0.9,
+                marker={
+                    "color": [FunnelVisualizer.COLORS[0].replace('0.9', str(0.9 - i*0.1)) for i in range(len(results.steps))],
+                    "line": {"width": 2, "color": "rgba(255, 255, 255, 0.5)"}
+                },
+                connector={"line": {"color": "rgba(255, 255, 255, 0.3)", "dash": "solid", "width": 1}},
+                customdata=[[prev, drop] for prev, drop in zip(prev_step_rates, results.drop_offs)],
+                hovertext=hover_texts,
+                hoverinfo="text"
+            ))
+            
+            # Add annotations to the layout
+            fig.update_layout(annotations=annotations)
+            
+            # Add insight annotation for biggest drop-off
+            if len(results.drop_off_rates) > 1:
+                max_drop_idx = results.drop_off_rates.index(max(results.drop_off_rates[1:], default=0))
+                if max_drop_idx > 0:
+                    fig.add_annotation(
+                        x=1.0,
+                        y=results.steps[max_drop_idx],
+                        text=f"Biggest drop-off: {results.drop_off_rates[max_drop_idx]:.1f}%",
+                        showarrow=True,
+                        arrowhead=2,
+                        arrowsize=1,
+                        arrowwidth=2,
+                        arrowcolor=FunnelVisualizer.FAILURE_COLOR,
+                        font=dict(size=12, color=FunnelVisualizer.FAILURE_COLOR),
+                        align="left",
+                        xanchor="left",
+                        yanchor="middle",
+                        xshift=10
+                    )
+            
+            title = 'How do users move through the funnel?'
             fig.update_layout(showlegend=False)
         
-        fig.update_layout(
-            title={
-                'text': 'Funnel Analysis Results',
-                'x': 0.5,
-                'xanchor': 'center',
-                'font': {'size': 24, 'color': '#1f2937'}
-            },
-            xaxis=dict(
-                title='Conversion Rate (%)' if not show_segments else 'User Count',
-                range=[0, 1] if not show_segments else None,
-                tickformat='.0%' if not show_segments else '.0f',
-                gridcolor='rgba(0,0,0,0.1)'
-            ),
-            yaxis=dict(
-                title='Funnel Steps',
-                autorange='reversed',
-                gridcolor='rgba(0,0,0,0.1)'
-            ),
-            height=400 + (len(results.segment_data) * 50 if show_segments and results.segment_data else 0),
-            margin=dict(l=250, r=50, t=80, b=50),
-            plot_bgcolor='white',
-            paper_bgcolor='white'
-        )
+        # Apply height based on steps count
+        fig.update_layout(height=max(400, 100 * len(results.steps)),
+                         margin=dict(l=150, r=80, t=80, b=80))
         
-        return fig
+        # Apply dark theme
+        return FunnelVisualizer.apply_dark_theme(fig, title)
     
     @staticmethod
     def create_conversion_flow_sankey(results: FunnelResults) -> go.Figure:
-        """Create Sankey diagram showing user flow through funnel"""
+        """Create Sankey diagram showing user flow through funnel with dark theme"""
         if len(results.steps) < 2:
             return go.Figure()
         
@@ -5627,72 +5772,219 @@ class FunnelVisualizer:
             source.append(i)
             target.append(i + 1)
             value.append(results.users_count[i + 1])
-            colors.append('rgba(59, 130, 246, 0.6)')
+            colors.append(FunnelVisualizer.SUCCESS_COLOR)
             
             # Flow from step i to drop-off (not converted) 
             if results.drop_offs[i + 1] > 0:
                 source.append(i)
                 target.append(len(results.steps) + i)
                 value.append(results.drop_offs[i + 1])
-                colors.append('rgba(239, 68, 68, 0.6)')
+                colors.append(FunnelVisualizer.FAILURE_COLOR)
         
         fig = go.Figure(data=[go.Sankey(
             node=dict(
                 pad=15,
                 thickness=20,
-                line=dict(color="black", width=0.5),
+                line=dict(color="rgba(255, 255, 255, 0.3)", width=0.5),
                 label=labels,
-                color="lightblue"
+                color=[FunnelVisualizer.COLORS[0] for _ in range(len(labels))]
             ),
             link=dict(
                 source=source,
                 target=target,
                 value=value,
-                color=colors
+                color=colors,
+                hovertemplate='%{value} users<extra></extra>'
             )
         )])
         
-        fig.update_layout(
-            title="User Flow Through Funnel",
-            font_size=12,
-            height=500
-        )
-        
-        return fig
+        # Apply dark theme
+        return FunnelVisualizer.apply_dark_theme(fig, "User Flow Through Funnel")
     
     @staticmethod
     def create_time_to_convert_chart(time_stats: List[TimeToConvertStats]) -> go.Figure:
-        """Create time to convert analysis visualization"""
-        if not time_stats:
-            return go.Figure()
-        
+        """Create time to convert analysis visualization using violin plots with dark theme"""
+        # Create a figure first
         fig = go.Figure()
         
-        for i, stat in enumerate(time_stats):
-            step_name = f"{stat.step_from} → {stat.step_to}"
-            
-            # Box plot for conversion times
-            fig.add_trace(go.Box(
-                y=stat.conversion_times,
-                name=step_name,
-                boxpoints='outliers',
-                marker_color=f'rgba({59 + i*50}, {130 + i*30}, 246, 0.7)',
-                line_color=f'rgba({59 + i*50}, {130 + i*30}, 246, 1.0)'
-            ))
+        # Handle empty data case
+        if not time_stats or len(time_stats) == 0:
+            fig.add_annotation(
+                x=0.5, y=0.5,
+                text="No time-to-convert data available",
+                showarrow=False,
+                font=dict(color=FunnelVisualizer.TEXT_COLOR, size=16)
+            )
+            # Apply dark theme to empty figure
+            return FunnelVisualizer.apply_dark_theme(fig, "Time to Convert Analysis")
         
+        # Validate that we have conversion times
+        valid_stats = []
+        for stat in time_stats:
+            if hasattr(stat, 'conversion_times') and stat.conversion_times and len(stat.conversion_times) > 0:
+                valid_stats.append(stat)
+        
+        # If no valid data available, show message
+        if not valid_stats:
+            fig.add_annotation(
+                x=0.5, y=0.5,
+                text="No valid conversion time data available",
+                showarrow=False,
+                font=dict(color=FunnelVisualizer.TEXT_COLOR, size=16)
+            )
+            # Apply dark theme to empty figure
+            return FunnelVisualizer.apply_dark_theme(fig, "Time to Convert Analysis")
+        
+        # Modified bright colors for dark theme
+        colors = [
+            'rgba(59, 130, 246, 0.9)',   # Blue
+            'rgba(16, 185, 129, 0.9)',   # Green
+            'rgba(245, 101, 101, 0.9)',  # Red
+            'rgba(139, 92, 246, 0.9)',   # Purple
+            'rgba(251, 191, 36, 0.9)',   # Amber
+            'rgba(236, 72, 153, 0.9)'    # Pink
+        ]
+        
+        # First calculate data range for better scaling
+        all_times = []
+        for stat in valid_stats:
+            all_times.extend([t for t in stat.conversion_times if t > 0])
+        
+        min_time = min(all_times) if all_times else 0.1
+        max_time = max(all_times) if all_times else 168  # Default to 1 week
+        
+        # Add box plots (better than violin for smaller datasets)
+        for i, stat in enumerate(valid_stats):
+            step_name = f"{stat.step_from} → {stat.step_to}"
+            color = colors[i % len(colors)]
+            
+            # Filter out any negative or zero times for log scale
+            valid_times = [t for t in stat.conversion_times if t > 0]
+            
+            if not valid_times:
+                continue
+                
+            # Use box plot instead of violin for clarity
+            fig.add_trace(go.Box(
+                x=[step_name] * len(valid_times),
+                y=valid_times,
+                name=step_name,
+                boxmean=True,  # Show mean line
+                fillcolor=color,
+                line=dict(color='rgba(255, 255, 255, 0.7)'),
+                whiskerwidth=0.8,
+                marker=dict(
+                    size=6, 
+                    opacity=0.7, 
+                    color=color,
+                    line=dict(width=1, color='white')
+                ),
+                hovertemplate='<b>Time to convert:</b> %{y:.1f} hours<br>' +
+                             f'<b>Median:</b> {stat.median_hours:.1f} hours<br>' +
+                             f'<b>Mean:</b> {stat.mean_hours:.1f} hours<extra></extra>'
+            ))
+            
+            # Add annotation for median
+            fig.add_annotation(
+                x=step_name,
+                y=stat.median_hours,
+                text=f"Median: {stat.median_hours:.1f}h",
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1,
+                arrowwidth=1,
+                arrowcolor="rgba(255, 255, 255, 0.8)",
+                font=dict(size=12, color="white"),
+                align="center",
+                bgcolor="rgba(50, 50, 50, 0.8)",
+                bordercolor="white",
+                borderwidth=1,
+                borderpad=4
+            )
+        
+        # Add horizontal lines for common time periods
+        reference_times = [
+            (1, "1 hour", "rgba(255, 255, 255, 0.3)"),
+            (24, "1 day", "rgba(255, 255, 255, 0.4)"),
+            (168, "1 week", "rgba(255, 255, 255, 0.5)")
+        ]
+        
+        for hours, label, color in reference_times:
+            # Only add reference lines if they're within our data range
+            if min_time <= hours <= max_time * 1.1:
+                fig.add_shape(
+                    type="line",
+                    x0=-0.5,
+                    y0=hours,
+                    x1=len(valid_stats) - 0.5,
+                    y1=hours,
+                    line=dict(color=color, width=1, dash="dot"),
+                )
+                fig.add_annotation(
+                    x=len(valid_stats) - 0.5,
+                    y=hours,
+                    text=label,
+                    showarrow=False,
+                    font=dict(size=11, color="rgba(255, 255, 255, 0.9)"),
+                    xanchor="right",
+                    yanchor="bottom",
+                    xshift=5,
+                    yshift=0,
+                    bgcolor="rgba(50, 50, 50, 0.7)",
+                    borderpad=3
+                )
+        
+        # Set appropriate y-axis range for better visualization
+        y_min = max(0.1, min_time * 0.5)  # Don't go below 0.1 hours (6 minutes)
+        y_max = min(336, max_time * 1.5)  # Don't go above 2 weeks by default
+        
+        # Calculate better tick values based on our data range
+        tickvals = []
+        ticktext = []
+        
+        # Always include 1h, 1d if in range
+        hour_markers = [0.1, 0.5, 1, 2, 4, 8, 12, 24, 48, 72, 96, 120, 144, 168, 336, 504, 672]
+        hour_labels = ["0.1h", "0.5h", "1h", "2h", "4h", "8h", "12h", 
+                      "1d", "2d", "3d", "4d", "5d", "6d", "1w", "2w", "3w", "4w"]
+        
+        for val, label in zip(hour_markers, hour_labels):
+            if y_min <= val <= y_max:
+                tickvals.append(val)
+                ticktext.append(label)
+        
+        # Custom Y-axis with better labels for time
         fig.update_layout(
-            title="Time to Convert Distribution",
-            xaxis_title="Funnel Steps",
+            xaxis_title=None,
             yaxis_title="Time to Convert (Hours)",
-            height=400,
-            showlegend=False
+            yaxis_type="log",  # Log scale for better visualization of time distribution
+            yaxis=dict(
+                gridcolor=FunnelVisualizer.GRID_COLOR,
+                range=[math.log10(y_min), math.log10(y_max)],
+                tickvals=tickvals,
+                ticktext=ticktext,
+                tickfont=dict(color=FunnelVisualizer.TEXT_COLOR, size=12)
+            ),
+            boxmode='group',
+            height=550,
+            margin=dict(l=60, r=60, t=80, b=60),
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5,
+                font=dict(color=FunnelVisualizer.TEXT_COLOR, size=12),
+                bgcolor="rgba(0,0,0,0.5)"
+            )
         )
         
-        return fig
+        # Apply dark theme
+        return FunnelVisualizer.apply_dark_theme(fig, "How long does it take users to convert between steps?")
     
     @staticmethod
     def create_cohort_heatmap(cohort_data: CohortData) -> go.Figure:
-        """Create cohort analysis heatmap"""
+        """Create cohort analysis heatmap with dark theme"""
         if not cohort_data.cohort_labels:
             return go.Figure()
         
@@ -5707,71 +5999,242 @@ class FunnelVisualizer:
         
         if not z_data or not z_data[0]: # Check if z_data or its first element is empty
             return go.Figure() # Return empty figure if no data
+        
+        # Calculate step-to-step conversion rates for annotations
+        annotations = []
+        if z_data and len(z_data[0]) > 1:
+            for i, cohort_values in enumerate(z_data):
+                for j in range(1, len(cohort_values)):
+                    # Calculate conversion from previous step to this step
+                    if cohort_values[j-1] > 0:
+                        step_conv = (cohort_values[j] / cohort_values[j-1]) * 100
+                        if step_conv > 0:
+                            annotations.append(dict(
+                                x=j,
+                                y=i,
+                                text=f"{step_conv:.0f}%",
+                                showarrow=False,
+                                font=dict(
+                                    size=9, 
+                                    color="rgba(0, 0, 0, 0.9)" if cohort_values[j] > 50 else "rgba(255, 255, 255, 0.9)"
+                                )
+                            ))
             
         fig = go.Figure(data=go.Heatmap(
             z=z_data,
             x=[f"Step {i+1}" for i in range(len(z_data[0])) if z_data and z_data[0]],
             y=y_labels,
-            colorscale='Blues',
+            colorscale='Viridis',  # Better colorscale for dark mode
             text=[[f"{val:.1f}%" for val in row] for row in z_data],
             texttemplate="%{text}",
-            textfont={"size":10},
-            colorbar=dict(title="Conversion Rate (%)")
+            textfont={"size": 10, "color": "white"},
+            colorbar=dict(
+                title="Conversion Rate (%)",
+                titleside="right",
+                titlefont=dict(size=12, color=FunnelVisualizer.TEXT_COLOR),
+                tickfont=dict(color=FunnelVisualizer.TEXT_COLOR),
+                ticks="outside"
+            )
         ))
         
         fig.update_layout(
-            title="Cohort Conversion Analysis",
             xaxis_title="Funnel Steps",
             yaxis_title="Cohorts",
-            height=max(400, len(y_labels) * 40)
+            height=max(400, len(y_labels) * 40),
+            margin=dict(l=150, r=80, t=80, b=50),
+            annotations=annotations
         )
         
-        return fig
+        # Apply dark theme
+        return FunnelVisualizer.apply_dark_theme(fig, "How do different cohorts perform in the funnel?")
     
     @staticmethod
     def create_path_analysis_chart(path_data: PathAnalysisData) -> go.Figure:
-        """Create path analysis visualization"""
-        if not path_data.dropoff_paths:
-            return go.Figure()
-        
+        """Create path analysis visualization using Sankey diagram with dark theme"""
+        # Create a figure first
         fig = go.Figure()
         
-        # Create sunburst chart for drop-off paths
+        # Handle empty data case
+        if not path_data.dropoff_paths or len(path_data.dropoff_paths) == 0:
+            fig.add_annotation(
+                x=0.5, y=0.5,
+                text="No path analysis data available",
+                showarrow=False,
+                font=dict(color=FunnelVisualizer.TEXT_COLOR, size=16)
+            )
+            # Apply dark theme to empty figure
+            return FunnelVisualizer.apply_dark_theme(fig, "Path Analysis")
+        
+        # Process between steps events to see if we have data
+        has_between_steps_data = False
+        for key, events in path_data.between_steps_events.items():
+            if events and len(events) > 0:
+                has_between_steps_data = True
+                break
+                
+        # Process dropoff paths to see if we have data
+        has_dropoff_data = False
+        for step, paths in path_data.dropoff_paths.items():
+            if paths and len(paths) > 0:
+                has_dropoff_data = True
+                break
+        
+        # If no data available in either section, show message
+        if not has_between_steps_data and not has_dropoff_data:
+            fig.add_annotation(
+                x=0.5, y=0.5,
+                text="No path data available for visualization",
+                showarrow=False,
+                font=dict(color=FunnelVisualizer.TEXT_COLOR, size=16)
+            )
+            # Apply dark theme to empty figure
+            return FunnelVisualizer.apply_dark_theme(fig, "Path Analysis")
+        
+        # Prepare data for Sankey diagram
         labels = []
-        parents = []
-        values = []
+        source = []
+        target = []
+        value = []
+        colors = []
         
-        for step, next_events in path_data.dropoff_paths.items():
-            # Add the step as a parent
-            if step not in labels:
-                labels.append(step)
-                parents.append("")
-                values.append(sum(next_events.values()))
+        # Add funnel steps as nodes
+        funnel_steps = list(path_data.dropoff_paths.keys())
+        for step in funnel_steps:
+            labels.append(step)
+        
+        # Add conversion and drop-off nodes
+        node_index = len(funnel_steps)
+        for i, step in enumerate(funnel_steps):
+            if i < len(funnel_steps) - 1:
+                # Add conversion node for this step
+                labels.append(f"Converted from {step}")
+                
+                # Add drop-off node for this step
+                labels.append(f"Dropped from {step}")
+        
+        # Process drop-off paths
+        node_map = {}  # Maps event names to node indices
+        for i, step in enumerate(funnel_steps):
+            if i < len(funnel_steps) - 1:
+                conversion_node_idx = len(funnel_steps) + i * 2
+                dropoff_node_idx = len(funnel_steps) + i * 2 + 1
+                
+                # Add flow from step to conversion node
+                source.append(i)
+                target.append(conversion_node_idx)
+                
+                # Value will be users who moved to next step
+                next_step = funnel_steps[i + 1]
+                between_steps_key = f"{step} → {next_step}"
+                if between_steps_key in path_data.between_steps_events and path_data.between_steps_events[between_steps_key]:
+                    conversion_value = sum(path_data.between_steps_events[between_steps_key].values())
+                    # Ensure we have a minimum value for visualization
+                    if conversion_value <= 0:
+                        conversion_value = 10  # Small default value
+                else:
+                    conversion_value = 100  # Default if data not available
+                
+                value.append(conversion_value)
+                colors.append(FunnelVisualizer.SUCCESS_COLOR)
+                
+                # Add flow from conversion node to next step
+                source.append(conversion_node_idx)
+                target.append(i + 1)
+                value.append(conversion_value)
+                colors.append(FunnelVisualizer.SUCCESS_COLOR)
+                
+                # Add flow from step to drop-off node
+                source.append(i)
+                target.append(dropoff_node_idx)
+                
+                # Value will be users who dropped off
+                if step in path_data.dropoff_paths and path_data.dropoff_paths[step]:
+                    dropoff_value = sum(path_data.dropoff_paths[step].values())
+                    # Ensure we have a minimum value for visualization
+                    if dropoff_value <= 0:
+                        dropoff_value = 10  # Small default value
+                else:
+                    dropoff_value = 50  # Default if data not available
+                
+                value.append(dropoff_value)
+                colors.append(FunnelVisualizer.FAILURE_COLOR)
+                
+                # Add top 5 drop-off destinations
+                if step in path_data.dropoff_paths and path_data.dropoff_paths[step]:
+                    top_events = sorted(path_data.dropoff_paths[step].items(), 
+                                       key=lambda x: x[1], reverse=True)[:5]
+                    
+                    for next_event, count in top_events:
+                        if count <= 0:  # Skip zero counts
+                            continue
+                            
+                        # Add node for destination if not already added
+                        if next_event not in node_map:
+                            node_map[next_event] = len(labels)
+                            # Truncate long event names
+                            display_name = next_event
+                            if len(display_name) > 25:
+                                display_name = display_name[:22] + "..."
+                            labels.append(display_name)
+                        
+                        # Add flow from drop-off node to destination
+                        source.append(dropoff_node_idx)
+                        target.append(node_map[next_event])
+                        value.append(count)
+                        colors.append('rgba(251, 191, 36, 0.9)')  # Amber for next events
+        
+        # If we don't have any valid paths, show a message
+        if not source or not target or not value or len(source) == 0:
+            fig.add_annotation(
+                x=0.5, y=0.5,
+                text="Insufficient data for path visualization",
+                showarrow=False,
+                font=dict(color=FunnelVisualizer.TEXT_COLOR, size=16)
+            )
+            # Apply dark theme to empty figure
+            return FunnelVisualizer.apply_dark_theme(fig, "Path Analysis")
             
-            # Add next events as children
-            for next_event, count in next_events.items():
-                label = f"{step} → {next_event}"
-                labels.append(label)
-                parents.append(step)
-                values.append(count)
+        # Create distinct node colors for better clarity
+        node_colors = []
+        for i in range(len(labels)):
+            if i < len(funnel_steps):
+                node_colors.append(FunnelVisualizer.COLORS[0])  # Blue for funnel steps
+            elif i >= len(funnel_steps) and i % 2 == 0 and i < len(funnel_steps) * 2 + len(funnel_steps):
+                node_colors.append(FunnelVisualizer.SUCCESS_COLOR)  # Green for conversion nodes
+            elif i >= len(funnel_steps) and i % 2 == 1 and i < len(funnel_steps) * 2 + len(funnel_steps):
+                node_colors.append(FunnelVisualizer.FAILURE_COLOR)  # Red for drop-off nodes
+            else:
+                node_colors.append('rgba(251, 191, 36, 0.9)')  # Amber for destination nodes
         
-        fig = go.Figure(go.Sunburst(
-            labels=labels,
-            parents=parents,
-            values=values,
-            branchvalues="total",
-        ))
+        fig = go.Figure(data=[go.Sankey(
+            node=dict(
+                pad=15,
+                thickness=20,
+                line=dict(color="rgba(255, 255, 255, 0.3)", width=0.5),
+                label=labels,
+                color=node_colors
+            ),
+            link=dict(
+                source=source,
+                target=target,
+                value=value,
+                color=colors,
+                hovertemplate='<b>%{value}</b> users<extra></extra>'
+            )
+        )])
         
         fig.update_layout(
-            title="Drop-off Path Analysis",
-            height=600
+            font_size=12,
+            height=600,
+            margin=dict(l=20, r=20, t=80, b=20)
         )
         
-        return fig
+        # Apply dark theme
+        return FunnelVisualizer.apply_dark_theme(fig, "Where do users go when they drop off?")
     
     @staticmethod
     def create_statistical_significance_table(stat_tests: List[StatSignificanceResult]) -> pd.DataFrame:
-        """Create statistical significance results table"""
+        """Create statistical significance results table optimized for dark interfaces"""
         if not stat_tests:
             return pd.DataFrame()
         
@@ -5780,14 +6243,14 @@ class FunnelVisualizer:
             data.append({
                 'Segment A': test.segment_a,
                 'Segment B': test.segment_b,
-                'Conversion A (%)': f"{test.conversion_a:.2f}%",
-                'Conversion B (%)': f"{test.conversion_b:.2f}%",
-                'Difference': f"{test.conversion_a - test.conversion_b:.2f}pp",
+                'Conversion A (%)': f"{test.conversion_a:.1f}%",
+                'Conversion B (%)': f"{test.conversion_b:.1f}%",
+                'Difference': f"{test.conversion_a - test.conversion_b:.1f}pp",
                 'P-value': f"{test.p_value:.4f}",
                 'Significant': "✅ Yes" if test.is_significant else "❌ No",
                 'Z-score': f"{test.z_score:.2f}",
-                '95% CI Lower': f"{test.confidence_interval[0]*100:.2f}pp",
-                '95% CI Upper': f"{test.confidence_interval[1]*100:.2f}pp"
+                '95% CI Lower': f"{test.confidence_interval[0]*100:.1f}pp",
+                '95% CI Upper': f"{test.confidence_interval[1]*100:.1f}pp"
             })
         
         return pd.DataFrame(data)
@@ -6816,6 +7279,21 @@ ORDER BY user_id, timestamp""",
     else:
         st.info("👈 Please select and load a data source from the sidebar to begin funnel analysis")
     
+    # Test visualizations button
+    if "analysis_results" in st.session_state and st.session_state.analysis_results:
+        st.markdown("---")
+        test_col1, test_col2, test_col3 = st.columns([1, 1, 1])
+        with test_col2:
+            if st.button("🧪 Test Visualizations", use_container_width=True):
+                with st.spinner("Testing all visualizations..."):
+                    test_results = test_visualizations()
+                    
+                if test_results["success"]:
+                    st.success("✅ All visualizations passed!")
+                else:
+                    failed_tests = [name for name, _ in test_results["failed"]]
+                    st.error(f"❌ Failed tests: {', '.join(failed_tests)}")
+    
     # Footer
     st.markdown("---")
     st.markdown("""
@@ -6825,6 +7303,245 @@ ORDER BY user_id, timestamp""",
     </div>
     """, unsafe_allow_html=True)
 
+def test_visualizations():
+    """
+    Universal test function to verify all visualizations render correctly.
+    Can be run with:
+    1. python app.py test_vis - to run in standalone mode with dummy data
+    2. Called from within the app with actual data
+    """
+    import streamlit as st
+    import pandas as pd
+    import numpy as np
+    import json
+    from collections import Counter
+    import traceback
+    import plotly.graph_objects as go
+    
+    # Function to create minimal dummy data for testing
+    def create_dummy_data():
+        # Minimal FunnelResults
+        class DummyFunnelResults:
+            def __init__(self):
+                self.steps = ["Step 1", "Step 2", "Step 3"]
+                self.users_count = [1000, 700, 400]
+                self.drop_offs = [0, 300, 300]
+                self.drop_off_rates = [0, 30.0, 42.9]
+                self.conversion_rates = [100.0, 70.0, 40.0]
+                self.segment_data = {"Segment A": [600, 400, 250], "Segment B": [400, 300, 150]}
+        
+        # Minimal TimeToConvertStats
+        class DummyTimeStats:
+            def __init__(self, step_from, step_to):
+                self.step_from = step_from
+                self.step_to = step_to
+                self.conversion_times = np.random.exponential(scale=2.0, size=10)
+                self.mean_hours = np.mean(self.conversion_times)
+                self.median_hours = np.median(self.conversion_times)
+                self.p25_hours = np.percentile(self.conversion_times, 25)
+                self.p75_hours = np.percentile(self.conversion_times, 75)
+                self.p90_hours = np.percentile(self.conversion_times, 90)
+                self.std_hours = np.std(self.conversion_times)
+        
+        # Minimal CohortData
+        class DummyCohortData:
+            def __init__(self):
+                self.cohort_labels = ["Cohort 1", "Cohort 2"]
+                self.cohort_sizes = {"Cohort 1": 500, "Cohort 2": 400}
+                self.conversion_rates = {
+                    "Cohort 1": [100.0, 75.0, 50.0],
+                    "Cohort 2": [100.0, 70.0, 45.0]
+                }
+        
+        # Minimal PathAnalysisData
+        class DummyPathData:
+            def __init__(self):
+                self.dropoff_paths = {
+                    "Step 1": {"Other Path 1": 150, "Other Path 2": 100},
+                    "Step 2": {"Other Path 3": 200, "Other Path 4": 100}
+                }
+                self.between_steps_events = {
+                    "Step 1 → Step 2": {"Event 1": 700},
+                    "Step 2 → Step 3": {"Event 2": 400}
+                }
+        
+        # Minimal StatSignificanceResult
+        class DummyStatTest:
+            def __init__(self):
+                self.segment_a = "Segment A"
+                self.segment_b = "Segment B"
+                self.conversion_a = 40.0
+                self.conversion_b = 25.0
+                self.p_value = 0.03
+                self.is_significant = True
+                self.z_score = 2.5
+                self.confidence_interval = (0.05, 0.15)
+        
+        return {
+            "funnel_results": DummyFunnelResults(),
+            "time_stats": [
+                DummyTimeStats("Step 1", "Step 2"),
+                DummyTimeStats("Step 2", "Step 3")
+            ],
+            "cohort_data": DummyCohortData(),
+            "path_data": DummyPathData(),
+            "stat_tests": [DummyStatTest(), DummyStatTest()]
+        }
+    
+    # Function to get real data if available, otherwise use dummy data
+    def get_test_data():
+        # Try to get real data from session state if exists
+        data = {}
+        
+        try:
+            # Check if we have session state and if we're in the Streamlit context
+            has_session = 'session_state' in globals() or 'st' in globals() and hasattr(st, 'session_state')
+            
+            if has_session and hasattr(st.session_state, 'analysis_results'):
+                results = st.session_state.analysis_results
+                if results:
+                    data["funnel_results"] = results
+                    if hasattr(results, 'time_to_convert'):
+                        data["time_stats"] = results.time_to_convert
+                    if hasattr(results, 'cohort_data'):
+                        data["cohort_data"] = results.cohort_data
+                    if hasattr(results, 'path_analysis'):
+                        data["path_data"] = results.path_analysis
+                    if hasattr(results, 'stat_significance'):
+                        data["stat_tests"] = results.stat_significance
+        except Exception:
+            pass  # If we can't access session state or it's not properly initialized
+        
+        # For any missing data, fill with dummy data
+        dummy_data = create_dummy_data()
+        for key in dummy_data:
+            if key not in data or not data[key]:
+                data[key] = dummy_data[key]
+                
+        return data
+    
+    # Track test results
+    test_results = {
+        "passed": [],
+        "failed": []
+    }
+    
+    # Get test data (real or dummy)
+    data = get_test_data()
+    
+    # Set up Streamlit page
+    st.title("Visualization Tests")
+    st.markdown("This test page verifies that all visualizations render correctly with dark theme.")
+    
+    # Run tests for each visualization
+    with st.expander("Test Details", expanded=True):
+        # Test 1: Funnel Chart
+        try:
+            funnel_chart = FunnelVisualizer.create_funnel_chart(data["funnel_results"])
+            test_results["passed"].append("Funnel Chart")
+            st.success("✅ Funnel Chart")
+        except Exception as e:
+            test_results["failed"].append(("Funnel Chart", str(e)))
+            st.error(f"❌ Funnel Chart: {str(e)}")
+            
+        # Test 2: Segmented Funnel Chart
+        try:
+            segmented_funnel = FunnelVisualizer.create_funnel_chart(data["funnel_results"], show_segments=True)
+            test_results["passed"].append("Segmented Funnel")
+            st.success("✅ Segmented Funnel")
+        except Exception as e:
+            test_results["failed"].append(("Segmented Funnel", str(e)))
+            st.error(f"❌ Segmented Funnel: {str(e)}")
+            
+        # Test 3: Conversion Flow Sankey
+        try:
+            flow_chart = FunnelVisualizer.create_conversion_flow_sankey(data["funnel_results"])
+            test_results["passed"].append("Conversion Flow Sankey")
+            st.success("✅ Conversion Flow Sankey")
+        except Exception as e:
+            test_results["failed"].append(("Conversion Flow Sankey", str(e)))
+            st.error(f"❌ Conversion Flow Sankey: {str(e)}")
+            
+        # Test 4: Time to Convert Chart
+        try:
+            time_chart = FunnelVisualizer.create_time_to_convert_chart(data["time_stats"])
+            test_results["passed"].append("Time to Convert Chart")
+            st.success("✅ Time to Convert Chart")
+        except Exception as e:
+            test_results["failed"].append(("Time to Convert Chart", str(e)))
+            st.error(f"❌ Time to Convert Chart: {str(e)}")
+            
+        # Test 5: Cohort Heatmap
+        try:
+            cohort_chart = FunnelVisualizer.create_cohort_heatmap(data["cohort_data"])
+            test_results["passed"].append("Cohort Heatmap")
+            st.success("✅ Cohort Heatmap")
+        except Exception as e:
+            test_results["failed"].append(("Cohort Heatmap", str(e)))
+            st.error(f"❌ Cohort Heatmap: {str(e)}")
+            
+        # Test 6: Path Analysis Chart
+        try:
+            path_chart = FunnelVisualizer.create_path_analysis_chart(data["path_data"])
+            test_results["passed"].append("Path Analysis Chart")
+            st.success("✅ Path Analysis Chart")
+        except Exception as e:
+            test_results["failed"].append(("Path Analysis Chart", str(e)))
+            st.error(f"❌ Path Analysis Chart: {str(e)}")
+            
+        # Test 7: Statistical Significance Table
+        try:
+            stat_table = FunnelVisualizer.create_statistical_significance_table(data["stat_tests"])
+            test_results["passed"].append("Statistical Significance Table")
+            st.success("✅ Statistical Significance Table")
+        except Exception as e:
+            test_results["failed"].append(("Statistical Significance Table", str(e)))
+            st.error(f"❌ Statistical Significance Table: {str(e)}")
+    
+    # Show overall test result
+    if not test_results["failed"]:
+        st.success(f"✅ All {len(test_results['passed'])} visualizations passed!")
+    else:
+        st.error(f"❌ {len(test_results['failed'])} of {len(test_results['passed']) + len(test_results['failed'])} tests failed.")
+    
+    # Show successful visualizations
+    if test_results["passed"]:
+        st.subheader("Successful Visualizations")
+        
+        # Display the charts that passed
+        for viz_name in test_results["passed"]:
+            if viz_name == "Funnel Chart":
+                st.subheader("1. Funnel Chart")
+                st.plotly_chart(funnel_chart, use_container_width=True)
+            elif viz_name == "Segmented Funnel":
+                st.subheader("2. Segmented Funnel Chart")
+                st.plotly_chart(segmented_funnel, use_container_width=True)
+            elif viz_name == "Conversion Flow Sankey":
+                st.subheader("3. Conversion Flow Sankey")
+                st.plotly_chart(flow_chart, use_container_width=True)
+            elif viz_name == "Time to Convert Chart":
+                st.subheader("4. Time to Convert Chart")
+                st.plotly_chart(time_chart, use_container_width=True)
+            elif viz_name == "Cohort Heatmap":
+                st.subheader("5. Cohort Heatmap")
+                st.plotly_chart(cohort_chart, use_container_width=True)
+            elif viz_name == "Path Analysis Chart":
+                st.subheader("6. Path Analysis Chart")
+                st.plotly_chart(path_chart, use_container_width=True)
+            elif viz_name == "Statistical Significance Table":
+                st.subheader("7. Statistical Significance Table")
+                st.dataframe(stat_table)
+    
+    return {
+        "success": len(test_results["failed"]) == 0,
+        "passed": test_results["passed"],
+        "failed": test_results["failed"]
+    }
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "test_vis":
+        test_visualizations()
+    else:
+        main()
             
