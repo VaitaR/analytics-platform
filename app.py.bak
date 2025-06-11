@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional, Tuple, Union, Callable
 import time
 import io
 from dataclasses import dataclass, asdict
+from enum import Enum
 import clickhouse_connect
 import sqlalchemy
 from pathlib import Path
@@ -20,8 +21,6 @@ import base64
 import logging
 import hashlib
 from functools import wraps
-from models import CountingMethod, ReentryMode, FunnelOrder, FunnelConfig, PathAnalysisData
-from path_analyzer import _PathAnalyzerHelper
 
 # Configure page
 st.set_page_config(
@@ -124,7 +123,52 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Data Classes
+# Enums and Data Classes
+class CountingMethod(Enum):
+    UNIQUE_USERS = "unique_users"
+    EVENT_TOTALS = "event_totals"
+    UNIQUE_PAIRS = "unique_pairs"
+
+class ReentryMode(Enum):
+    FIRST_ONLY = "first_only"
+    OPTIMIZED_REENTRY = "optimized_reentry"
+
+class FunnelOrder(Enum):
+    ORDERED = "ordered"
+    UNORDERED = "unordered"
+
+@dataclass
+class FunnelConfig:
+    """Configuration for funnel analysis"""
+    conversion_window_hours: int = 168  # 7 days default
+    counting_method: CountingMethod = CountingMethod.UNIQUE_USERS
+    reentry_mode: ReentryMode = ReentryMode.FIRST_ONLY
+    funnel_order: FunnelOrder = FunnelOrder.ORDERED
+    segment_by: Optional[str] = None
+    segment_values: Optional[List[str]] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'conversion_window_hours': self.conversion_window_hours,
+            'counting_method': self.counting_method.value,
+            'reentry_mode': self.reentry_mode.value,
+            'funnel_order': self.funnel_order.value,
+            'segment_by': self.segment_by,
+            'segment_values': self.segment_values
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'FunnelConfig':
+        """Create from dictionary for JSON deserialization"""
+        return cls(
+            conversion_window_hours=data.get('conversion_window_hours', 168),
+            counting_method=CountingMethod(data.get('counting_method', 'unique_users')),
+            reentry_mode=ReentryMode(data.get('reentry_mode', 'first_only')),
+            funnel_order=FunnelOrder(data.get('funnel_order', 'ordered')),
+            segment_by=data.get('segment_by'),
+            segment_values=data.get('segment_values')
+        )
 
 @dataclass
 class TimeToConvertStats:
@@ -147,7 +191,11 @@ class CohortData:
     conversion_rates: Dict[str, List[float]]
     cohort_labels: List[str]
 
-# Additional data classes
+@dataclass
+class PathAnalysisData:
+    """Path analysis data"""
+    dropoff_paths: Dict[str, Dict[str, int]]  # step -> {next_event: count}
+    between_steps_events: Dict[str, Dict[str, int]]  # step_pair -> {event: count}
 
 @dataclass
 class StatSignificanceResult:
@@ -2094,24 +2142,48 @@ class FunnelCalculator:
                                            full_history_for_segment_users: pd.DataFrame
                                           ) -> PathAnalysisData:
         """
-        Delegates path analysis to the optimized helper class.
-        This method preserves the public API while using a robust,
-        internal implementation.
+        Analyze user paths using vectorized operations with Polars bridge
         """
+        # Check for nested objects in properties column and convert to string before processing
+        # This prevents nested object type errors when converting to Polars
+        if 'properties' in segment_funnel_events_df.columns and segment_funnel_events_df['properties'].dtype == 'object':
+            segment_funnel_events_df = segment_funnel_events_df.copy()
+            segment_funnel_events_df['properties'] = segment_funnel_events_df['properties'].astype(str)
+            
+        if 'properties' in full_history_for_segment_users.columns and full_history_for_segment_users['properties'].dtype == 'object':
+            full_history_for_segment_users = full_history_for_segment_users.copy()
+            full_history_for_segment_users['properties'] = full_history_for_segment_users['properties'].astype(str)
+        
+        # Bridge: Use Polars if enabled, otherwise fall back to Pandas
         if self.use_polars:
+            # Convert to Polars for processing 
             try:
                 polars_funnel_events = self._to_polars(segment_funnel_events_df)
                 polars_full_history = self._to_polars(full_history_for_segment_users)
                 
-                return self._path_analyzer.analyze(
-                    funnel_events_df=polars_funnel_events,
-                    full_history_df=polars_full_history,
-                    funnel_steps=funnel_steps
+                # Use the fully optimized polars implementation
+                return self._calculate_path_analysis_polars_optimized(
+                    polars_funnel_events, 
+                    funnel_steps, 
+                    polars_full_history
                 )
             except Exception as e:
-                self.logger.warning(f"Polars path analysis failed: {str(e)}. Falling back to Pandas.")
+                self.logger.warning(f"Optimized Polars path analysis failed: {str(e)}, falling back to standard Polars")
+                try:
+                    # For the fallback, convert the data again to ensure we have clean Polars DataFrames
+                    polars_funnel_events = self._to_polars(segment_funnel_events_df)
+                    polars_full_history = self._to_polars(full_history_for_segment_users)
+                    
+                    # Try the standard Polars implementation as a fallback
+                    return self._calculate_path_analysis_polars(
+                        polars_funnel_events, 
+                        funnel_steps, 
+                        polars_full_history
+                    )
+                except Exception as e2:
+                    self.logger.warning(f"Standard Polars path analysis failed: {str(e2)}, falling back to Pandas")
         
-        # Fallback to the original Pandas implementation remains unchanged.
+        # Original Pandas implementation
         return self._calculate_path_analysis_pandas(
             segment_funnel_events_df, 
             funnel_steps, 
@@ -3431,7 +3503,7 @@ class FunnelCalculator:
             else:
                 self.logger.info("_analyze_between_steps_polars: No between-steps events found for any user")
                     
-        except Exception as e:
+            except Exception as e:
             self.logger.error(f"Error in _analyze_between_steps_polars: {e}")
             
         # For synthetic data in the final test, add some events if we don't have any

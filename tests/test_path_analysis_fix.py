@@ -16,14 +16,14 @@ import io
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Union, Counter
 
-from app import (
+from models import (
     FunnelConfig,
-    FunnelCalculator,
     CountingMethod,
     ReentryMode,
     FunnelOrder,
     PathAnalysisData
 )
+from app import FunnelCalculator
 
 # Configure logging to capture output
 @pytest.fixture
