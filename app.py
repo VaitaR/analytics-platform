@@ -3853,133 +3853,81 @@ class FunnelCalculator:
         
     @_funnel_performance_monitor('_calculate_unordered_funnel_polars')
     def _calculate_unordered_funnel_polars(self, events_df: pl.DataFrame, steps: List[str]) -> FunnelResults:
-        """Calculate funnel metrics for unordered funnel (all steps within window) using Polars"""
+        """
+        Calculate funnel metrics for an unordered funnel using a fully vectorized Polars approach.
+        This version avoids Python loops for much better performance.
+        """
+        if not steps:
+            return FunnelResults([], [], [], [], [])
+
         users_count = []
         conversion_rates = []
         drop_offs = []
         drop_off_rates = []
-        
-        conversion_window_ns = self.config.conversion_window_hours * 3600 * 1_000_000_000
-        
-        # For unordered funnel, find users who completed all steps up to each point
-        for step_idx in range(len(steps)):
-            required_steps = steps[:step_idx + 1]
-            
-            # First step is handled differently - just count users who did this event
-            if step_idx == 0:
-                try:
-                    completed_users = set(
-                        events_df.filter(pl.col('event_name') == required_steps[0])
-                        .select('user_id')
-                        .unique()
-                        .to_series()
-                        .to_list()
-                    )
-                    
-                    count = len(completed_users)
-                    users_count.append(count)
-                    conversion_rates.append(100.0)
-                    drop_offs.append(0)
-                    drop_off_rates.append(0.0)
-                    continue
-                except Exception as e:
-                    self.logger.warning(f"Error processing first step: {str(e)}")
-                    # Return default results if we can't process the first step
-                    return FunnelResults(
-                        steps=steps,
-                        users_count=[0] * len(steps),
-                        conversion_rates=[0.0] * len(steps),
-                        drop_offs=[0] * len(steps),
-                        drop_off_rates=[0.0] * len(steps)
-                    )
-            
-            # Get users who did any of the required steps
-            try:
-                potential_users = set(
-                    events_df.filter(pl.col('event_name').is_in(required_steps))
-                    .select('user_id')
-                    .unique()
-                    .to_series()
-                    .to_list()
+
+        conversion_window_duration = pl.duration(hours=self.config.conversion_window_hours)
+
+        # 1. Get the first occurrence of each relevant event for each user.
+        # This is a single, efficient pass over the data.
+        first_events_df = (
+            events_df
+            .filter(pl.col("event_name").is_in(steps))
+            .group_by("user_id", "event_name")
+            .agg(pl.col("timestamp").min())
+        )
+
+        # 2. Pivot the data to have one row per user and one column per step.
+        # This creates our "completion matrix".
+        # The fix for the `pivot` deprecation warning is to use `on` instead of `columns`.
+        user_funnel_matrix = first_events_df.pivot(
+            values="timestamp",
+            index="user_id",
+            on="event_name" # Renamed from `columns`
+        )
+
+        # `completed_users_df` will be iteratively filtered down at each step.
+        completed_users_df = user_funnel_matrix
+
+        for i, step in enumerate(steps):
+            # The columns we need to check for this step of the funnel.
+            required_steps = steps[:i + 1]
+
+            # Filter the DataFrame to only include users who have completed all required steps so far.
+            # This is much faster than checking each user in a loop.
+            # The `pl.all_horizontal` expression checks that all specified columns are not null.
+            completed_users_df = completed_users_df.filter(
+                pl.all_horizontal(pl.col(s).is_not_null() for s in required_steps)
+            )
+
+            # For steps beyond the first, we also need to check the conversion window.
+            if i > 0:
+                # Check that the time span between the min and max timestamp of the required steps
+                # is within the conversion window.
+                completed_users_df = completed_users_df.filter(
+                    (pl.max_horizontal(required_steps) - pl.min_horizontal(required_steps)) <= conversion_window_duration
                 )
-            except Exception as e:
-                self.logger.warning(f"Error getting potential users: {str(e)}")
-                potential_users = set()
-            
-            if not potential_users:
-                users_count.append(0)
-                conversion_rates.append(0.0)
-                drop_offs.append(users_count[step_idx - 1])
-                drop_off_rates.append(100.0)
-                continue
-            
-            # For each user, determine the timestamp of their first occurrence of each step
-            try:
-                # Get the timestamps of the first occurrence of each step for each user
-                step_times_df = (
-                    events_df
-                    .filter(
-                        pl.col('event_name').is_in(required_steps) & 
-                        pl.col('user_id').is_in(potential_users)
-                    )
-                )
-                
-                # Calculate timestamp ranges for each user separately without using pivot
-                # This avoids the datetime-related errors in pivot
-                user_step_completion = {}
-                
-                for user_id in potential_users:
-                    user_df = step_times_df.filter(pl.col('user_id') == user_id)
-                    
-                    # Check if user has completed all required steps
-                    steps_completed = set(user_df['event_name'].to_list())
-                    if not all(step in steps_completed for step in required_steps):
-                        continue
-                    
-                    # Calculate min and max timestamps for the user
-                    user_timestamps = {}
-                    for step in required_steps:
-                        step_timestamps = user_df.filter(pl.col('event_name') == step)['timestamp']
-                        if len(step_timestamps) > 0:
-                            # Get the first occurrence of this step
-                            user_timestamps[step] = step_timestamps.min()
-                    
-                    if len(user_timestamps) == len(required_steps):
-                        # Convert timestamps to epoch nanoseconds for calculation
-                        timestamp_values = [ts.timestamp() * 1_000_000_000 for ts in user_timestamps.values()]
-                        min_time = min(timestamp_values)
-                        max_time = max(timestamp_values)
-                        time_span = max_time - min_time
-                        
-                        # Check if time span is within conversion window
-                        if conversion_window_ns == 0 and time_span == 0:
-                            # Special case: zero window means all timestamps must match exactly
-                            user_step_completion[user_id] = True
-                        elif conversion_window_ns > 0 and time_span <= conversion_window_ns:
-                            user_step_completion[user_id] = True
-                
-                # Users who completed all steps within the conversion window
-                completed_users = set(user_id for user_id, completed in user_step_completion.items() if completed)
-            
-            except Exception as e:
-                self.logger.warning(f"Error calculating step completion: {str(e)}")
-                completed_users = set()
-            
-            # Calculate metrics
-            count = len(completed_users)
+
+            # Count the remaining users, this is our result for the current step.
+            count = completed_users_df.height
             users_count.append(count)
-            
-            # Calculate conversion rate from first step
-            conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
-            conversion_rates.append(conversion_rate)
-            
-            # Calculate drop-off from previous step
-            drop_off = users_count[step_idx - 1] - count
-            drop_offs.append(drop_off)
-            
-            drop_off_rate = (drop_off / users_count[step_idx - 1] * 100) if users_count[step_idx - 1] > 0 else 0
-            drop_off_rates.append(drop_off_rate)
-        
+
+            # Calculate metrics based on the counts.
+            if i == 0:
+                conversion_rates.append(100.0)
+                drop_offs.append(0)
+                drop_off_rates.append(0.0)
+            else:
+                prev_count = users_count[i - 1]
+                # Overall conversion from the very first step
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
+                conversion_rates.append(conversion_rate)
+
+                # Drop-off from the previous step
+                drop_off = prev_count - count
+                drop_offs.append(drop_off)
+                drop_off_rate = (drop_off / prev_count * 100) if prev_count > 0 else 0.0
+                drop_off_rates.append(drop_off_rate)
+
         return FunnelResults(
             steps=steps,
             users_count=users_count,
