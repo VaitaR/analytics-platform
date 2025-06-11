@@ -49,7 +49,54 @@ class FunnelConfig:
         )
 
 @dataclass
+class TimeToConvertStats:
+    """Statistics for time to convert analysis"""
+    step_from: str
+    step_to: str
+    mean_hours: float
+    median_hours: float
+    p25_hours: float
+    p75_hours: float
+    p90_hours: float
+    std_hours: float
+    conversion_times: List[float]
+
+@dataclass
+class CohortData:
+    """Cohort analysis data"""
+    cohort_period: str
+    cohort_sizes: Dict[str, int]
+    conversion_rates: Dict[str, List[float]]
+    cohort_labels: List[str]
+
+@dataclass
+class StatSignificanceResult:
+    """Statistical significance test result"""
+    segment_a: str
+    segment_b: str
+    conversion_a: float
+    conversion_b: float
+    p_value: float
+    is_significant: bool
+    confidence_interval: Tuple[float, float]
+    z_score: float
+
+@dataclass
 class PathAnalysisData:
     """Path analysis data"""
     dropoff_paths: Dict[str, Dict[str, int]]  # step -> {next_event: count}
-    between_steps_events: Dict[str, Dict[str, int]]  # step_pair -> {event: count} 
+    between_steps_events: Dict[str, Dict[str, int]]  # step_pair -> {event: count}
+
+@dataclass
+class FunnelResults:
+    """Results of funnel analysis"""
+    steps: List[str]
+    users_count: List[int]
+    conversion_rates: List[float]
+    drop_offs: List[int]
+    drop_off_rates: List[float]
+    cohort_data: Optional[CohortData] = None
+    segment_data: Optional[Dict[str, List[int]]] = None
+    time_to_convert: Optional[List[TimeToConvertStats]] = None
+    path_analysis: Optional[PathAnalysisData] = None
+    statistical_tests: Optional[List[StatSignificanceResult]] = None 

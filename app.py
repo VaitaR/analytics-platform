@@ -20,8 +20,12 @@ import base64
 import logging
 import hashlib
 from functools import wraps
-from models import CountingMethod, ReentryMode, FunnelOrder, FunnelConfig, PathAnalysisData
-from path_analyzer import _PathAnalyzerHelper
+from models import (
+    CountingMethod, ReentryMode, FunnelOrder, FunnelConfig, 
+    TimeToConvertStats, CohortData, PathAnalysisData, 
+    StatSignificanceResult, FunnelResults
+)
+from path_analyzer import PathAnalyzer
 
 # Configure page
 st.set_page_config(
@@ -124,56 +128,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Data Classes
-
-@dataclass
-class TimeToConvertStats:
-    """Statistics for time to convert analysis"""
-    step_from: str
-    step_to: str
-    mean_hours: float
-    median_hours: float
-    p25_hours: float
-    p75_hours: float
-    p90_hours: float
-    std_hours: float
-    conversion_times: List[float]
-
-@dataclass
-class CohortData:
-    """Cohort analysis data"""
-    cohort_period: str
-    cohort_sizes: Dict[str, int]
-    conversion_rates: Dict[str, List[float]]
-    cohort_labels: List[str]
-
-# Additional data classes
-
-@dataclass
-class StatSignificanceResult:
-    """Statistical significance test result"""
-    segment_a: str
-    segment_b: str
-    conversion_a: float
-    conversion_b: float
-    p_value: float
-    is_significant: bool
-    confidence_interval: Tuple[float, float]
-    z_score: float
-
-@dataclass
-class FunnelResults:
-    """Results of funnel analysis"""
-    steps: List[str]
-    users_count: List[int]
-    conversion_rates: List[float]
-    drop_offs: List[int]
-    drop_off_rates: List[float]
-    cohort_data: Optional[CohortData] = None
-    segment_data: Optional[Dict[str, List[int]]] = None
-    time_to_convert: Optional[List[TimeToConvertStats]] = None
-    path_analysis: Optional[PathAnalysisData] = None
-    statistical_tests: Optional[List[StatSignificanceResult]] = None
+# Performance monitoring decorators
 
 # Data Source Management
 def _data_source_performance_monitor(func_name: str):
@@ -717,7 +672,7 @@ class FunnelCalculator:
         self._cached_properties = {}  # Cache for parsed JSON properties
         self._preprocessed_data = None  # Cache for preprocessed data
         self._performance_metrics = {}  # Performance monitoring
-        self._path_analyzer = _PathAnalyzerHelper(self.config)  # Initialize the path analyzer helper
+        self._path_analyzer = PathAnalyzer(self.config)  # Initialize the path analyzer helper
         
         # Set up logging for performance monitoring
         self.logger = logging.getLogger(__name__)
