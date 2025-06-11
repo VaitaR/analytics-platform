@@ -1,7 +1,8 @@
 import pandas as pd
 import polars as pl
 import numpy as np
-from app import FunnelCalculator, FunnelConfig, CountingMethod, ReentryMode, FunnelOrder
+from models import FunnelConfig, CountingMethod, ReentryMode, FunnelOrder
+from app import FunnelCalculator
 import time
 from datetime import datetime, timedelta
 

@@ -7,11 +7,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import json
-from typing import List, Dict, Any, Optional, Tuple, Union
+from typing import List, Dict, Any, Optional, Tuple, Union, Callable
 import time
 import io
 from dataclasses import dataclass, asdict
-from enum import Enum
 import clickhouse_connect
 import sqlalchemy
 from pathlib import Path
@@ -21,6 +20,8 @@ import base64
 import logging
 import hashlib
 from functools import wraps
+from models import CountingMethod, ReentryMode, FunnelOrder, FunnelConfig, PathAnalysisData
+from path_analyzer import _PathAnalyzerHelper
 
 # Configure page
 st.set_page_config(
@@ -123,52 +124,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Enums and Data Classes
-class CountingMethod(Enum):
-    UNIQUE_USERS = "unique_users"
-    EVENT_TOTALS = "event_totals"
-    UNIQUE_PAIRS = "unique_pairs"
-
-class ReentryMode(Enum):
-    FIRST_ONLY = "first_only"
-    OPTIMIZED_REENTRY = "optimized_reentry"
-
-class FunnelOrder(Enum):
-    ORDERED = "ordered"
-    UNORDERED = "unordered"
-
-@dataclass
-class FunnelConfig:
-    """Configuration for funnel analysis"""
-    conversion_window_hours: int = 168  # 7 days default
-    counting_method: CountingMethod = CountingMethod.UNIQUE_USERS
-    reentry_mode: ReentryMode = ReentryMode.FIRST_ONLY
-    funnel_order: FunnelOrder = FunnelOrder.ORDERED
-    segment_by: Optional[str] = None
-    segment_values: Optional[List[str]] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization"""
-        return {
-            'conversion_window_hours': self.conversion_window_hours,
-            'counting_method': self.counting_method.value,
-            'reentry_mode': self.reentry_mode.value,
-            'funnel_order': self.funnel_order.value,
-            'segment_by': self.segment_by,
-            'segment_values': self.segment_values
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'FunnelConfig':
-        """Create from dictionary for JSON deserialization"""
-        return cls(
-            conversion_window_hours=data.get('conversion_window_hours', 168),
-            counting_method=CountingMethod(data.get('counting_method', 'unique_users')),
-            reentry_mode=ReentryMode(data.get('reentry_mode', 'first_only')),
-            funnel_order=FunnelOrder(data.get('funnel_order', 'ordered')),
-            segment_by=data.get('segment_by'),
-            segment_values=data.get('segment_values')
-        )
+# Data Classes
 
 @dataclass
 class TimeToConvertStats:
@@ -191,11 +147,7 @@ class CohortData:
     conversion_rates: Dict[str, List[float]]
     cohort_labels: List[str]
 
-@dataclass
-class PathAnalysisData:
-    """Path analysis data"""
-    dropoff_paths: Dict[str, Dict[str, int]]  # step -> {next_event: count}
-    between_steps_events: Dict[str, Dict[str, int]]  # step_pair -> {event: count}
+# Additional data classes
 
 @dataclass
 class StatSignificanceResult:
@@ -444,6 +396,66 @@ class DataSourceManager:
         """Extract available properties for segmentation"""
         properties = {'event_properties': set(), 'user_properties': set()}
         
+        # Use Polars for efficient JSON processing if data is large enough to benefit
+        if len(df) > 1000:
+            try:
+                # Convert to Polars for efficient JSON processing
+                pl_df = pl.from_pandas(df)
+                
+                # Extract event properties
+                if 'event_properties' in pl_df.columns:
+                    # Filter out nulls first
+                    valid_props = pl_df.filter(pl.col('event_properties').is_not_null())
+                    if not valid_props.is_empty():
+                        # Decode JSON strings to struct type
+                        decoded = valid_props.select(
+                            pl.col('event_properties').str.json_decode().alias('decoded_props')
+                        )
+                        # Get all unique keys from all JSON objects
+                        if not decoded.is_empty():
+                            # Extract keys from each JSON object
+                            all_keys = decoded.select(
+                                pl.col('decoded_props').struct.field_names()
+                            ).to_series().explode().unique()
+                            
+                            # Add to properties set
+                            properties['event_properties'].update(all_keys)
+                
+                # Extract user properties
+                if 'user_properties' in pl_df.columns:
+                    # Filter out nulls first
+                    valid_props = pl_df.filter(pl.col('user_properties').is_not_null())
+                    if not valid_props.is_empty():
+                        # Decode JSON strings to struct type
+                        decoded = valid_props.select(
+                            pl.col('user_properties').str.json_decode().alias('decoded_props')
+                        )
+                        # Get all unique keys from all JSON objects
+                        if not decoded.is_empty():
+                            # Extract keys from each JSON object
+                            all_keys = decoded.select(
+                                pl.col('decoded_props').struct.field_names()
+                            ).to_series().explode().unique()
+                            
+                            # Add to properties set
+                            properties['user_properties'].update(all_keys)
+            
+            except Exception as e:
+                self.logger.warning(f"Polars JSON processing failed: {str(e)}, falling back to Pandas")
+                # Fall back to pandas implementation
+                return self._get_segmentation_properties_pandas(df)
+        else:
+            # For small datasets, use pandas implementation
+            return self._get_segmentation_properties_pandas(df)
+        
+        return {
+            k: sorted(list(v)) for k, v in properties.items() if v
+        }
+    
+    def _get_segmentation_properties_pandas(self, df: pd.DataFrame) -> Dict[str, List[str]]:
+        """Legacy pandas implementation for extracting segmentation properties"""
+        properties = {'event_properties': set(), 'user_properties': set()}
+        
         # Extract event properties
         if 'event_properties' in df.columns:
             for prop_str in df['event_properties'].dropna():
@@ -470,6 +482,51 @@ class DataSourceManager:
     
     def get_property_values(self, df: pd.DataFrame, prop_name: str, prop_type: str) -> List[str]:
         """Get unique values for a specific property"""
+        column = f'{prop_type}'
+        
+        if column not in df.columns:
+            return []
+            
+        # Use Polars for efficient JSON processing if data is large enough to benefit
+        if len(df) > 1000:
+            try:
+                # Convert to Polars for efficient JSON processing
+                pl_df = pl.from_pandas(df)
+                
+                # Filter out nulls
+                valid_props = pl_df.filter(pl.col(column).is_not_null())
+                if valid_props.is_empty():
+                    return []
+                
+                # Decode JSON strings to struct type
+                decoded = valid_props.select(
+                    pl.col(column).str.json_decode().alias('decoded_props')
+                )
+                
+                # Extract the specific property value and get unique values
+                if not decoded.is_empty():
+                    # Use struct.field to extract the property value
+                    values = (
+                        decoded
+                        .select(pl.col('decoded_props').struct.field(prop_name).alias('prop_value'))
+                        .filter(pl.col('prop_value').is_not_null())
+                        .select(pl.col('prop_value').cast(pl.Utf8))
+                        .unique()
+                        .to_series()
+                        .sort()
+                        .to_list()
+                    )
+                    return values
+            except Exception as e:
+                self.logger.warning(f"Polars JSON processing failed in get_property_values: {str(e)}, falling back to Pandas")
+                # Fall back to pandas implementation
+                return self._get_property_values_pandas(df, prop_name, prop_type)
+        
+        # For small datasets, use pandas implementation
+        return self._get_property_values_pandas(df, prop_name, prop_type)
+    
+    def _get_property_values_pandas(self, df: pd.DataFrame, prop_name: str, prop_type: str) -> List[str]:
+        """Legacy pandas implementation for getting property values"""
         values = set()
         column = f'{prop_type}'
         
@@ -660,6 +717,7 @@ class FunnelCalculator:
         self._cached_properties = {}  # Cache for parsed JSON properties
         self._preprocessed_data = None  # Cache for preprocessed data
         self._performance_metrics = {}  # Performance monitoring
+        self._path_analyzer = _PathAnalyzerHelper(self.config)  # Initialize the path analyzer helper
         
         # Set up logging for performance monitoring
         self.logger = logging.getLogger(__name__)
@@ -673,60 +731,101 @@ class FunnelCalculator:
     def _to_polars(self, df: pd.DataFrame) -> pl.DataFrame:
         """Convert pandas DataFrame to polars DataFrame with proper schema handling"""
         try:
-            # Handle datetime columns explicitly
+            # Handle complex data types by converting all object columns to strings first
             df_copy = df.copy()
             
-            # Handle timestamp column properly
+            # Handle datetime columns explicitly
             if 'timestamp' in df_copy.columns:
                 df_copy['timestamp'] = pd.to_datetime(df_copy['timestamp'])
             
             # Ensure user_id is string type to avoid mixed types
             if 'user_id' in df_copy.columns:
                 df_copy['user_id'] = df_copy['user_id'].astype(str)
-                
-            # Handle columns that should be numeric but might be stored as objects
-            # This addresses the "could not extract number from any-value of dtype: 'Object("object")'" error
-            numeric_columns = df_copy.select_dtypes(include=['float', 'float64', 'int', 'int64']).columns.tolist()
-            potential_numeric_columns = df_copy.select_dtypes(include=['object']).columns.tolist()
             
-            for col in potential_numeric_columns:
-                # Skip timestamp column which we already handled
-                if col == 'timestamp' or col == 'user_id' or col == 'event_name':
-                    continue
-                    
-                # Try to convert object columns to numeric if they appear to contain numbers
-                try:
-                    # Check if column can be converted to numeric
-                    pd.to_numeric(df_copy[col], errors='raise')
-                    # If we reach here, conversion succeeded
-                    df_copy[col] = pd.to_numeric(df_copy[col], errors='coerce')
-                    numeric_columns.append(col)
-                except (ValueError, TypeError):
-                    # Not numeric, leave as-is
-                    pass
-            
-            # Convert to polars with explicit schema to ensure proper type handling
-            schema = {}
-            
-            # Handle explicit column types
+            # Pre-process all object columns to convert them to strings
+            # This prevents the nested object type errors
             for col in df_copy.columns:
-                if col == 'timestamp':
-                    schema[col] = pl.Datetime
-                elif col == 'user_id':
-                    schema[col] = pl.Utf8
-                elif col == 'event_name':
-                    schema[col] = pl.Utf8
-                elif col in numeric_columns:
-                    schema[col] = pl.Float64
+                if df_copy[col].dtype == 'object':
+                    try:
+                        # Try to convert any complex objects in object columns to strings
+                        df_copy[col] = df_copy[col].apply(lambda x: str(x) if x is not None else None)
+                    except Exception as e:
+                        self.logger.warning(f"Error preprocessing column {col}: {str(e)}")
             
-            # Convert to polars with schema
-            polars_df = pl.from_pandas(df_copy, schema_overrides=schema if schema else None)
+            # Special handling for properties column which often contains nested JSON
+            if 'properties' in df_copy.columns:
+                try:
+                    df_copy['properties'] = df_copy['properties'].apply(lambda x: str(x) if x is not None else None)
+                except Exception as e:
+                    self.logger.warning(f"Error preprocessing properties column: {str(e)}")
             
-            self.logger.debug(f"Converted pandas DataFrame to polars: {polars_df.shape}")
-            return polars_df
+            try:
+                # Try using newer Polars versions with strict=False first
+                return pl.from_pandas(df_copy, strict=False)
+            except (TypeError, ValueError) as e:
+                if "strict" in str(e):
+                    # Fall back to the older Polars API without strict parameter
+                    return pl.from_pandas(df_copy)
+                else:
+                    # It's a different error, re-raise it
+                    raise
         except Exception as e:
-            self.logger.error(f"Error converting to polars: {str(e)}")
-            raise
+            self.logger.error(f"Error converting Pandas DataFrame to Polars: {str(e)}")
+            # Fall back to a more basic conversion approach with explicit schema
+            try:
+                # Create a schema with everything as string except for numeric and timestamp columns
+                schema = {}
+                for col in df.columns:
+                    if col == 'timestamp':
+                        schema[col] = pl.Datetime
+                    elif df[col].dtype in ['int64', 'float64']:
+                        schema[col] = pl.Float64 if df[col].dtype == 'float64' else pl.Int64
+                    else:
+                        schema[col] = pl.Utf8
+                        
+                # Convert the DataFrame with the explicit schema
+                df_copy = df.copy()
+                for col in df_copy.columns:
+                    if schema[col] == pl.Utf8 and df_copy[col].dtype == 'object':
+                        df_copy[col] = df_copy[col].astype(str)
+                
+                return pl.from_pandas(df_copy)
+            except Exception as inner_e:
+                self.logger.error(f"Failed to convert with explicit schema: {str(inner_e)}")
+                # Last resort: convert one column at a time
+                try:
+                    result = None
+                    for col in df.columns:
+                        series = df[col]
+                        try:
+                            if series.dtype == 'object':
+                                # Convert to strings
+                                pl_series = pl.Series(col, series.astype(str).tolist())
+                            elif series.dtype == 'datetime64[ns]':
+                                # Convert to datetime
+                                pl_series = pl.Series(col, series.tolist(), dtype=pl.Datetime)
+                            else:
+                                # Use default conversion
+                                pl_series = pl.Series(col, series.tolist())
+                                
+                            if result is None:
+                                result = pl.DataFrame([pl_series])
+                            else:
+                                result = result.with_columns([pl_series])
+                        except Exception as s_e:
+                            self.logger.warning(f"Error converting column {col}: {str(s_e)}")
+                            # If we can't convert, use strings
+                            pl_series = pl.Series(col, series.astype(str).tolist())
+                            if result is None:
+                                result = pl.DataFrame([pl_series])
+                            else:
+                                result = result.with_columns([pl_series])
+                    
+                    return result if result is not None else pl.DataFrame()
+                except Exception as final_e:
+                    self.logger.error(f"All conversion attempts failed: {str(final_e)}")
+                    # If all else fails, return an empty DataFrame
+                    return pl.DataFrame()
     
     def _to_pandas(self, df: pl.DataFrame) -> pd.DataFrame:
         """Convert polars DataFrame to pandas DataFrame"""
@@ -896,13 +995,144 @@ class FunnelCalculator:
             pl.col('event_name').cast(pl.Categorical)
         ])
         
-        # TODO: Implement JSON property expansion for polars
-        # For now, keep the original columns
+        # Expand JSON properties using Polars native functionality
+        # Process event_properties
+        if 'event_properties' in funnel_events.columns:
+            funnel_events = self._expand_json_properties_polars(funnel_events, 'event_properties')
+        
+        # Process user_properties
+        if 'user_properties' in funnel_events.columns:
+            funnel_events = self._expand_json_properties_polars(funnel_events, 'user_properties')
         
         execution_time = time.time() - start_time
         self.logger.info(f"Polars data preprocessing completed in {execution_time:.4f} seconds for {funnel_events.height} events")
         
         return funnel_events
+        
+    def _expand_json_properties_polars(self, df: pl.DataFrame, column: str) -> pl.DataFrame:
+        """
+        Expand commonly used JSON properties into separate columns using Polars
+        for faster filtering and segmentation
+        """
+        if column not in df.columns:
+            return df
+        
+        try:
+            # Cache key for this column
+            cache_key = f"{column}_{df.height}"
+            
+            if hasattr(self, '_cached_properties_polars') and cache_key in self._cached_properties_polars:
+                # Use cached property columns
+                expanded_cols = self._cached_properties_polars[cache_key]
+                for col_name, expr in expanded_cols.items():
+                    df = df.with_columns([expr.alias(col_name)])
+                return df
+            
+            # Filter out nulls first
+            valid_props = df.filter(pl.col(column).is_not_null())
+            if valid_props.is_empty():
+                return df
+            
+            # Decode JSON strings to struct type
+            try:
+                decoded = valid_props.select(
+                    pl.col(column).str.json_decode().alias('decoded_props')
+                )
+                
+                if decoded.is_empty():
+                    return df
+                
+                # Get field names from all objects - with compatibility for different Polars versions
+                try:
+                    # Modern Polars version approach
+                    all_keys = decoded.select(
+                        pl.col('decoded_props').struct.field_names()
+                    ).to_series().explode()
+                except Exception as e:
+                    self.logger.debug(f"Field names retrieval error: {str(e)}, trying alternate method")
+                    # Alternative approach for older Polars versions
+                    # Extract first row to get the keys
+                    if not decoded.is_empty():
+                        sample_row = decoded.row(0, named=True)
+                        if 'decoded_props' in sample_row and sample_row['decoded_props'] is not None:
+                            # Get all keys from all rows 
+                            all_keys = []
+                            for i in range(min(decoded.height, 1000)):  # Sample up to 1000 rows
+                                try:
+                                    row = decoded.row(i, named=True)
+                                    if row['decoded_props'] is not None:
+                                        all_keys.extend(row['decoded_props'].keys())
+                                except:
+                                    continue
+                            # Convert to series for unique values
+                            all_keys = pl.Series(all_keys).unique()
+                        else:
+                            return df
+                    else:
+                        return df
+                
+                # Count occurrences of each key
+                try:
+                    key_counts = all_keys.value_counts()
+                except Exception as e:
+                    self.logger.debug(f"Key count error: {str(e)}")
+                    # Fallback to simple approach
+                    key_counts = pl.DataFrame({
+                        "values": all_keys,
+                        "counts": [1] * len(all_keys)
+                    })
+                
+                # Calculate threshold
+                threshold = df.height * 0.1
+                
+                # Find common properties (appear in at least 10% of records)
+                try:
+                    # Try with "counts" column name first
+                    if "counts" in key_counts.columns:
+                        common_props = key_counts.filter(pl.col("counts") >= threshold).select("values").to_series().to_list()
+                    elif "count" in key_counts.columns:
+                        # Some versions of Polars use "count" instead of "counts"
+                        common_props = key_counts.filter(pl.col("count") >= threshold).select("values").to_series().to_list()
+                    else:
+                        # Just use all properties if we can't determine counts
+                        self.logger.debug(f"Count column not found in: {key_counts.columns}")
+                        common_props = all_keys.to_list()
+                except Exception as e:
+                    self.logger.debug(f"Error filtering common properties: {str(e)}")
+                    # Fallback to using all keys
+                    common_props = all_keys.to_list()
+                
+                # Create expressions for each common property
+                expanded_cols = {}
+                for prop in common_props:
+                    col_name = f"{column}_{prop}"
+                    # Create expression to extract property with error handling
+                    try:
+                        expr = pl.col(column).str.json_decode().struct.field(prop)
+                        expanded_cols[col_name] = expr
+                    except Exception as e:
+                        self.logger.debug(f"Error creating expression for {prop}: {str(e)}")
+                        continue
+                
+                # Cache the property expressions
+                if not hasattr(self, '_cached_properties_polars'):
+                    self._cached_properties_polars = {}
+                self._cached_properties_polars[cache_key] = expanded_cols
+                
+                # Add expanded columns to dataframe
+                for col_name, expr in expanded_cols.items():
+                    df = df.with_columns([expr.alias(col_name)])
+                
+            except Exception as e:
+                self.logger.warning(f"Failed to expand JSON with Polars: {str(e)}")
+                # Return original dataframe if expansion fails
+                return df
+                
+            return df
+            
+        except Exception as e:
+            self.logger.warning(f"Error in _expand_json_properties_polars: {str(e)}")
+            return df
 
     @_funnel_performance_monitor('_preprocess_data')
     def _preprocess_data(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> pd.DataFrame:
@@ -1093,14 +1323,129 @@ class FunnelCalculator:
             return empty_segments
         
         return segments if segments else {'All Users': events_df}
+        
+    @_funnel_performance_monitor('segment_events_data_polars')
+    def segment_events_data_polars(self, events_df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
+        """Segment events data based on configuration with optimized filtering using Polars"""
+        if not self.config.segment_by or not self.config.segment_values:
+            return {'All Users': events_df}
+        
+        segments = {}
+        # Extract property name correctly
+        if self.config.segment_by.startswith('event_properties_'):
+            prop_name = self.config.segment_by[len('event_properties_'):]
+        elif self.config.segment_by.startswith('user_properties_'):
+            prop_name = self.config.segment_by[len('user_properties_'):]
+        else:
+            prop_name = self.config.segment_by
+        
+        # Use expanded columns if available for faster filtering
+        expanded_col = f"{self.config.segment_by}_{prop_name}"
+        if expanded_col in events_df.columns:
+            # Use Polars filtering on expanded column
+            for segment_value in self.config.segment_values:
+                segment_df = events_df.filter(pl.col(expanded_col) == segment_value)
+                if segment_df.height > 0:
+                    segments[f"{prop_name}={segment_value}"] = segment_df
+        else:
+            # Fallback to JSON property filtering
+            prop_type = 'event_properties' if self.config.segment_by.startswith('event_') else 'user_properties'
+            for segment_value in self.config.segment_values:
+                segment_df = self._filter_by_property_polars_native(events_df, prop_name, segment_value, prop_type)
+                if segment_df.height > 0:
+                    segments[f"{prop_name}={segment_value}"] = segment_df
+        
+        # If specific segment values were requested but none found, return empty segments
+        if self.config.segment_values and not segments:
+            # Return empty segments for each requested value
+            empty_segments = {}
+            for segment_value in self.config.segment_values:
+                empty_segments[f"{prop_name}={segment_value}"] = pl.DataFrame(schema=events_df.schema)
+            return empty_segments
+        
+        return segments if segments else {'All Users': events_df}
+    
+    def _filter_by_property_polars_native(self, df: pl.DataFrame, prop_name: str, prop_value: str, prop_type: str) -> pl.DataFrame:
+        """Filter DataFrame by property value using native Polars operations"""
+        if prop_type not in df.columns:
+            return pl.DataFrame(schema=df.schema)
+            
+        # Check if there's an expanded column for this property - faster path
+        expanded_col = f"{prop_type}_{prop_name}"
+        if expanded_col in df.columns:
+            return df.filter(pl.col(expanded_col) == prop_value)
+        
+        # Filter nulls
+        filtered_df = df.filter(pl.col(prop_type).is_not_null())
+        
+        try:
+            # Create a more robust expression to handle JSON strings
+            # First attempt: Use JSON path expression to extract the property
+            return filtered_df.filter(
+                pl.col(prop_type).str.json_extract_scalar(f"$.{prop_name}") == prop_value
+            )
+        except Exception as e:
+            self.logger.warning(f"JSON path extraction failed: {str(e)}")
+            
+            try:
+                # Second attempt: Parse JSON and check field
+                return filtered_df.filter(
+                    pl.col(prop_type).str.json_decode().struct.field(prop_name) == prop_value
+                )
+            except Exception as e:
+                self.logger.warning(f"JSON struct field extraction failed: {str(e)}")
+                
+                try:
+                    # Third attempt: Manual string matching as fallback
+                    # This is less efficient but more robust for simple cases
+                    pattern = f'"{prop_name}": ?"{prop_value}"'
+                    return filtered_df.filter(
+                        pl.col(prop_type).str.contains(pattern)
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Polars property filtering failed completely: {str(e)}")
+                    # Return empty DataFrame with same schema
+                    return pl.DataFrame(schema=df.schema)
     
     def _filter_by_property(self, df: pd.DataFrame, prop_name: str, prop_value: str, prop_type: str) -> pd.DataFrame:
         """Filter DataFrame by property value"""
         if prop_type not in df.columns:
             return pd.DataFrame()
+            
+        # Check if there's an expanded column for this property - faster path
+        expanded_col = f"{prop_type}_{prop_name}"
+        if expanded_col in df.columns:
+            return df[df[expanded_col] == prop_value].copy()
         
+        # Try to use Polars for efficient filtering
+        if len(df) > 1000:
+            try:
+                return self._filter_by_property_polars(df, prop_name, prop_value, prop_type)
+            except Exception as e:
+                self.logger.warning(f"Polars property filtering failed: {str(e)}, falling back to pandas")
+                # Fall back to pandas implementation
+        
+        # Pandas fallback
         mask = df[prop_type].apply(lambda x: self._has_property_value(x, prop_name, prop_value))
         return df[mask].copy()
+    
+    def _filter_by_property_polars(self, df: pd.DataFrame, prop_name: str, prop_value: str, prop_type: str) -> pd.DataFrame:
+        """Filter DataFrame by property value using Polars for performance"""
+        # Convert to Polars
+        pl_df = pl.from_pandas(df)
+        
+        # Filter nulls
+        pl_df = pl_df.filter(pl.col(prop_type).is_not_null())
+        
+        # Create expression to check if property value matches
+        # First decode the JSON string to a struct
+        # Then extract the property and check if it equals the value
+        filtered_df = pl_df.filter(
+            pl.col(prop_type).str.json_decode().struct.field(prop_name) == prop_value
+        )
+        
+        # Convert back to pandas
+        return filtered_df.to_pandas()
     
     def _has_property_value(self, prop_str: str, prop_name: str, prop_value: str) -> bool:
         """Check if property string contains specific value"""
@@ -1191,18 +1536,12 @@ class FunnelCalculator:
         
         self.logger.info(f"Polars preprocessing completed in {preprocess_time:.4f} seconds. Processing {preprocessed_polars_df.height} relevant events.")
         
-        # For now, convert back to Pandas for segmentation and other advanced features
-        # TODO: Implement these in Polars in future iterations
-        preprocessed_pandas_df = self._to_pandas(preprocessed_polars_df)
-        
-        # Segment data if configured (using existing Pandas implementation)
-        segments = self.segment_events_data(preprocessed_pandas_df)
+        # Use the new Polars segmentation method
+        segments = self.segment_events_data_polars(preprocessed_polars_df)
         
         # Calculate base funnel metrics for each segment
         segment_results = {}
-        for segment_name, segment_df in segments.items():
-            # Convert back to Polars for core calculation
-            segment_polars_df = self._to_polars(segment_df)
+        for segment_name, segment_polars_df in segments.items():
             
             # Calculate metrics based on counting method and funnel order
             if self.config.funnel_order == FunnelOrder.UNORDERED:
@@ -1221,7 +1560,7 @@ class FunnelCalculator:
         # If only one segment, return its results directly with additional analysis
         if len(segment_results) == 1:
             main_result = list(segment_results.values())[0]
-            segment_df = list(segments.values())[0]
+            segment_polars_df = list(segments.values())[0]
             
             # If segmentation was configured, add segment data even for single segment
             if self.config.segment_by and self.config.segment_values:
@@ -1230,20 +1569,57 @@ class FunnelCalculator:
                     for segment_name, result in segment_results.items()
                 }
             
-            # Add advanced analysis using existing Pandas methods (TODO: convert to Polars)
-            main_result.time_to_convert = self._calculate_time_to_convert_optimized(segment_df, funnel_steps)
-            main_result.cohort_data = self._calculate_cohort_analysis_optimized(segment_df, funnel_steps)
+            # Add advanced analysis using Polars methods
+            main_result.time_to_convert = self._calculate_time_to_convert_polars(segment_polars_df, funnel_steps)
+            
+            # For cohort analysis, we still need to use the pandas version for now
+            # Convert segment data to pandas for this specific analysis
+            segment_pandas_df = self._to_pandas(segment_polars_df)
+            main_result.cohort_data = self._calculate_cohort_analysis_optimized(segment_pandas_df, funnel_steps)
             
             # Get all user_ids from this segment
-            segment_user_ids = segment_df['user_id'].unique()
-            # Filter the *original* events_df for these users to get their full history
-            full_history_for_segment_users = original_events_df[original_events_df['user_id'].isin(segment_user_ids)].copy()
+            segment_user_ids = set(segment_polars_df.select('user_id').unique().to_series().to_list())
             
-            main_result.path_analysis = self._calculate_path_analysis_optimized(
-                segment_df, # Funnel events for users in this segment
-                funnel_steps,
-                full_history_for_segment_users # Full event history for these users
+            # Filter the *original* events_df for these users to get their full history
+            # Convert original_events_df to Polars if it's not already
+            if isinstance(original_events_df, pd.DataFrame):
+                original_polars_df = self._to_polars(original_events_df)
+            else:
+                original_polars_df = original_events_df
+            
+            # Ensure consistent data types between DataFrames
+            # Get the schema of segment_polars_df
+            segment_schema = segment_polars_df.schema
+            
+            # Cast user_id in both DataFrames to string to ensure consistent types
+            segment_polars_df = segment_polars_df.with_columns(
+                pl.col('user_id').cast(pl.Utf8).alias('user_id')
             )
+            
+            full_history_for_segment_users = original_polars_df.filter(
+                pl.col('user_id').is_in(segment_user_ids)
+            ).with_columns(
+                pl.col('user_id').cast(pl.Utf8).alias('user_id')
+            )
+            
+            try:
+                # Use the Polars path analysis implementation
+                main_result.path_analysis = self._calculate_path_analysis_polars_optimized(
+                    segment_polars_df, # Funnel events for users in this segment
+                    funnel_steps,
+                    full_history_for_segment_users # Full event history for these users
+                )
+            except Exception as e:
+                self.logger.warning(f"Polars path analysis failed: {str(e)}, falling back to pandas path analysis")
+                # Convert to pandas for fallback
+                segment_pandas_df = self._to_pandas(segment_polars_df)
+                full_history_pandas_df = self._to_pandas(full_history_for_segment_users)
+                
+                main_result.path_analysis = self._calculate_path_analysis_optimized(
+                    segment_pandas_df,
+                    funnel_steps,
+                    full_history_pandas_df
+                )
             
             return main_result
         
@@ -1718,34 +2094,24 @@ class FunnelCalculator:
                                            full_history_for_segment_users: pd.DataFrame
                                           ) -> PathAnalysisData:
         """
-        Analyze user paths using vectorized operations with Polars bridge
+        Delegates path analysis to the optimized helper class.
+        This method preserves the public API while using a robust,
+        internal implementation.
         """
-        # Bridge: Use Polars if enabled, otherwise fall back to Pandas
         if self.use_polars:
             try:
-                # Convert to Polars for processing
                 polars_funnel_events = self._to_polars(segment_funnel_events_df)
                 polars_full_history = self._to_polars(full_history_for_segment_users)
                 
-                # Use the fully optimized polars implementation
-                return self._calculate_path_analysis_polars_optimized(
-                    polars_funnel_events, 
-                    funnel_steps, 
-                    polars_full_history
+                return self._path_analyzer.analyze(
+                    funnel_events_df=polars_funnel_events,
+                    full_history_df=polars_full_history,
+                    funnel_steps=funnel_steps
                 )
             except Exception as e:
-                self.logger.warning(f"Optimized Polars path analysis failed: {str(e)}, falling back to standard Polars")
-                try:
-                    # Try the standard Polars implementation as a fallback
-                    return self._calculate_path_analysis_polars(
-                        polars_funnel_events, 
-                        funnel_steps, 
-                        polars_full_history
-                    )
-                except Exception as e2:
-                    self.logger.warning(f"Standard Polars path analysis failed: {str(e2)}, falling back to Pandas")
+                self.logger.warning(f"Polars path analysis failed: {str(e)}. Falling back to Pandas.")
         
-        # Original Pandas implementation
+        # Fallback to the original Pandas implementation remains unchanged.
         return self._calculate_path_analysis_pandas(
             segment_funnel_events_df, 
             funnel_steps, 
@@ -1761,6 +2127,43 @@ class FunnelCalculator:
         """
         Polars implementation of path analysis with optimized operations
         """
+        # Ensure we're working with eager DataFrames (not LazyFrames)
+        if hasattr(segment_funnel_events_df, 'collect'):
+            segment_funnel_events_df = segment_funnel_events_df.collect()
+        if hasattr(full_history_for_segment_users, 'collect'):
+            full_history_for_segment_users = full_history_for_segment_users.collect()
+            
+        # Safely handle _original_order column to avoid duplication
+        # First, create clean DataFrames without any _original_order columns
+        segment_cols = [col for col in segment_funnel_events_df.columns if col != '_original_order']
+        if len(segment_cols) < len(segment_funnel_events_df.columns):
+            # If _original_order was in columns, drop it using select rather than drop
+            segment_funnel_events_df = segment_funnel_events_df.select(segment_cols)
+            
+        # Add _original_order as row index
+        segment_funnel_events_df = segment_funnel_events_df.with_row_index("_original_order")
+            
+        # Same for history DataFrame
+        history_cols = [col for col in full_history_for_segment_users.columns if col != '_original_order']
+        if len(history_cols) < len(full_history_for_segment_users.columns):
+            # If _original_order was in columns, drop it using select rather than drop
+            full_history_for_segment_users = full_history_for_segment_users.select(history_cols)
+            
+        # Add _original_order as row index
+        full_history_for_segment_users = full_history_for_segment_users.with_row_index("_original_order")
+            
+        # Make sure the properties column is handled correctly for nested objects
+        if 'properties' in segment_funnel_events_df.columns:
+            # Convert properties to string to avoid nested object type issues
+            segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                pl.col('properties').cast(pl.Utf8)
+            ])
+        
+        if 'properties' in full_history_for_segment_users.columns:
+            # Convert properties to string to avoid nested object type issues
+            full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                pl.col('properties').cast(pl.Utf8)
+            ])
         dropoff_paths = {}
         between_steps_events = {}
         
@@ -1835,18 +2238,206 @@ class FunnelCalculator:
             dropoff_paths=dropoff_paths,
             between_steps_events=between_steps_events
         )
-        
+    
+    def _safe_polars_operation(self, df: pl.DataFrame, operation: Callable, *args, **kwargs):
+        """Safely execute a Polars operation with proper error handling for nested object types"""
+        try:
+            return operation(*args, **kwargs)
+        except Exception as e:
+            if "nested object types" in str(e).lower():
+                self.logger.warning(f"Caught nested object types error: {str(e)}")
+                
+                # Convert all columns with complex types to strings
+                result_df = df.clone()
+                for col in result_df.columns:
+                    try:
+                        dtype = result_df[col].dtype
+                        # Only process object columns
+                        if dtype in [pl.Object, pl.List, pl.Struct]:
+                            # Convert to string representation
+                            result_df = result_df.with_columns([
+                                result_df[col].cast(pl.Utf8)
+                            ])
+                    except:
+                        pass
+                
+                # Try operation again with modified DataFrame
+                try:
+                    return operation(*args, **kwargs)
+                except:
+                    # If it still fails, raise the original error
+                    raise e
+            else:
+                # Not a nested object types error
+                raise
+                
     @_funnel_performance_monitor('_calculate_path_analysis_polars_optimized')
     def _calculate_path_analysis_polars_optimized(self, 
-                                        segment_funnel_events_df: pl.DataFrame, 
+                                        segment_funnel_events_df, 
                                         funnel_steps: List[str],
-                                        full_history_for_segment_users: pl.DataFrame
+                                        full_history_for_segment_users
                                        ) -> PathAnalysisData:
         """
         Fully vectorized Polars implementation of path analysis with optimized operations.
-        This implementation uses lazy evaluation, joins, and window functions instead of 
-        iterating through users, providing better performance for large datasets.
+        This implementation handles both DataFrames and LazyFrames as input, and uses 
+        lazy evaluation, joins, and window functions instead of iterating through users, 
+        providing better performance for large datasets.
         """
+        # First, ensure we're working with eager DataFrames (not LazyFrames)
+        # Check if it's a LazyFrame by checking for the collect attribute
+        if hasattr(segment_funnel_events_df, 'collect') and callable(getattr(segment_funnel_events_df, 'collect')):
+            segment_funnel_events_df = segment_funnel_events_df.collect()
+        if hasattr(full_history_for_segment_users, 'collect') and callable(getattr(full_history_for_segment_users, 'collect')):
+            full_history_for_segment_users = full_history_for_segment_users.collect()
+            
+        # Print debug information about the incoming data to help diagnose issues
+        try:
+            self.logger.info(f"Path analysis input data info - segment_df columns: {segment_funnel_events_df.columns}")
+            self.logger.info(f"Path analysis input data info - full_history_df columns: {full_history_for_segment_users.columns}")
+            if 'properties' in segment_funnel_events_df.columns:
+                try:
+                    sample = segment_funnel_events_df['properties'][0] if len(segment_funnel_events_df) > 0 else None
+                    self.logger.info(f"Properties column sample value: {sample}, type: {type(sample)}")
+                except Exception as e:
+                    self.logger.warning(f"Error accessing properties sample: {str(e)}")
+        except Exception as e:
+            self.logger.warning(f"Error logging debug info: {str(e)}")
+        
+        # Try to convert any nested object types to strings explicitly before any operation
+        # This is a more aggressive approach to avoid the "nested object types" error
+        try:
+            # Create new DataFrames with converted columns to avoid modifying originals
+            segment_df_fixed = segment_funnel_events_df.clone()
+            history_df_fixed = full_history_for_segment_users.clone()
+            
+            # First, ensure all object columns in both DataFrames are converted to strings
+            for df_name, df in [("segment_df", segment_df_fixed), ("history_df", history_df_fixed)]:
+                for col in df.columns:
+                    try:
+                        col_dtype = df[col].dtype
+                        self.logger.info(f"Column {col} in {df_name} has dtype: {col_dtype}")
+                        
+                        # Handle nested object types by converting to string
+                        if str(col_dtype).startswith('Object') or 'properties' in col.lower():
+                            self.logger.info(f"Converting column {col} to string")
+                            df = df.with_columns([
+                                pl.col(col).cast(pl.Utf8)
+                            ])
+                    except Exception as e:
+                        self.logger.warning(f"Error checking/converting column {col} type in {df_name}: {str(e)}")
+            
+            # Use the fixed DataFrames
+            segment_funnel_events_df = segment_df_fixed
+            full_history_for_segment_users = history_df_fixed
+        except Exception as e:
+            self.logger.warning(f"Error in nested object type preprocessing: {str(e)}")
+        # Handle all object columns by converting them to strings first to avoid nested object type errors
+        # This preprocessing helps prevent the common fallback to pandas implementation
+        try:
+            # Specifically handle the properties column which is often a JSON string
+            # This is the main cause of nested object type errors
+            if 'properties' in segment_funnel_events_df.columns:
+                try:
+                    # Force properties column to string type
+                    segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                        pl.col('properties').cast(pl.Utf8)
+                    ])
+                except Exception as e:
+                    self.logger.warning(f"Error converting properties column in segment_df: {str(e)}")
+            
+            if 'properties' in full_history_for_segment_users.columns:
+                try:
+                    # Force properties column to string type
+                    full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                        pl.col('properties').cast(pl.Utf8)
+                    ])
+                except Exception as e:
+                    self.logger.warning(f"Error converting properties column in history_df: {str(e)}")
+            
+            # Find and handle any complex columns
+            object_cols = []
+            for col in segment_funnel_events_df.columns:
+                # Skip already handled columns
+                if col in ['user_id', 'event_name', 'timestamp', '_original_order', 'properties']:
+                    continue
+                
+                try:
+                    # Check if column has a complex type
+                    dtype = segment_funnel_events_df[col].dtype
+                    if dtype in [pl.Object, pl.List, pl.Struct]:
+                        object_cols.append(col)
+                except:
+                    # If type check fails, assume it might be complex
+                    object_cols.append(col)
+            
+            # Convert any remaining complex columns to strings
+            if object_cols:
+                for col in object_cols:
+                    try:
+                        segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                            pl.col(col).cast(pl.Utf8)
+                        ])
+                    except:
+                        pass
+                        
+                    try:
+                        if col in full_history_for_segment_users.columns:
+                            full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                                pl.col(col).cast(pl.Utf8)
+                            ])
+                    except:
+                        pass
+        except Exception as e:
+            self.logger.warning(f"Error preprocessing complex columns: {str(e)}")
+            # Continue anyway and let fallback mechanism handle errors
+        start_time = time.time()
+            
+        # Make sure properties column is properly handled to avoid nested object type errors
+        if 'properties' in segment_funnel_events_df.columns:
+            try:
+                # Try newer Polars API first
+                segment_funnel_events_df = segment_funnel_events_df.with_column(
+                    pl.col('properties').cast(pl.Utf8)
+                )
+            except AttributeError:
+                # Fall back to older Polars API
+                segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                    pl.col('properties').cast(pl.Utf8)
+                ])
+            
+        if 'properties' in full_history_for_segment_users.columns:
+            try:
+                # Try newer Polars API first
+                full_history_for_segment_users = full_history_for_segment_users.with_column(
+                    pl.col('properties').cast(pl.Utf8)
+                )
+            except AttributeError:
+                # Fall back to older Polars API
+                full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                    pl.col('properties').cast(pl.Utf8)
+                ])
+            
+        # Remove existing _original_order column if it exists and add a new one
+        if '_original_order' in segment_funnel_events_df.columns:
+            segment_funnel_events_df = segment_funnel_events_df.drop('_original_order')
+        segment_funnel_events_df = segment_funnel_events_df.with_row_index("_original_order")
+            
+        if '_original_order' in full_history_for_segment_users.columns:
+            full_history_for_segment_users = full_history_for_segment_users.drop('_original_order')
+        full_history_for_segment_users = full_history_for_segment_users.with_row_index("_original_order")
+            
+        # Make sure the properties column is handled correctly for nested objects
+        if 'properties' in segment_funnel_events_df.columns:
+            # Convert properties to string to avoid nested object type issues
+            segment_funnel_events_df = segment_funnel_events_df.with_columns([
+                pl.col('properties').cast(pl.Utf8)
+            ])
+        
+        if 'properties' in full_history_for_segment_users.columns:
+            # Convert properties to string to avoid nested object type issues
+            full_history_for_segment_users = full_history_for_segment_users.with_columns([
+                pl.col('properties').cast(pl.Utf8)
+            ])
         dropoff_paths = {}
         between_steps_events = {}
         
@@ -1871,9 +2462,11 @@ class FunnelCalculator:
         ])
         
         # Filter to only include events in funnel steps (for performance)
+        # Collect the funnel steps into a list to avoid LazyFrame issues
+        funnel_steps_list = funnel_steps
         funnel_events_df = segment_df_lazy.filter(
-            pl.col('event_name').is_in(funnel_steps)
-        )
+            pl.col('event_name').is_in(funnel_steps_list)
+        ).collect().lazy()
         
         conversion_window = pl.duration(hours=self.config.conversion_window_hours)
         
@@ -1889,6 +2482,7 @@ class FunnelCalculator:
                 .filter(pl.col('event_name') == step)
                 .select('user_id')
                 .unique()
+                .collect()  # Ensure we're using eager mode to avoid LazyFrame issues
             )
             
             next_step_users = (
@@ -1896,22 +2490,30 @@ class FunnelCalculator:
                 .filter(pl.col('event_name') == next_step)
                 .select('user_id')
                 .unique()
+                .collect()  # Ensure we're using eager mode to avoid LazyFrame issues
             )
             
-            # Anti-join to find users who dropped off
-            dropped_users = (
-                step_users
-                .join(next_step_users, on='user_id', how='anti')
-            )
+            # Anti-join to find users who dropped off - we already collected above
+            # Convert user_ids to a list instead of using DataFrames for the join
+            step_user_ids = set(step_users['user_id'].to_list())
+            next_step_user_ids = set(next_step_users['user_id'].to_list())
+            
+            # Find dropped off users
+            dropped_user_ids = step_user_ids - next_step_user_ids
+            
+            # Create DataFrame from the list of dropped user IDs
+            dropped_users = pl.DataFrame({
+                'user_id': list(dropped_user_ids)
+            })
             
             # If we found dropped users, analyze their paths
-            if dropped_users.collect().height > 0:
+            if dropped_users.height > 0:
                 # 2. Get timestamp of last occurrence of step for each dropped user
                 last_step_events = (
                     funnel_events_df
                     .filter(
                         (pl.col('event_name') == step) &
-                        pl.col('user_id').is_in(dropped_users.select('user_id'))
+                        pl.col('user_id').is_in(list(dropped_user_ids))
                     )
                     .group_by('user_id')
                     .agg(pl.col('timestamp').max().alias('last_step_time'))
@@ -1952,7 +2554,7 @@ class FunnelCalculator:
                 event_counts_collected = event_counts.collect()
                 
                 # Get the total number of dropped users
-                total_dropped_users = dropped_users.collect().height
+                total_dropped_users = dropped_users.height
                 
                 # Get total users with next events (execute query once)
                 total_with_next_events = first_next_events.collect().height
@@ -1961,35 +2563,49 @@ class FunnelCalculator:
                 users_with_no_events = total_dropped_users - total_with_next_events
                 
                 if users_with_no_events > 0:
-                    # Add a row for users with no further activity
+                    # Create a safe int64 DataFrame first
                     no_events_df = pl.DataFrame({
                         'next_event': ['(no further activity)'],
-                        'count': [users_with_no_events]
+                        'count': [int(users_with_no_events)]  # Explicit conversion to int
                     })
-                    event_counts_collected = pl.concat([event_counts_collected, no_events_df])
+                    
+                    # Special handling for empty event_counts_collected
+                    if event_counts_collected.height == 0:
+                        event_counts_collected = no_events_df
+                    else:
+                        # Get the dtype of the count column from event_counts_collected
+                        count_dtype = event_counts_collected.schema["count"]
+                        
+                        # Cast the count column to match exactly
+                        no_events_df = no_events_df.with_columns([
+                            pl.col("count").cast(pl.Int64).cast(count_dtype)
+                        ])
+                        
+                        # Now concatenate with explicit schema alignment
+                        event_counts_collected = pl.concat(
+                            [event_counts_collected, no_events_df],
+                            how="vertical_relaxed"  # This will coerce types if needed
+                        )
                 
                 # Take top 10 events and convert to dict
                 top_events = event_counts_collected.sort('count', descending=True).head(10)
                 dropoff_paths[step] = {row['next_event']: row['count'] for row in top_events.iter_rows(named=True)}
             
             # ------ BETWEEN STEPS EVENTS ANALYSIS ------
-            # 1. Find users who completed both steps
-            converted_users = (
-                step_users
-                .join(next_step_users, on='user_id', how='inner')
-                .collect()
-            )
+            # 1. Find users who completed both steps - just use the intersection of user IDs sets
+            # since we already have the user IDs as sets
+            converted_user_ids = step_user_ids & next_step_user_ids
             
             # Always initialize the dictionary for this step pair
             between_steps_events[step_pair_key] = {}
             
-            if converted_users.height > 0:
+            if len(converted_user_ids) > 0:
                 # 2. Get events for the current step and next step
                 step_A_events = (
                     funnel_events_df
-                    .filter(
-                        (pl.col('event_name') == step) &
-                        pl.col('user_id').is_in(converted_users.select('user_id'))
+                                    .filter(
+                    (pl.col('event_name') == step) &
+                    pl.col('user_id').is_in(step_user_ids & next_step_user_ids)
                     )
                     .select(['user_id', 'timestamp', pl.lit(step).alias('step_name')])
                     .collect()
@@ -1997,9 +2613,9 @@ class FunnelCalculator:
                 
                 step_B_events = (
                     funnel_events_df
-                    .filter(
-                        (pl.col('event_name') == next_step) &
-                        pl.col('user_id').is_in(converted_users.select('user_id'))
+                                    .filter(
+                    (pl.col('event_name') == next_step) &
+                    pl.col('user_id').is_in(step_user_ids & next_step_user_ids)
                     )
                     .select(['user_id', 'timestamp', pl.lit(next_step).alias('step_name')])
                     .collect()
@@ -2047,36 +2663,66 @@ class FunnelCalculator:
                     elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
                         # For each step A timestamp, find the first step B timestamp after it
                         try:
-                            conversion_pairs = (
-                                step_A_events
-                                .with_columns(pl.col('timestamp').alias('step_A_time'))
-                                .join_asof(
-                                    step_B_events.sort('timestamp'),
-                                    left_on='step_A_time',
-                                    right_on='timestamp',
-                                    by='user_id',
-                                    strategy='forward',
-                                    tolerance=conversion_window
+                            # Explicitly convert timestamps to ensure they are proper datetime columns
+                            step_A_events_clean = step_A_events.with_columns([
+                                pl.col('timestamp').cast(pl.Datetime).alias('step_A_time')
+                            ])
+                            
+                            step_B_events_clean = step_B_events.with_columns([
+                                pl.col('timestamp').cast(pl.Datetime)
+                            ]).sort('timestamp')
+                            
+                            # Try join_asof with proper column types
+                            try:
+                                # Ensure we have proper datetime types for join_asof
+                                step_A_events_clean = step_A_events_clean.with_columns([
+                                    pl.col('step_A_time').cast(pl.Datetime),
+                                    pl.col('user_id').cast(pl.Utf8)
+                                ])
+                                
+                                step_B_events_clean = step_B_events_clean.with_columns([
+                                    pl.col('timestamp').cast(pl.Datetime),
+                                    pl.col('user_id').cast(pl.Utf8)
+                                ])
+                                
+                                # Try join_asof with explicit type casting
+                                conversion_pairs = (
+                                    step_A_events_clean
+                                    .join_asof(
+                                        step_B_events_clean,
+                                        left_on='step_A_time',
+                                        right_on='timestamp',
+                                        by='user_id',
+                                        strategy='forward',
+                                        tolerance=conversion_window
+                                    )
+                                    .filter(pl.col('timestamp_right').is_not_null())
+                                    .with_columns([
+                                        pl.col('timestamp_right').alias('step_B_time'),
+                                        pl.col('step_name').alias('step'),
+                                        pl.col('step_name_right').alias('next_step')
+                                    ])
+                                    .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
+                                    # Keep first valid conversion pair per user
+                                    .sort(['user_id', 'step_A_time'])
+                                    .group_by('user_id')
+                                    .agg([
+                                        pl.col('step').first(),
+                                        pl.col('next_step').first(),
+                                        pl.col('step_A_time').first(),
+                                        pl.col('step_B_time').first()
+                                    ])
                                 )
-                                .filter(pl.col('timestamp_right').is_not_null())
-                                .with_columns([
-                                    pl.col('timestamp_right').alias('step_B_time'),
-                                    pl.col('step_name').alias('step'),
-                                    pl.col('step_name_right').alias('next_step')
-                                ])
-                                .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
-                                # Keep first valid conversion pair per user
-                                .sort(['user_id', 'step_A_time'])
-                                .group_by('user_id')
-                                .agg([
-                                    pl.col('step').first(),
-                                    pl.col('next_step').first(),
-                                    pl.col('step_A_time').first(),
-                                    pl.col('step_B_time').first()
-                                ])
-                            )
+                            except Exception as e:
+                                self.logger.warning(f"join_asof failed in optimized_reentry: {e}, falling back to standard join approach")
+                                # Check specifically for Object dtype errors
+                                if "could not extract number from any-value of dtype" in str(e):
+                                    self.logger.info("Detected Object dtype error in join_asof, using vectorized fallback approach")
+                                # If join_asof fails, use our more robust join approach which doesn't rely on join_asof
+                                conversion_pairs = self._find_optimal_step_pairs(step_A_events_clean, step_B_events_clean)
                         except Exception as e:
-                            self.logger.warning(f"join_asof failed in optimized_reentry: {e}, using alternative approach")
+                            self.logger.warning(f"Error in optimized_reentry mode: {e}, using alternative approach")
+                            # Final fallback using the standard join approach
                             conversion_pairs = self._find_optimal_step_pairs(step_A_events, step_B_events)
                 
                 elif self.config.funnel_order == FunnelOrder.UNORDERED:
@@ -2110,8 +2756,8 @@ class FunnelCalculator:
                             .alias('ordered_times')
                         ])
                         .with_columns([
-                            pl.col('ordered_times')['step_A_time'].alias('true_A_time'),
-                            pl.col('ordered_times')['step_B_time'].alias('true_B_time')
+                            pl.col('ordered_times').struct.field('step_A_time').alias('true_A_time'),
+                            pl.col('ordered_times').struct.field('step_B_time').alias('true_B_time')
                         ])
                         .with_columns([
                             (pl.col('true_B_time') - pl.col('true_A_time')).dt.total_hours().alias('hours_diff')
@@ -2234,83 +2880,79 @@ class FunnelCalculator:
                 'step_B_time': []
             })
         
-        # Use a normal join and filter approach
-        if 'step_A_time' not in step_A_df.columns:
-            # Ensure we have step_A_time column
-            step_A_df = step_A_df.with_columns(pl.col('timestamp').alias('step_A_time'))
-        
-        if 'step_name' in step_B_df.columns:
-            # Calculate all possible pairs with proper timestamp handling
-            try:
-                # Ensure both dataframes have step name columns
-                if 'step' not in step_A_df.columns and 'step_name' in step_A_df.columns:
-                    step_A_df = step_A_df.with_columns(pl.col('step_name').alias('step'))
-                
-                # Join and find valid pairs within conversion window
-                pairs = (
-                    step_A_df
-                    .join(step_B_df, on='user_id', how='inner')
-                    .filter(
-                        (pl.col('timestamp') > pl.col('step_A_time')) &
-                        (pl.col('timestamp') <= pl.col('step_A_time') + conversion_window)
-                    )
-                    .with_columns([
-                        pl.col('timestamp').alias('step_B_time'),
-                        pl.col('step_name').alias('next_step')
-                    ])
-                    .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
-                    .sort(['user_id', 'step_A_time'])
-                )
-                
-                # Keep the first valid pair for each user
-                if pairs.height > 0:
-                    return (
-                        pairs
-                        .group_by('user_id')
-                        .agg([
-                            pl.col('step').first(),
-                            pl.col('next_step').first(),
-                            pl.col('step_A_time').first(),
-                            pl.col('step_B_time').first()
-                        ])
-                    )
-            except Exception as e:
-                self.logger.warning(f"Error finding optimal step pairs: {e}")
-        
-        # Fallback to a more robust approach if the above fails
         try:
-            # Try with minimal assumptions about column names
-            step_A_times = step_A_df.select(['user_id', 'step_A_time']).unique().sort('user_id')
-            step_B_times = step_B_df.select(['user_id', 'timestamp']).unique().sort('user_id')
+            # Ensure we have step_A_time column
+            if 'step_A_time' not in step_A_df.columns and 'timestamp' in step_A_df.columns:
+                step_A_df = step_A_df.with_columns(pl.col('timestamp').alias('step_A_time'))
             
-            # Get step names if available
-            step_name = step_A_df.select('step_name').unique().item() if 'step_name' in step_A_df.columns else "Step A"
-            next_step_name = step_B_df.select('step_name').unique().item() if 'step_name' in step_B_df.columns else "Step B"
+            # Get step names for labels
+            step_name = "Step A"
+            next_step_name = "Step B"
             
-            valid_pairs = []
+            if 'step_name' in step_A_df.columns and step_A_df.height > 0:
+                step_name_col = step_A_df.select('step_name').unique()
+                if step_name_col.height > 0:
+                    step_name = step_name_col[0, 0]
+                    
+            if 'step_name' in step_B_df.columns and step_B_df.height > 0:
+                next_step_name_col = step_B_df.select('step_name').unique()
+                if next_step_name_col.height > 0:
+                    next_step_name = next_step_name_col[0, 0]
             
-            # Process each user individually
-            for user_id in step_A_times.select('user_id').unique().to_series():
-                user_A_times = step_A_times.filter(pl.col('user_id') == user_id).select('step_A_time').to_series()
-                user_B_times = step_B_times.filter(pl.col('user_id') == user_id).select('timestamp').to_series()
-                
-                # Find all valid pairs
-                for a_time in user_A_times:
-                    valid_b_times = [b_time for b_time in user_B_times if b_time > a_time and b_time <= a_time + conversion_window]
-                    if valid_b_times:
-                        valid_pairs.append({
-                            'user_id': user_id,
-                            'step': step_name,
-                            'next_step': next_step_name,
-                            'step_A_time': a_time,
-                            'step_B_time': min(valid_b_times)
-                        })
-                        break  # Take first valid pair per user
+            # Use a fully vectorized approach using only Polars expressions
+            # First, create a cross join of users with their A and B times
+            user_with_A_times = step_A_df.select(['user_id', 'step_A_time'])
             
-            # Create DataFrame from valid pairs
-            if valid_pairs:
-                return pl.DataFrame(valid_pairs)
+            # Ensure B times are properly named
+            if 'step_B_time' in step_B_df.columns:
+                user_with_B_times = step_B_df.select(['user_id', 'step_B_time'])
+            else:
+                user_with_B_times = step_B_df.select(['user_id', 'timestamp']).rename({'timestamp': 'step_B_time'})
+            
+            # Join both tables and filter for valid conversion pairs
+            valid_conversions = (
+                user_with_A_times
+                .join(user_with_B_times, on='user_id', how='inner')
+                # Use only native Polars expressions for the filter condition
+                .filter(
+                    (pl.col('step_B_time') > pl.col('step_A_time')) & 
+                    (pl.col('step_B_time') <= pl.col('step_A_time') + conversion_window)
+                )
+                # For each step_A_time, find the earliest valid step_B_time
+                .sort(['user_id', 'step_A_time', 'step_B_time'])
+                # Keep the first valid B time for each A time
+                .group_by(['user_id', 'step_A_time'])
+                .agg(pl.col('step_B_time').first().alias('earliest_B_time'))
+                # Keep only the first A->B pair for each user
+                .sort(['user_id', 'step_A_time'])
+                .group_by('user_id')
+                .agg([
+                    pl.col('step_A_time').first(),
+                    pl.col('earliest_B_time').first().alias('step_B_time')
+                ])
+                # Add step names as literals
+                .with_columns([
+                    pl.lit(step_name).alias('step'),
+                    pl.lit(next_step_name).alias('next_step')
+                ])
+                # Select columns in the right order
+                .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
+            )
+            
+            return valid_conversions
+            
         except Exception as e:
+            self.logger.error(f"Fully vectorized approach for finding step pairs failed: {e}")
+            
+            # Final fallback with empty DataFrame with correct structure
+            return pl.DataFrame({
+                'user_id': [],
+                'step': [],
+                'next_step': [],
+                'step_A_time': [],
+                'step_B_time': []
+            })
+            
             self.logger.error(f"Fallback approach for finding step pairs failed: {e}")
         
         # Final fallback with empty DataFrame with correct structure
@@ -2448,15 +3090,27 @@ class FunnelCalculator:
     
     @_funnel_performance_monitor('_calculate_path_analysis_pandas')
     def _calculate_path_analysis_pandas(self, 
-                                       segment_funnel_events_df: pd.DataFrame, 
-                                       funnel_steps: List[str],
-                                       full_history_for_segment_users: pd.DataFrame
-                                      ) -> PathAnalysisData:
+                                           segment_funnel_events_df: pd.DataFrame, 
+                                           funnel_steps: List[str],
+                                           full_history_for_segment_users: pd.DataFrame
+                                          ) -> PathAnalysisData:
         """
         Original Pandas implementation preserved for fallback
         """
         dropoff_paths = {}
         between_steps_events = {}
+        
+        # Make copies to avoid modifying original data
+        segment_funnel_events_df = segment_funnel_events_df.copy()
+        full_history_for_segment_users = full_history_for_segment_users.copy()
+        
+        # Handle _original_order column to fix related errors
+        # If there's no _original_order column, add it to maintain event order
+        if '_original_order' not in segment_funnel_events_df.columns:
+            segment_funnel_events_df['_original_order'] = range(len(segment_funnel_events_df))
+            
+        if '_original_order' not in full_history_for_segment_users.columns:
+            full_history_for_segment_users['_original_order'] = range(len(full_history_for_segment_users))
         
         # Ensure we have the required columns
         if 'user_id' not in segment_funnel_events_df.columns:
@@ -3154,123 +3808,81 @@ class FunnelCalculator:
         
     @_funnel_performance_monitor('_calculate_unordered_funnel_polars')
     def _calculate_unordered_funnel_polars(self, events_df: pl.DataFrame, steps: List[str]) -> FunnelResults:
-        """Calculate funnel metrics for unordered funnel (all steps within window) using Polars"""
+        """
+        Calculate funnel metrics for an unordered funnel using a fully vectorized Polars approach.
+        This version avoids Python loops for much better performance.
+        """
+        if not steps:
+            return FunnelResults([], [], [], [], [])
+
         users_count = []
         conversion_rates = []
         drop_offs = []
         drop_off_rates = []
-        
-        conversion_window_ns = self.config.conversion_window_hours * 3600 * 1_000_000_000
-        
-        # For unordered funnel, find users who completed all steps up to each point
-        for step_idx in range(len(steps)):
-            required_steps = steps[:step_idx + 1]
-            
-            # First step is handled differently - just count users who did this event
-            if step_idx == 0:
-                completed_users = set(
-                    events_df.filter(pl.col('event_name') == required_steps[0])
-                    .select('user_id')
-                    .unique()
-                    .to_series()
-                    .to_list()
+
+        conversion_window_duration = pl.duration(hours=self.config.conversion_window_hours)
+
+        # 1. Get the first occurrence of each relevant event for each user.
+        # This is a single, efficient pass over the data.
+        first_events_df = (
+            events_df
+            .filter(pl.col("event_name").is_in(steps))
+            .group_by("user_id", "event_name")
+            .agg(pl.col("timestamp").min())
+        )
+
+        # 2. Pivot the data to have one row per user and one column per step.
+        # This creates our "completion matrix".
+        # The fix for the `pivot` deprecation warning is to use `on` instead of `columns`.
+        user_funnel_matrix = first_events_df.pivot(
+            values="timestamp",
+            index="user_id",
+            on="event_name" # Renamed from `columns`
+        )
+
+        # `completed_users_df` will be iteratively filtered down at each step.
+        completed_users_df = user_funnel_matrix
+
+        for i, step in enumerate(steps):
+            # The columns we need to check for this step of the funnel.
+            required_steps = steps[:i + 1]
+
+            # Filter the DataFrame to only include users who have completed all required steps so far.
+            # This is much faster than checking each user in a loop.
+            # The `pl.all_horizontal` expression checks that all specified columns are not null.
+            completed_users_df = completed_users_df.filter(
+                pl.all_horizontal(pl.col(s).is_not_null() for s in required_steps)
+            )
+
+            # For steps beyond the first, we also need to check the conversion window.
+            if i > 0:
+                # Check that the time span between the min and max timestamp of the required steps
+                # is within the conversion window.
+                completed_users_df = completed_users_df.filter(
+                    (pl.max_horizontal(required_steps) - pl.min_horizontal(required_steps)) <= conversion_window_duration
                 )
-                
-                count = len(completed_users)
-                users_count.append(count)
+
+            # Count the remaining users, this is our result for the current step.
+            count = completed_users_df.height
+            users_count.append(count)
+
+            # Calculate metrics based on the counts.
+            if i == 0:
                 conversion_rates.append(100.0)
                 drop_offs.append(0)
                 drop_off_rates.append(0.0)
-                continue
-            
-            # For each user, check if they completed all required steps within the conversion window
-            # First get all users who performed any of the required steps
-            potential_users = set(
-                events_df.filter(pl.col('event_name').is_in(required_steps))
-                .select('user_id')
-                .unique()
-                .to_series()
-                .to_list()
-            )
-            
-            # Using Polars expressions to find completed users
-            # Group by user_id and find min/max timestamps for each step
-            step_times = (
-                events_df
-                .filter(pl.col('event_name').is_in(required_steps) & pl.col('user_id').is_in(potential_users))
-                .group_by(['user_id', 'event_name'])
-                .agg(pl.col('timestamp').min().alias('step_time'))
-                # Convert to wide format to get one column per step
-                .pivot(index='user_id', columns='event_name', values='step_time')
-            )
-            
-            # Users are completed if they have a value for all required steps
-            # and the time span is within the conversion window
-            completed_users = set()
-            
-            # Check if there's enough data
-            if step_times.height > 0:  # At least one user
-                # Calculate time span for each user (max timestamp - min timestamp)
-                step_columns = [s for s in step_times.columns if s in required_steps]
-                
-                if len(step_columns) == len(required_steps):  # All required steps are present
-                    # Filter for users who have all required steps
-                    completed_df = step_times.filter(
-                        pl.fold(
-                            True,
-                            lambda acc, x: acc & pl.col(x).is_not_null(),
-                            step_columns
-                        )
-                    )
-                    
-                    # Calculate time span and check if within conversion window
-                    if completed_df.height > 0 and len(step_columns) > 1:
-                        # Create a row-wise array of step timestamps and calculate min/max
-                        completed_df = completed_df.with_columns([
-                            pl.concat_list(step_columns).alias('step_times'),
-                            pl.concat_list(step_columns).list.min().alias('min_time'),
-                            pl.concat_list(step_columns).list.max().alias('max_time'),
-                        ])
-                        
-                        # Calculate time span in nanoseconds
-                        completed_df = completed_df.with_columns([
-                            (pl.col('max_time') - pl.col('min_time')).dt.total_nanoseconds().alias('time_span_ns')
-                        ])
-                        
-                        # Filter for users who completed all steps within the conversion window
-                        if conversion_window_ns > 0:
-                            completed_users = set(
-                                completed_df
-                                .filter(pl.col('time_span_ns') <= conversion_window_ns)
-                                .select('user_id')
-                                .to_series()
-                                .to_list()
-                            )
-                        else:
-                            # Special case: zero window means all timestamps must match exactly
-                            completed_users = set(
-                                completed_df
-                                .filter(pl.col('time_span_ns') == 0)
-                                .select('user_id')
-                                .to_series()
-                                .to_list()
-                            )
-            
-            # Calculate metrics
-            count = len(completed_users)
-            users_count.append(count)
-            
-            # Calculate conversion rate from first step
-            conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
-            conversion_rates.append(conversion_rate)
-            
-            # Calculate drop-off from previous step
-            drop_off = users_count[step_idx - 1] - count
-            drop_offs.append(drop_off)
-            
-            drop_off_rate = (drop_off / users_count[step_idx - 1] * 100) if users_count[step_idx - 1] > 0 else 0
-            drop_off_rates.append(drop_off_rate)
-        
+            else:
+                prev_count = users_count[i - 1]
+                # Overall conversion from the very first step
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
+                conversion_rates.append(conversion_rate)
+
+                # Drop-off from the previous step
+                drop_off = prev_count - count
+                drop_offs.append(drop_off)
+                drop_off_rate = (drop_off / prev_count * 100) if prev_count > 0 else 0.0
+                drop_off_rates.append(drop_off_rate)
+
         return FunnelResults(
             steps=steps,
             users_count=users_count,
@@ -3692,13 +4304,16 @@ class FunnelCalculator:
                     user_curr = curr_events.filter(pl.col('user_id') == user_id)
                     
                     # Cross join to get all pairs
-                    cartesian = (
-                        user_prev
-                        .select(['user_id', pl.col('timestamp').alias('prev_timestamp')])
-                        .join(
-                            user_curr.select(['user_id', pl.col('timestamp').alias('curr_timestamp')]),
-                            on='user_id',
-                            how='cross'
+                    # First, ensure we convert any complex columns to string to avoid nested object types errors
+                    user_prev_safe = user_prev.select(['user_id', pl.col('timestamp').alias('prev_timestamp')])
+                    user_curr_safe = user_curr.select(['user_id', pl.col('timestamp').alias('curr_timestamp')])
+                    
+                    # Try performing the cross join with safe operation
+                    cartesian = self._safe_polars_operation(
+                        user_prev_safe,
+                        lambda: user_prev_safe.join(
+                            user_curr_safe,
+                            how='cross'  # Cross join should not specify join keys
                         )
                     )
                     
@@ -3755,7 +4370,7 @@ class FunnelCalculator:
             
             # Find events after step_time within 7 days for this user
             later_events = (
-                full_history_for_segment_users
+            full_history_for_segment_users
                 .filter(
                     (pl.col('user_id') == user_id) &
                     (pl.col('timestamp') > step_time) &
@@ -4621,8 +5236,21 @@ class FunnelCalculator:
         dropped_user_list = list(str(user_id) for user_id in dropped_users)
         
         # Use lazy evaluation for better query optimization
-        lazy_segment_df = segment_funnel_events_df.lazy()
-        lazy_history_df = full_history_for_segment_users.lazy()
+        # Safely handle _original_order column
+        # First, create clean DataFrames without any _original_order columns
+        segment_cols = [col for col in segment_funnel_events_df.columns if col != '_original_order']
+        if len(segment_cols) < len(segment_funnel_events_df.columns):
+            # If _original_order was in columns, drop it
+            segment_funnel_events_df = segment_funnel_events_df.select(segment_cols)
+            
+        history_cols = [col for col in full_history_for_segment_users.columns if col != '_original_order']
+        if len(history_cols) < len(full_history_for_segment_users.columns):
+            # If _original_order was in columns, drop it
+            full_history_for_segment_users = full_history_for_segment_users.select(history_cols)
+            
+        # Add row indices to preserve original order
+        lazy_segment_df = segment_funnel_events_df.with_row_index("_original_order").lazy()
+        lazy_history_df = full_history_for_segment_users.with_row_index("_original_order").lazy()
         
         # Find the timestamp of the last step event for each dropped user
         last_step_events = (
@@ -4708,8 +5336,21 @@ class FunnelCalculator:
         converted_user_list = list(str(user_id) for user_id in converted_users)
         
         # Use lazy evaluation for better query optimization
-        lazy_segment_df = segment_funnel_events_df.lazy()
-        lazy_history_df = full_history_for_segment_users.lazy()
+        # Safely handle _original_order column
+        # First, create clean DataFrames without any _original_order columns
+        segment_cols = [col for col in segment_funnel_events_df.columns if col != '_original_order']
+        if len(segment_cols) < len(segment_funnel_events_df.columns):
+            # If _original_order was in columns, drop it
+            segment_funnel_events_df = segment_funnel_events_df.select(segment_cols)
+            
+        history_cols = [col for col in full_history_for_segment_users.columns if col != '_original_order']
+        if len(history_cols) < len(full_history_for_segment_users.columns):
+            # If _original_order was in columns, drop it
+            full_history_for_segment_users = full_history_for_segment_users.select(history_cols)
+            
+        # Add row indices to preserve original order
+        lazy_segment_df = segment_funnel_events_df.with_row_index("_original_order").lazy()
+        lazy_history_df = full_history_for_segment_users.with_row_index("_original_order").lazy()
         
         # Filter to only include converted users
         step_events = (
@@ -4772,7 +5413,7 @@ class FunnelCalculator:
                 # For each step A, find first step B after it within conversion window
                 # This is more complex as we need to find the first valid A->B pair for each user
                 
-                # Cross join A and B events for each user
+                # Join A and B events for each user (not cross join since we specify the join key)
                 conversion_pairs = (
                     step_A_events
                     .join(
@@ -4812,7 +5453,7 @@ class FunnelCalculator:
                 .agg(pl.col('step_B_time').min())
             )
             
-            # Join to get users who did both steps
+            # Join to get users who did both steps (using specified join key instead of cross join)
             conversion_pairs = (
                 first_A
                 .join(first_B, on='user_id', how='inner')
@@ -6231,3 +6872,4 @@ ORDER BY user_id, timestamp""",
 
 if __name__ == "__main__":
     main()
+            
