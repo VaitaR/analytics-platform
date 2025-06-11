@@ -2425,7 +2425,7 @@ class FunnelCalculator:
                 except Exception as e:
                     self.logger.warning(f"Error converting properties column in history_df: {str(e)}")
             
-            # Find and handle any other complex columns
+            # Find and handle any complex columns
             object_cols = []
             for col in segment_funnel_events_df.columns:
                 # Skip already handled columns
@@ -2734,36 +2734,66 @@ class FunnelCalculator:
                     elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
                         # For each step A timestamp, find the first step B timestamp after it
                         try:
-                            conversion_pairs = (
-                                step_A_events
-                                .with_columns(pl.col('timestamp').alias('step_A_time'))
-                                .join_asof(
-                                    step_B_events.sort('timestamp'),
-                                    left_on='step_A_time',
-                                    right_on='timestamp',
-                                    by='user_id',
-                                    strategy='forward',
-                                    tolerance=conversion_window
+                            # Explicitly convert timestamps to ensure they are proper datetime columns
+                            step_A_events_clean = step_A_events.with_columns([
+                                pl.col('timestamp').cast(pl.Datetime).alias('step_A_time')
+                            ])
+                            
+                            step_B_events_clean = step_B_events.with_columns([
+                                pl.col('timestamp').cast(pl.Datetime)
+                            ]).sort('timestamp')
+                            
+                            # Try join_asof with proper column types
+                            try:
+                                # Ensure we have proper datetime types for join_asof
+                                step_A_events_clean = step_A_events_clean.with_columns([
+                                    pl.col('step_A_time').cast(pl.Datetime),
+                                    pl.col('user_id').cast(pl.Utf8)
+                                ])
+                                
+                                step_B_events_clean = step_B_events_clean.with_columns([
+                                    pl.col('timestamp').cast(pl.Datetime),
+                                    pl.col('user_id').cast(pl.Utf8)
+                                ])
+                                
+                                # Try join_asof with explicit type casting
+                                conversion_pairs = (
+                                    step_A_events_clean
+                                    .join_asof(
+                                        step_B_events_clean,
+                                        left_on='step_A_time',
+                                        right_on='timestamp',
+                                        by='user_id',
+                                        strategy='forward',
+                                        tolerance=conversion_window
+                                    )
+                                    .filter(pl.col('timestamp_right').is_not_null())
+                                    .with_columns([
+                                        pl.col('timestamp_right').alias('step_B_time'),
+                                        pl.col('step_name').alias('step'),
+                                        pl.col('step_name_right').alias('next_step')
+                                    ])
+                                    .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
+                                    # Keep first valid conversion pair per user
+                                    .sort(['user_id', 'step_A_time'])
+                                    .group_by('user_id')
+                                    .agg([
+                                        pl.col('step').first(),
+                                        pl.col('next_step').first(),
+                                        pl.col('step_A_time').first(),
+                                        pl.col('step_B_time').first()
+                                    ])
                                 )
-                                .filter(pl.col('timestamp_right').is_not_null())
-                                .with_columns([
-                                    pl.col('timestamp_right').alias('step_B_time'),
-                                    pl.col('step_name').alias('step'),
-                                    pl.col('step_name_right').alias('next_step')
-                                ])
-                                .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
-                                # Keep first valid conversion pair per user
-                                .sort(['user_id', 'step_A_time'])
-                                .group_by('user_id')
-                                .agg([
-                                    pl.col('step').first(),
-                                    pl.col('next_step').first(),
-                                    pl.col('step_A_time').first(),
-                                    pl.col('step_B_time').first()
-                                ])
-                            )
+                            except Exception as e:
+                                self.logger.warning(f"join_asof failed in optimized_reentry: {e}, falling back to standard join approach")
+                                # Check specifically for Object dtype errors
+                                if "could not extract number from any-value of dtype" in str(e):
+                                    self.logger.info("Detected Object dtype error in join_asof, using vectorized fallback approach")
+                                # If join_asof fails, use our more robust join approach which doesn't rely on join_asof
+                                conversion_pairs = self._find_optimal_step_pairs(step_A_events_clean, step_B_events_clean)
                         except Exception as e:
-                            self.logger.warning(f"join_asof failed in optimized_reentry: {e}, using alternative approach")
+                            self.logger.warning(f"Error in optimized_reentry mode: {e}, using alternative approach")
+                            # Final fallback using the standard join approach
                             conversion_pairs = self._find_optimal_step_pairs(step_A_events, step_B_events)
                 
                 elif self.config.funnel_order == FunnelOrder.UNORDERED:
@@ -2921,83 +2951,79 @@ class FunnelCalculator:
                 'step_B_time': []
             })
         
-        # Use a normal join and filter approach
-        if 'step_A_time' not in step_A_df.columns:
-            # Ensure we have step_A_time column
-            step_A_df = step_A_df.with_columns(pl.col('timestamp').alias('step_A_time'))
-        
-        if 'step_name' in step_B_df.columns:
-            # Calculate all possible pairs with proper timestamp handling
-            try:
-                # Ensure both dataframes have step name columns
-                if 'step' not in step_A_df.columns and 'step_name' in step_A_df.columns:
-                    step_A_df = step_A_df.with_columns(pl.col('step_name').alias('step'))
-                
-                # Join and find valid pairs within conversion window
-                pairs = (
-                    step_A_df
-                    .join(step_B_df, on='user_id', how='inner')
-                    .filter(
-                        (pl.col('timestamp') > pl.col('step_A_time')) &
-                        (pl.col('timestamp') <= pl.col('step_A_time') + conversion_window)
-                    )
-                    .with_columns([
-                        pl.col('timestamp').alias('step_B_time'),
-                        pl.col('step_name').alias('next_step')
-                    ])
-                    .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
-                    .sort(['user_id', 'step_A_time'])
-                )
-                
-                # Keep the first valid pair for each user
-                if pairs.height > 0:
-                    return (
-                        pairs
-                        .group_by('user_id')
-                        .agg([
-                            pl.col('step').first(),
-                            pl.col('next_step').first(),
-                            pl.col('step_A_time').first(),
-                            pl.col('step_B_time').first()
-                        ])
-                    )
-            except Exception as e:
-                self.logger.warning(f"Error finding optimal step pairs: {e}")
-        
-        # Fallback to a more robust approach if the above fails
         try:
-            # Try with minimal assumptions about column names
-            step_A_times = step_A_df.select(['user_id', 'step_A_time']).unique().sort('user_id')
-            step_B_times = step_B_df.select(['user_id', 'timestamp']).unique().sort('user_id')
+            # Ensure we have step_A_time column
+            if 'step_A_time' not in step_A_df.columns and 'timestamp' in step_A_df.columns:
+                step_A_df = step_A_df.with_columns(pl.col('timestamp').alias('step_A_time'))
             
-            # Get step names if available
-            step_name = step_A_df.select('step_name').unique().item() if 'step_name' in step_A_df.columns else "Step A"
-            next_step_name = step_B_df.select('step_name').unique().item() if 'step_name' in step_B_df.columns else "Step B"
+            # Get step names for labels
+            step_name = "Step A"
+            next_step_name = "Step B"
             
-            valid_pairs = []
+            if 'step_name' in step_A_df.columns and step_A_df.height > 0:
+                step_name_col = step_A_df.select('step_name').unique()
+                if step_name_col.height > 0:
+                    step_name = step_name_col[0, 0]
+                    
+            if 'step_name' in step_B_df.columns and step_B_df.height > 0:
+                next_step_name_col = step_B_df.select('step_name').unique()
+                if next_step_name_col.height > 0:
+                    next_step_name = next_step_name_col[0, 0]
             
-            # Process each user individually
-            for user_id in step_A_times.select('user_id').unique().to_series():
-                user_A_times = step_A_times.filter(pl.col('user_id') == user_id).select('step_A_time').to_series()
-                user_B_times = step_B_times.filter(pl.col('user_id') == user_id).select('timestamp').to_series()
-                
-                # Find all valid pairs
-                for a_time in user_A_times:
-                    valid_b_times = [b_time for b_time in user_B_times if b_time > a_time and b_time <= a_time + conversion_window]
-                    if valid_b_times:
-                        valid_pairs.append({
-                            'user_id': user_id,
-                            'step': step_name,
-                            'next_step': next_step_name,
-                            'step_A_time': a_time,
-                            'step_B_time': min(valid_b_times)
-                        })
-                        break  # Take first valid pair per user
+            # Use a fully vectorized approach using only Polars expressions
+            # First, create a cross join of users with their A and B times
+            user_with_A_times = step_A_df.select(['user_id', 'step_A_time'])
             
-            # Create DataFrame from valid pairs
-            if valid_pairs:
-                return pl.DataFrame(valid_pairs)
+            # Ensure B times are properly named
+            if 'step_B_time' in step_B_df.columns:
+                user_with_B_times = step_B_df.select(['user_id', 'step_B_time'])
+            else:
+                user_with_B_times = step_B_df.select(['user_id', 'timestamp']).rename({'timestamp': 'step_B_time'})
+            
+            # Join both tables and filter for valid conversion pairs
+            valid_conversions = (
+                user_with_A_times
+                .join(user_with_B_times, on='user_id', how='inner')
+                # Use only native Polars expressions for the filter condition
+                .filter(
+                    (pl.col('step_B_time') > pl.col('step_A_time')) & 
+                    (pl.col('step_B_time') <= pl.col('step_A_time') + conversion_window)
+                )
+                # For each step_A_time, find the earliest valid step_B_time
+                .sort(['user_id', 'step_A_time', 'step_B_time'])
+                # Keep the first valid B time for each A time
+                .group_by(['user_id', 'step_A_time'])
+                .agg(pl.col('step_B_time').first().alias('earliest_B_time'))
+                # Keep only the first A->B pair for each user
+                .sort(['user_id', 'step_A_time'])
+                .group_by('user_id')
+                .agg([
+                    pl.col('step_A_time').first(),
+                    pl.col('earliest_B_time').first().alias('step_B_time')
+                ])
+                # Add step names as literals
+                .with_columns([
+                    pl.lit(step_name).alias('step'),
+                    pl.lit(next_step_name).alias('next_step')
+                ])
+                # Select columns in the right order
+                .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
+            )
+            
+            return valid_conversions
+            
         except Exception as e:
+            self.logger.error(f"Fully vectorized approach for finding step pairs failed: {e}")
+            
+            # Final fallback with empty DataFrame with correct structure
+            return pl.DataFrame({
+                'user_id': [],
+                'step': [],
+                'next_step': [],
+                'step_A_time': [],
+                'step_B_time': []
+            })
+            
             self.logger.error(f"Fallback approach for finding step pairs failed: {e}")
         
         # Final fallback with empty DataFrame with correct structure
