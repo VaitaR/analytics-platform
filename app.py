@@ -444,6 +444,66 @@ class DataSourceManager:
         """Extract available properties for segmentation"""
         properties = {'event_properties': set(), 'user_properties': set()}
         
+        # Use Polars for efficient JSON processing if data is large enough to benefit
+        if len(df) > 1000:
+            try:
+                # Convert to Polars for efficient JSON processing
+                pl_df = pl.from_pandas(df)
+                
+                # Extract event properties
+                if 'event_properties' in pl_df.columns:
+                    # Filter out nulls first
+                    valid_props = pl_df.filter(pl.col('event_properties').is_not_null())
+                    if not valid_props.is_empty():
+                        # Decode JSON strings to struct type
+                        decoded = valid_props.select(
+                            pl.col('event_properties').str.json_decode().alias('decoded_props')
+                        )
+                        # Get all unique keys from all JSON objects
+                        if not decoded.is_empty():
+                            # Extract keys from each JSON object
+                            all_keys = decoded.select(
+                                pl.col('decoded_props').struct.field_names()
+                            ).to_series().explode().unique()
+                            
+                            # Add to properties set
+                            properties['event_properties'].update(all_keys)
+                
+                # Extract user properties
+                if 'user_properties' in pl_df.columns:
+                    # Filter out nulls first
+                    valid_props = pl_df.filter(pl.col('user_properties').is_not_null())
+                    if not valid_props.is_empty():
+                        # Decode JSON strings to struct type
+                        decoded = valid_props.select(
+                            pl.col('user_properties').str.json_decode().alias('decoded_props')
+                        )
+                        # Get all unique keys from all JSON objects
+                        if not decoded.is_empty():
+                            # Extract keys from each JSON object
+                            all_keys = decoded.select(
+                                pl.col('decoded_props').struct.field_names()
+                            ).to_series().explode().unique()
+                            
+                            # Add to properties set
+                            properties['user_properties'].update(all_keys)
+            
+            except Exception as e:
+                self.logger.warning(f"Polars JSON processing failed: {str(e)}, falling back to Pandas")
+                # Fall back to pandas implementation
+                return self._get_segmentation_properties_pandas(df)
+        else:
+            # For small datasets, use pandas implementation
+            return self._get_segmentation_properties_pandas(df)
+        
+        return {
+            k: sorted(list(v)) for k, v in properties.items() if v
+        }
+    
+    def _get_segmentation_properties_pandas(self, df: pd.DataFrame) -> Dict[str, List[str]]:
+        """Legacy pandas implementation for extracting segmentation properties"""
+        properties = {'event_properties': set(), 'user_properties': set()}
+        
         # Extract event properties
         if 'event_properties' in df.columns:
             for prop_str in df['event_properties'].dropna():
@@ -470,6 +530,51 @@ class DataSourceManager:
     
     def get_property_values(self, df: pd.DataFrame, prop_name: str, prop_type: str) -> List[str]:
         """Get unique values for a specific property"""
+        column = f'{prop_type}'
+        
+        if column not in df.columns:
+            return []
+            
+        # Use Polars for efficient JSON processing if data is large enough to benefit
+        if len(df) > 1000:
+            try:
+                # Convert to Polars for efficient JSON processing
+                pl_df = pl.from_pandas(df)
+                
+                # Filter out nulls
+                valid_props = pl_df.filter(pl.col(column).is_not_null())
+                if valid_props.is_empty():
+                    return []
+                
+                # Decode JSON strings to struct type
+                decoded = valid_props.select(
+                    pl.col(column).str.json_decode().alias('decoded_props')
+                )
+                
+                # Extract the specific property value and get unique values
+                if not decoded.is_empty():
+                    # Use struct.field to extract the property value
+                    values = (
+                        decoded
+                        .select(pl.col('decoded_props').struct.field(prop_name).alias('prop_value'))
+                        .filter(pl.col('prop_value').is_not_null())
+                        .select(pl.col('prop_value').cast(pl.Utf8))
+                        .unique()
+                        .to_series()
+                        .sort()
+                        .to_list()
+                    )
+                    return values
+            except Exception as e:
+                self.logger.warning(f"Polars JSON processing failed in get_property_values: {str(e)}, falling back to Pandas")
+                # Fall back to pandas implementation
+                return self._get_property_values_pandas(df, prop_name, prop_type)
+        
+        # For small datasets, use pandas implementation
+        return self._get_property_values_pandas(df, prop_name, prop_type)
+    
+    def _get_property_values_pandas(self, df: pd.DataFrame, prop_name: str, prop_type: str) -> List[str]:
+        """Legacy pandas implementation for getting property values"""
         values = set()
         column = f'{prop_type}'
         
@@ -937,13 +1042,144 @@ class FunnelCalculator:
             pl.col('event_name').cast(pl.Categorical)
         ])
         
-        # TODO: Implement JSON property expansion for polars
-        # For now, keep the original columns
+        # Expand JSON properties using Polars native functionality
+        # Process event_properties
+        if 'event_properties' in funnel_events.columns:
+            funnel_events = self._expand_json_properties_polars(funnel_events, 'event_properties')
+        
+        # Process user_properties
+        if 'user_properties' in funnel_events.columns:
+            funnel_events = self._expand_json_properties_polars(funnel_events, 'user_properties')
         
         execution_time = time.time() - start_time
         self.logger.info(f"Polars data preprocessing completed in {execution_time:.4f} seconds for {funnel_events.height} events")
         
         return funnel_events
+        
+    def _expand_json_properties_polars(self, df: pl.DataFrame, column: str) -> pl.DataFrame:
+        """
+        Expand commonly used JSON properties into separate columns using Polars
+        for faster filtering and segmentation
+        """
+        if column not in df.columns:
+            return df
+        
+        try:
+            # Cache key for this column
+            cache_key = f"{column}_{df.height}"
+            
+            if hasattr(self, '_cached_properties_polars') and cache_key in self._cached_properties_polars:
+                # Use cached property columns
+                expanded_cols = self._cached_properties_polars[cache_key]
+                for col_name, expr in expanded_cols.items():
+                    df = df.with_columns([expr.alias(col_name)])
+                return df
+            
+            # Filter out nulls first
+            valid_props = df.filter(pl.col(column).is_not_null())
+            if valid_props.is_empty():
+                return df
+            
+            # Decode JSON strings to struct type
+            try:
+                decoded = valid_props.select(
+                    pl.col(column).str.json_decode().alias('decoded_props')
+                )
+                
+                if decoded.is_empty():
+                    return df
+                
+                # Get field names from all objects - with compatibility for different Polars versions
+                try:
+                    # Modern Polars version approach
+                    all_keys = decoded.select(
+                        pl.col('decoded_props').struct.field_names()
+                    ).to_series().explode()
+                except Exception as e:
+                    self.logger.debug(f"Field names retrieval error: {str(e)}, trying alternate method")
+                    # Alternative approach for older Polars versions
+                    # Extract first row to get the keys
+                    if not decoded.is_empty():
+                        sample_row = decoded.row(0, named=True)
+                        if 'decoded_props' in sample_row and sample_row['decoded_props'] is not None:
+                            # Get all keys from all rows 
+                            all_keys = []
+                            for i in range(min(decoded.height, 1000)):  # Sample up to 1000 rows
+                                try:
+                                    row = decoded.row(i, named=True)
+                                    if row['decoded_props'] is not None:
+                                        all_keys.extend(row['decoded_props'].keys())
+                                except:
+                                    continue
+                            # Convert to series for unique values
+                            all_keys = pl.Series(all_keys).unique()
+                        else:
+                            return df
+                    else:
+                        return df
+                
+                # Count occurrences of each key
+                try:
+                    key_counts = all_keys.value_counts()
+                except Exception as e:
+                    self.logger.debug(f"Key count error: {str(e)}")
+                    # Fallback to simple approach
+                    key_counts = pl.DataFrame({
+                        "values": all_keys,
+                        "counts": [1] * len(all_keys)
+                    })
+                
+                # Calculate threshold
+                threshold = df.height * 0.1
+                
+                # Find common properties (appear in at least 10% of records)
+                try:
+                    # Try with "counts" column name first
+                    if "counts" in key_counts.columns:
+                        common_props = key_counts.filter(pl.col("counts") >= threshold).select("values").to_series().to_list()
+                    elif "count" in key_counts.columns:
+                        # Some versions of Polars use "count" instead of "counts"
+                        common_props = key_counts.filter(pl.col("count") >= threshold).select("values").to_series().to_list()
+                    else:
+                        # Just use all properties if we can't determine counts
+                        self.logger.debug(f"Count column not found in: {key_counts.columns}")
+                        common_props = all_keys.to_list()
+                except Exception as e:
+                    self.logger.debug(f"Error filtering common properties: {str(e)}")
+                    # Fallback to using all keys
+                    common_props = all_keys.to_list()
+                
+                # Create expressions for each common property
+                expanded_cols = {}
+                for prop in common_props:
+                    col_name = f"{column}_{prop}"
+                    # Create expression to extract property with error handling
+                    try:
+                        expr = pl.col(column).str.json_decode().struct.field(prop)
+                        expanded_cols[col_name] = expr
+                    except Exception as e:
+                        self.logger.debug(f"Error creating expression for {prop}: {str(e)}")
+                        continue
+                
+                # Cache the property expressions
+                if not hasattr(self, '_cached_properties_polars'):
+                    self._cached_properties_polars = {}
+                self._cached_properties_polars[cache_key] = expanded_cols
+                
+                # Add expanded columns to dataframe
+                for col_name, expr in expanded_cols.items():
+                    df = df.with_columns([expr.alias(col_name)])
+                
+            except Exception as e:
+                self.logger.warning(f"Failed to expand JSON with Polars: {str(e)}")
+                # Return original dataframe if expansion fails
+                return df
+                
+            return df
+            
+        except Exception as e:
+            self.logger.warning(f"Error in _expand_json_properties_polars: {str(e)}")
+            return df
 
     @_funnel_performance_monitor('_preprocess_data')
     def _preprocess_data(self, events_df: pd.DataFrame, funnel_steps: List[str]) -> pd.DataFrame:
@@ -1139,9 +1375,41 @@ class FunnelCalculator:
         """Filter DataFrame by property value"""
         if prop_type not in df.columns:
             return pd.DataFrame()
+            
+        # Check if there's an expanded column for this property - faster path
+        expanded_col = f"{prop_type}_{prop_name}"
+        if expanded_col in df.columns:
+            return df[df[expanded_col] == prop_value].copy()
         
+        # Try to use Polars for efficient filtering
+        if len(df) > 1000:
+            try:
+                return self._filter_by_property_polars(df, prop_name, prop_value, prop_type)
+            except Exception as e:
+                self.logger.warning(f"Polars property filtering failed: {str(e)}, falling back to pandas")
+                # Fall back to pandas implementation
+        
+        # Pandas fallback
         mask = df[prop_type].apply(lambda x: self._has_property_value(x, prop_name, prop_value))
         return df[mask].copy()
+    
+    def _filter_by_property_polars(self, df: pd.DataFrame, prop_name: str, prop_value: str, prop_type: str) -> pd.DataFrame:
+        """Filter DataFrame by property value using Polars for performance"""
+        # Convert to Polars
+        pl_df = pl.from_pandas(df)
+        
+        # Filter nulls
+        pl_df = pl_df.filter(pl.col(prop_type).is_not_null())
+        
+        # Create expression to check if property value matches
+        # First decode the JSON string to a struct
+        # Then extract the property and check if it equals the value
+        filtered_df = pl_df.filter(
+            pl.col(prop_type).str.json_decode().struct.field(prop_name) == prop_value
+        )
+        
+        # Convert back to pandas
+        return filtered_df.to_pandas()
     
     def _has_property_value(self, prop_str: str, prop_name: str, prop_value: str) -> bool:
         """Check if property string contains specific value"""
