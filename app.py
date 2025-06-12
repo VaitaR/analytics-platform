@@ -5,6 +5,7 @@ import numpy as np
 import random
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 import math
 from datetime import datetime, timedelta
 import json
@@ -1863,7 +1864,561 @@ class FunnelCalculator:
                 )
                 time_stats.append(stats_obj)
         
-        return time_stats
+            return time_stats
+    
+    @_funnel_performance_monitor('calculate_timeseries_metrics')
+    def calculate_timeseries_metrics(self, events_df: pd.DataFrame, funnel_steps: List[str], 
+                                   aggregation_period: str = '1d') -> pd.DataFrame:
+        """
+        Calculate time series metrics for funnel analysis with configurable aggregation periods.
+        
+        Args:
+            events_df: DataFrame with columns [user_id, event_name, timestamp, event_properties]
+            funnel_steps: List of event names in funnel order
+            aggregation_period: Period for data aggregation ('1h', '1d', '1w', '1mo')
+            
+        Returns:
+            DataFrame with time series metrics aggregated by specified period
+        """
+        if len(funnel_steps) < 2:
+            return pd.DataFrame()
+        
+        # Convert aggregation period to Polars format
+        polars_period = self._convert_aggregation_period(aggregation_period)
+        
+        # Convert to Polars for efficient processing
+        try:
+            polars_df = self._to_polars(events_df)
+            return self._calculate_timeseries_metrics_polars(polars_df, funnel_steps, polars_period)
+        except Exception as e:
+            self.logger.warning(f"Polars timeseries calculation failed: {str(e)}, falling back to Pandas")
+            return self._calculate_timeseries_metrics_pandas(events_df, funnel_steps, polars_period)
+    
+    def _convert_aggregation_period(self, period: str) -> str:
+        """
+        Convert human-readable aggregation period to Polars format.
+        
+        Args:
+            period: Aggregation period ('hourly', 'daily', 'weekly', 'monthly' or Polars format)
+            
+        Returns:
+            Polars-compatible duration string
+        """
+        period_mapping = {
+            'hourly': '1h',
+            'daily': '1d', 
+            'weekly': '1w',
+            'monthly': '1mo',
+            'hours': '1h',
+            'days': '1d',
+            'weeks': '1w', 
+            'months': '1mo'
+        }
+        
+        # Return as-is if already in Polars format, otherwise convert
+        return period_mapping.get(period.lower(), period)
+
+    def _check_user_funnel_completion_within_window(self, events_df: pl.DataFrame, user_id: str, 
+                                                   funnel_steps: List[str], start_time, conversion_deadline) -> bool:
+        """
+        Check if a user completed the full funnel within the conversion window using Polars.
+        
+        Args:
+            events_df: Polars DataFrame with all events
+            user_id: User ID to check
+            funnel_steps: List of funnel steps in order
+            start_time: When the user started the funnel
+            conversion_deadline: Latest time for completion
+            
+        Returns:
+            True if user completed the full funnel within the window
+        """
+        # Get all user events within the conversion window
+        user_events = (
+            events_df
+            .filter(
+                (pl.col('user_id') == user_id) &
+                (pl.col('timestamp') >= start_time) &
+                (pl.col('timestamp') <= conversion_deadline) &
+                (pl.col('event_name').is_in(funnel_steps))
+            )
+            .sort('timestamp')
+        )
+        
+        if user_events.height == 0:
+            return False
+        
+        # Check if user completed all steps
+        if self.config.funnel_order.value == 'ordered':
+            # For ordered funnels, check step sequence
+            completed_steps = set()
+            current_step_index = 0
+            
+            for row in user_events.iter_rows(named=True):
+                event_name = row['event_name']
+                
+                # Check if this is the next expected step
+                if (current_step_index < len(funnel_steps) and 
+                    event_name == funnel_steps[current_step_index]):
+                    completed_steps.add(event_name)
+                    current_step_index += 1
+                    
+                    # If we've completed all steps, return True
+                    if len(completed_steps) == len(funnel_steps):
+                        return True
+            
+            return len(completed_steps) == len(funnel_steps)
+        else:
+            # For unordered funnels, just check if all steps were done
+            completed_steps = set(user_events.select('event_name').unique().to_series().to_list())
+            return len(completed_steps.intersection(set(funnel_steps))) == len(funnel_steps)
+
+    def _check_user_funnel_completion_pandas(self, events_df: pd.DataFrame, user_id: str, 
+                                            funnel_steps: List[str], start_time, conversion_deadline) -> bool:
+        """
+        Check if a user completed the full funnel within the conversion window using Pandas.
+        
+        Args:
+            events_df: Pandas DataFrame with all events
+            user_id: User ID to check
+            funnel_steps: List of funnel steps in order
+            start_time: When the user started the funnel
+            conversion_deadline: Latest time for completion
+            
+        Returns:
+            True if user completed the full funnel within the window
+        """
+        # Get all user events within the conversion window
+        user_events = events_df[
+            (events_df['user_id'] == user_id) &
+            (events_df['timestamp'] >= start_time) &
+            (events_df['timestamp'] <= conversion_deadline) &
+            (events_df['event_name'].isin(funnel_steps))
+        ].sort_values('timestamp')
+        
+        if len(user_events) == 0:
+            return False
+        
+        # Check if user completed all steps
+        if self.config.funnel_order.value == 'ordered':
+            # For ordered funnels, check step sequence
+            completed_steps = set()
+            current_step_index = 0
+            
+            for _, row in user_events.iterrows():
+                event_name = row['event_name']
+                
+                # Check if this is the next expected step
+                if (current_step_index < len(funnel_steps) and 
+                    event_name == funnel_steps[current_step_index]):
+                    completed_steps.add(event_name)
+                    current_step_index += 1
+                    
+                    # If we've completed all steps, return True
+                    if len(completed_steps) == len(funnel_steps):
+                        return True
+            
+            return len(completed_steps) == len(funnel_steps)
+        else:
+            # For unordered funnels, just check if all steps were done
+            completed_steps = set(user_events['event_name'].unique())
+            return len(completed_steps.intersection(set(funnel_steps))) == len(funnel_steps)
+
+    def _convert_polars_to_pandas_period(self, polars_period: str) -> str:
+        """
+        Convert Polars duration format to Pandas freq format.
+        
+        Args:
+            polars_period: Polars duration string ('1h', '1d', '1w', '1mo')
+            
+        Returns:
+            Pandas frequency string
+        """
+        polars_to_pandas = {
+            '1h': 'H',   # Hour
+            '1d': 'D',   # Day
+            '1w': 'W',   # Week
+            '1mo': 'M',  # Month end
+            '1M': 'M'    # Alternative month format
+        }
+        
+        return polars_to_pandas.get(polars_period, 'D')  # Default to daily
+
+    def _calculate_timeseries_metrics_polars(self, events_df: pl.DataFrame, funnel_steps: List[str], 
+                                           aggregation_period: str = '1d') -> pd.DataFrame:
+        """
+        Polars implementation for efficient time series metrics calculation.
+        
+        Args:
+            events_df: Polars DataFrame with event data
+            funnel_steps: List of event names in funnel order
+            aggregation_period: Period for data aggregation ('1h', '1d', '1w', '1mo')
+            
+        Returns:
+            Pandas DataFrame with aggregated metrics (converted for compatibility)
+        """
+        if events_df.height == 0:
+            return pd.DataFrame()
+        
+        # Define first and last steps for funnel analysis
+        first_step = funnel_steps[0]
+        last_step = funnel_steps[-1]
+        conversion_window_hours = self.config.conversion_window_hours
+        
+        try:
+            # Filter to relevant events only for performance
+            relevant_events = events_df.filter(pl.col('event_name').is_in(funnel_steps))
+            
+            if relevant_events.height == 0:
+                return pd.DataFrame()
+            
+            # Create period boundaries for correct cohort analysis
+            period_boundaries = (
+                relevant_events
+                .select('timestamp')
+                .with_columns([
+                    pl.col('timestamp').dt.truncate(aggregation_period).alias('period_date')
+                ])
+                .select('period_date')
+                .unique()
+                .sort('period_date')
+            )
+            
+            results = []
+            
+            # Process each period to calculate TRUE cohort conversion rates
+            for period_row in period_boundaries.iter_rows(named=True):
+                period_date = period_row['period_date']
+                
+                # Define period boundaries
+                if aggregation_period == '1h':
+                    period_end = period_date + timedelta(hours=1)
+                elif aggregation_period == '1d':
+                    period_end = period_date + timedelta(days=1)
+                elif aggregation_period == '1w':
+                    period_end = period_date + timedelta(weeks=1)
+                elif aggregation_period == '1mo':
+                    period_end = period_date + timedelta(days=30)  # Approximate
+                else:
+                    period_end = period_date + timedelta(days=1)  # Default to daily
+                
+                # 1. Find users who STARTED the funnel in this period (first step in period)
+                period_starters = (
+                    relevant_events
+                    .filter(
+                        (pl.col('event_name') == first_step) &
+                        (pl.col('timestamp') >= period_date) &
+                        (pl.col('timestamp') < period_end)
+                    )
+                    .select('user_id')
+                    .unique()
+                )
+                
+                started_count = period_starters.height
+                
+                # 2. For users who started in this period, check if they completed the full funnel within conversion window
+                if started_count > 0:
+                    completed_count = 0
+                    starter_user_ids = period_starters.select('user_id').to_series().to_list()
+                    
+                    for user_id in starter_user_ids:
+                        # Get user's first event in this period (their start time)
+                        user_start_events = (
+                            relevant_events
+                            .filter(
+                                (pl.col('user_id') == user_id) &
+                                (pl.col('event_name') == first_step) &
+                                (pl.col('timestamp') >= period_date) &
+                                (pl.col('timestamp') < period_end)
+                            )
+                            .sort('timestamp')
+                            .head(1)
+                        )
+                        
+                        if user_start_events.height > 0:
+                            start_time = user_start_events.select('timestamp').item()
+                            conversion_deadline = start_time + timedelta(hours=conversion_window_hours)
+                            
+                            # Check if user completed the full funnel within conversion window
+                            user_completed = self._check_user_funnel_completion_within_window(
+                                events_df, user_id, funnel_steps, start_time, conversion_deadline
+                            )
+                            
+                            if user_completed:
+                                completed_count += 1
+                
+                else:
+                    completed_count = 0
+                
+                # Calculate metrics for this period
+                conversion_rate = (completed_count / started_count * 100) if started_count > 0 else 0.0
+                
+                # Count cohort progress for each step (how many from the starting cohort reached each step)
+                step_users = {}
+                if started_count > 0:
+                    starter_user_ids = period_starters.select('user_id').to_series().to_list()
+                    
+                    for step in funnel_steps:
+                        step_count = 0
+                        for user_id in starter_user_ids:
+                            # Get user's first event in this period (their start time)
+                            user_start_events = (
+                                relevant_events
+                                .filter(
+                                    (pl.col('user_id') == user_id) &
+                                    (pl.col('event_name') == first_step) &
+                                    (pl.col('timestamp') >= period_date) &
+                                    (pl.col('timestamp') < period_end)
+                                )
+                                .sort('timestamp')
+                                .head(1)
+                            )
+                            
+                            if user_start_events.height > 0:
+                                start_time = user_start_events.select('timestamp').item()
+                                conversion_deadline = start_time + timedelta(hours=conversion_window_hours)
+                                
+                                # Check if user reached this step within conversion window
+                                user_step_events = (
+                                    relevant_events
+                                    .filter(
+                                        (pl.col('user_id') == user_id) &
+                                        (pl.col('event_name') == step) &
+                                        (pl.col('timestamp') >= start_time) &
+                                        (pl.col('timestamp') <= conversion_deadline)
+                                    )
+                                )
+                                
+                                if user_step_events.height > 0:
+                                    step_count += 1
+                        
+                        step_users[f'{step}_users'] = step_count
+                else:
+                    # No starters in this period
+                    for step in funnel_steps:
+                        step_users[f'{step}_users'] = 0
+                
+                # Build result row
+                result_row = {
+                    'period_date': period_date,
+                    'started_funnel_users': started_count,
+                    'completed_funnel_users': completed_count,
+                    'conversion_rate': min(conversion_rate, 100.0),  # Cap at 100%
+                    'total_unique_users': (
+                        relevant_events
+                        .filter(
+                            (pl.col('timestamp') >= period_date) &
+                            (pl.col('timestamp') < period_end)
+                        )
+                        .select('user_id')
+                        .n_unique()
+                    ),
+                    'total_events': (
+                        relevant_events
+                        .filter(
+                            (pl.col('timestamp') >= period_date) &
+                            (pl.col('timestamp') < period_end)
+                        )
+                        .height
+                    ),
+                    **step_users
+                }
+                
+                results.append(result_row)
+            
+            # Convert to DataFrame
+            result_df = pd.DataFrame(results)
+            
+            # Add step-by-step conversion rates with proper bounds
+            if len(result_df) > 0:
+                for i in range(len(funnel_steps)-1):
+                    step_from_col = f'{funnel_steps[i]}_users'
+                    step_to_col = f'{funnel_steps[i+1]}_users'
+                    col_name = f'{funnel_steps[i]}_to_{funnel_steps[i+1]}_rate'
+                    
+                    # Calculate with 100% cap to prevent unrealistic values
+                    result_df[col_name] = result_df.apply(
+                        lambda row: min((row[step_to_col] / row[step_from_col] * 100), 100.0) 
+                        if row[step_from_col] > 0 else 0.0, axis=1
+                    )
+            
+            # Ensure proper datetime handling
+            if 'period_date' in result_df.columns:
+                result_df['period_date'] = pd.to_datetime(result_df['period_date'])
+            
+            self.logger.info(f"Calculated TRUE cohort timeseries metrics (polars) for {len(result_df)} periods with aggregation: {aggregation_period}")
+            return result_df
+            
+        except Exception as e:
+            self.logger.error(f"Error in Polars timeseries calculation: {str(e)}")
+            # Fallback to pandas implementation
+            return self._calculate_timeseries_metrics_pandas(
+                self._to_pandas(events_df), funnel_steps, aggregation_period
+            )
+    
+    def _calculate_timeseries_metrics_pandas(self, events_df: pd.DataFrame, funnel_steps: List[str], 
+                                           aggregation_period: str = '1d') -> pd.DataFrame:
+        """
+        Pandas fallback implementation for time series metrics calculation with TRUE cohort analysis.
+        
+        Args:
+            events_df: Pandas DataFrame with event data
+            funnel_steps: List of event names in funnel order
+            aggregation_period: Period for data aggregation ('1h', '1d', '1w', '1mo')
+            
+        Returns:
+            DataFrame with aggregated metrics
+        """
+        if events_df.empty or len(funnel_steps) < 2:
+            return pd.DataFrame()
+        
+        # Define first and last steps
+        first_step = funnel_steps[0]
+        last_step = funnel_steps[-1]
+        conversion_window_hours = self.config.conversion_window_hours
+        
+        try:
+            # Filter to relevant events
+            relevant_events = events_df[events_df['event_name'].isin(funnel_steps)].copy()
+            
+            if relevant_events.empty:
+                return pd.DataFrame()
+            
+            # Convert aggregation period to pandas frequency
+            pandas_freq = self._convert_polars_to_pandas_period(aggregation_period)
+            
+            # Create period grouper
+            relevant_events['period_date'] = relevant_events['timestamp'].dt.floor(pandas_freq)
+            
+            # Get unique periods
+            periods = sorted(relevant_events['period_date'].unique())
+            
+            results = []
+            
+            # Process each period for TRUE cohort analysis
+            for period in periods:
+                # Calculate period boundaries
+                if aggregation_period == '1h':
+                    period_end = period + timedelta(hours=1)
+                elif aggregation_period == '1d':
+                    period_end = period + timedelta(days=1)
+                elif aggregation_period == '1w':
+                    period_end = period + timedelta(weeks=1)
+                elif aggregation_period == '1mo':
+                    period_end = period + timedelta(days=30)  # Approximate
+                else:
+                    period_end = period + timedelta(days=1)  # Default to daily
+                
+                # 1. Find users who STARTED the funnel in this period
+                period_starters = relevant_events[
+                    (relevant_events['event_name'] == first_step) &
+                    (relevant_events['timestamp'] >= period) &
+                    (relevant_events['timestamp'] < period_end)
+                ]['user_id'].unique()
+                
+                started_count = len(period_starters)
+                
+                # 2. For each starter, check if they completed the full funnel within conversion window
+                completed_count = 0
+                
+                if started_count > 0:
+                    for user_id in period_starters:
+                        # Get user's first start event in this period
+                        user_start_events = relevant_events[
+                            (relevant_events['user_id'] == user_id) &
+                            (relevant_events['event_name'] == first_step) &
+                            (relevant_events['timestamp'] >= period) &
+                            (relevant_events['timestamp'] < period_end)
+                        ].sort_values('timestamp')
+                        
+                        if not user_start_events.empty:
+                            start_time = user_start_events.iloc[0]['timestamp']
+                            conversion_deadline = start_time + timedelta(hours=conversion_window_hours)
+                            
+                            # Check if user completed full funnel within window
+                            user_completed = self._check_user_funnel_completion_pandas(
+                                events_df, user_id, funnel_steps, start_time, conversion_deadline
+                            )
+                            
+                            if user_completed:
+                                completed_count += 1
+                
+                # Calculate metrics for this period
+                conversion_rate = (completed_count / started_count * 100) if started_count > 0 else 0.0
+                
+                # Count cohort progress for each step (how many from the starting cohort reached each step)
+                step_users_metrics = {}
+                if started_count > 0:
+                    for step in funnel_steps:
+                        step_count = 0
+                        for user_id in period_starters:
+                            # Get user's first start event in this period
+                            user_start_events = relevant_events[
+                                (relevant_events['user_id'] == user_id) &
+                                (relevant_events['event_name'] == first_step) &
+                                (relevant_events['timestamp'] >= period) &
+                                (relevant_events['timestamp'] < period_end)
+                            ].sort_values('timestamp')
+                            
+                            if not user_start_events.empty:
+                                start_time = user_start_events.iloc[0]['timestamp']
+                                conversion_deadline = start_time + timedelta(hours=conversion_window_hours)
+                                
+                                # Check if user reached this step within conversion window
+                                user_step_events = relevant_events[
+                                    (relevant_events['user_id'] == user_id) &
+                                    (relevant_events['event_name'] == step) &
+                                    (relevant_events['timestamp'] >= start_time) &
+                                    (relevant_events['timestamp'] <= conversion_deadline)
+                                ]
+                                
+                                if not user_step_events.empty:
+                                    step_count += 1
+                        
+                        step_users_metrics[f'{step}_users'] = step_count
+                else:
+                    # No starters in this period
+                    for step in funnel_steps:
+                        step_users_metrics[f'{step}_users'] = 0
+                
+                metrics = {
+                    'period_date': period,
+                    'started_funnel_users': started_count,
+                    'completed_funnel_users': completed_count,
+                    'conversion_rate': min(conversion_rate, 100.0),  # Cap at 100%
+                    'total_unique_users': relevant_events[
+                        (relevant_events['timestamp'] >= period) &
+                        (relevant_events['timestamp'] < period_end)
+                    ]['user_id'].nunique(),
+                    'total_events': len(relevant_events[
+                        (relevant_events['timestamp'] >= period) &
+                        (relevant_events['timestamp'] < period_end)
+                    ]),
+                    **step_users_metrics
+                }
+                
+                # Calculate step-by-step conversion rates (capped at 100% to prevent unrealistic values)
+                for i in range(len(funnel_steps)-1):
+                    step_from_users = metrics[f'{funnel_steps[i]}_users']
+                    step_to_users = metrics[f'{funnel_steps[i+1]}_users']
+                    
+                    if step_from_users > 0:
+                        raw_rate = (step_to_users / step_from_users) * 100
+                        # Cap at 100% to handle cases where users complete steps in different periods
+                        metrics[f'{funnel_steps[i]}_to_{funnel_steps[i+1]}_rate'] = min(raw_rate, 100.0)
+                    else:
+                        metrics[f'{funnel_steps[i]}_to_{funnel_steps[i+1]}_rate'] = 0.0
+                
+                results.append(metrics)
+            
+            result_df = pd.DataFrame(results).sort_values('period_date')
+            
+            self.logger.info(f"Calculated TRUE cohort timeseries metrics (pandas) for {len(result_df)} periods with aggregation: {aggregation_period}")
+            return result_df
+            
+        except Exception as e:
+            self.logger.error(f"Error in pandas timeseries calculation: {str(e)}")
+            return pd.DataFrame()
     
     def _find_conversion_time_polars(self, from_events: pl.DataFrame, to_events: pl.DataFrame, 
                                    conversion_window_hours: int) -> Optional[float]:
@@ -2760,12 +3315,11 @@ class FunnelCalculator:
                         between_events_df = between_events_lazy.collect()
                         
                         if between_events_df.height > 0:
-                            event_counts = (
-                                between_events_df
-                                .group_by('event_name')
-                                .agg(pl.count().alias('count'))
-                                .sort('count', descending=True)
-                                .head(10)
+                            event_counts = (                            between_events_df
+                            .group_by('event_name')
+                            .agg(pl.len().alias('count'))
+                            .sort('count', descending=True)
+                            .head(10)
                             )
                             
                             # Convert to dictionary format for the result
@@ -2805,11 +3359,10 @@ class FunnelCalculator:
                         if between_events:
                             all_between_events = pl.concat(between_events)
                             event_counts = (
-                                all_between_events
-                                .group_by('event_name')
-                                .agg(pl.count().alias('count'))
-                                .sort('count', descending=True)
-                                .head(10)
+                                all_between_events                            .group_by('event_name')
+                            .agg(pl.len().alias('count'))
+                            .sort('count', descending=True)
+                            .head(10)
                             )
                             
                             # Convert to dictionary format for the result
@@ -5951,6 +6504,182 @@ class FunnelVisualizer:
         
         return style_guide.strip()
 
+    def create_timeseries_chart(self, timeseries_df: pd.DataFrame, 
+                               primary_metric: str, secondary_metric: str) -> go.Figure:
+        """
+        Create interactive time series chart with dual y-axes for funnel metrics analysis.
+        
+        Args:
+            timeseries_df: DataFrame with time series data from calculate_timeseries_metrics
+            primary_metric: Column name for left y-axis (absolute values, displayed as bars)
+            secondary_metric: Column name for right y-axis (relative values, displayed as line)
+            
+        Returns:
+            Plotly Figure with dark theme and dual y-axes
+        """
+        if timeseries_df.empty:
+            fig = go.Figure()
+            fig.add_annotation(
+                x=0.5, y=0.5,
+                text="🕒 No time series data available<br><small>Try adjusting your date range or funnel configuration</small>",
+                showarrow=False,
+                font={'size': 16, 'color': self.secondary_text_color}
+            )
+            return self.apply_theme(fig, "Time Series Analysis")
+        
+        # Create figure with secondary y-axis
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        
+        # Prepare data
+        x_data = timeseries_df['period_date']
+        primary_data = timeseries_df.get(primary_metric, [])
+        secondary_data = timeseries_df.get(secondary_metric, [])
+        
+        # Primary metric (left y-axis) - Bar chart for absolute values
+        fig.add_trace(
+            go.Bar(
+                x=x_data,
+                y=primary_data,
+                name=self._format_metric_name(primary_metric),
+                marker=dict(
+                    color=self.color_palette.SEMANTIC['info'],
+                    opacity=0.8,
+                    line=dict(color=self.color_palette.DARK_MODE['border'], width=1)
+                ),
+                hovertemplate=(
+                    f"<b>%{{x}}</b><br>"
+                    f"{self._format_metric_name(primary_metric)}: %{{y:,.0f}}<br>"
+                    f"<extra></extra>"
+                ),
+                yaxis='y'
+            ),
+            secondary_y=False
+        )
+        
+        # Secondary metric (right y-axis) - Line chart for relative values
+        fig.add_trace(
+            go.Scatter(
+                x=x_data,
+                y=secondary_data,
+                mode='lines+markers',
+                name=self._format_metric_name(secondary_metric),
+                line=dict(
+                    color=self.color_palette.SEMANTIC['success'],
+                    width=3
+                ),
+                marker=dict(
+                    color=self.color_palette.SEMANTIC['success'],
+                    size=8,
+                    line=dict(color=self.color_palette.DARK_MODE['background'], width=2)
+                ),
+                hovertemplate=(
+                    f"<b>%{{x}}</b><br>"
+                    f"{self._format_metric_name(secondary_metric)}: %{{y:.1f}}%<br>"
+                    f"<extra></extra>"
+                ),
+                yaxis='y2'
+            ),
+            secondary_y=True
+        )
+        
+        # Configure y-axes
+        fig.update_yaxes(
+            title_text=self._format_metric_name(primary_metric),
+            title_font=dict(color=self.color_palette.SEMANTIC['info'], size=14),
+            tickfont=dict(color=self.color_palette.SEMANTIC['info']),
+            gridcolor=self.color_palette.DARK_MODE['grid'],
+            zeroline=True,
+            zerolinecolor=self.color_palette.DARK_MODE['border'],
+            secondary_y=False
+        )
+        
+        fig.update_yaxes(
+            title_text=self._format_metric_name(secondary_metric),
+            title_font=dict(color=self.color_palette.SEMANTIC['success'], size=14),
+            tickfont=dict(color=self.color_palette.SEMANTIC['success']),
+            ticksuffix='%',
+            secondary_y=True
+        )
+        
+        # Configure x-axis
+        fig.update_xaxes(
+            title_text="Time Period",
+            title_font=dict(color=self.text_color, size=14),
+            tickfont=dict(color=self.secondary_text_color),
+            gridcolor=self.color_palette.DARK_MODE['grid'],
+            showgrid=True
+        )
+        
+        # Calculate dynamic height based on data points
+        height = self.layout.get_responsive_height(500, len(timeseries_df))
+        
+        # Apply theme and return
+        title = "Time Series Analysis"
+        subtitle = f"Tracking {self._format_metric_name(primary_metric)} and {self._format_metric_name(secondary_metric)} over time"
+        
+        themed_fig = self.apply_theme(fig, title, subtitle, height)
+        
+        # Additional styling for time series
+        themed_fig.update_layout(
+            # Improve legend positioning
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.2,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(0,0,0,0)",
+                font=dict(color=self.text_color)
+            ),
+            # Enable range slider for time navigation
+            xaxis=dict(
+                rangeslider=dict(
+                    visible=True,
+                    bgcolor=self.color_palette.DARK_MODE['surface'],
+                    bordercolor=self.color_palette.DARK_MODE['border'],
+                    borderwidth=1
+                ),
+                type='date'
+            ),
+            # Improve hover interaction
+            hovermode='x unified',
+            # Better margins for dual axis labels
+            margin=dict(l=80, r=80, t=100, b=120)
+        )
+        
+        return themed_fig
+    
+    def _format_metric_name(self, metric_name: str) -> str:
+        """
+        Format metric names for display in charts and legends.
+        
+        Args:
+            metric_name: Raw metric name from DataFrame column
+            
+        Returns:
+            Formatted, human-readable metric name
+        """
+        # Mapping of technical names to display names
+        format_map = {
+            'started_funnel_users': 'Users Starting Funnel',
+            'completed_funnel_users': 'Users Completing Funnel', 
+            'total_unique_users': 'Total Unique Users',
+            'total_events': 'Total Events',
+            'conversion_rate': 'Overall Conversion Rate',
+            'step_1_conversion_rate': 'Step 1 → 2 Conversion',
+            'step_2_conversion_rate': 'Step 2 → 3 Conversion',
+            'step_3_conversion_rate': 'Step 3 → 4 Conversion',
+            'step_4_conversion_rate': 'Step 4 → 5 Conversion'
+        }
+        
+        # Check if it's a step-specific user count (e.g., 'User Sign-Up_users')
+        if metric_name.endswith('_users') and metric_name not in format_map:
+            step_name = metric_name.replace('_users', '').replace('_', ' ')
+            return f'{step_name} Users'
+        
+        # Return formatted name or original if not found
+        return format_map.get(metric_name, metric_name.replace('_', ' ').title())
+
     # Enhanced visualization methods
     def create_enhanced_conversion_flow_sankey(self, results: FunnelResults) -> go.Figure:
         """Create enhanced Sankey diagram with accessibility and progressive disclosure"""
@@ -7855,7 +8584,7 @@ ORDER BY user_id, timestamp""",
                 st.metric("Total Drop-offs", f"{total_dropoff:,}")
             
             # Advanced Visualizations
-            tabs = ["📊 Funnel Chart", "🌊 Flow Diagram"]
+            tabs = ["📊 Funnel Chart", "🌊 Flow Diagram", "🕒 Time Series Analysis"]
             
             if results.time_to_convert:
                 tabs.append("⏱️ Time to Convert")
@@ -7873,6 +8602,17 @@ ORDER BY user_id, timestamp""",
             tab_objects = st.tabs(tabs)
             
             with tab_objects[0]:  # Funnel Chart
+                # Business explanation for Funnel Chart
+                st.info("""
+                **📊 How to read Funnel Chart:**
+                
+                • **Overall conversion** — shows funnel efficiency across the entire data period  
+                • **Drop-off between steps** — identifies where you lose the most users (optimization priority)  
+                • **Volume at each step** — helps resource planning and result forecasting  
+                
+                💡 *These metrics are aggregated over the entire period and may differ from temporal trends in Time Series*
+                """)
+                
                 # Initialize enhanced visualizer
                 visualizer = FunnelVisualizer(theme='dark', colorblind_friendly=True)
                 
@@ -8083,6 +8823,17 @@ ORDER BY user_id, timestamp""",
                         )
             
             with tab_objects[1]:  # Flow Diagram
+                # Business explanation for Flow Diagram  
+                st.info("""
+                **🌊 How to read Flow Diagram:**
+                
+                • **Flow thickness** — proportional to user count (where are the biggest losses?)  
+                • **Visual bottlenecks** — immediately reveals problematic transitions in the funnel  
+                • **Alternative view** — same statistics as Funnel Chart, but in Sankey format  
+                
+                💡 *Great for stakeholder presentations and identifying critical loss points*
+                """)
+                
                 # Use enhanced conversion flow
                 flow_chart = visualizer.create_enhanced_conversion_flow_sankey(results)
                 st.plotly_chart(flow_chart, use_container_width=True)
@@ -8107,7 +8858,186 @@ ORDER BY user_id, timestamp""",
                                           key=lambda i: results.drop_off_rates[i])
                         st.info(f"🔍 **Biggest Opportunity**: {results.drop_off_rates[max_drop_step]:.1f}% drop-off at step '{results.steps[max_drop_step]}'")
             
-            tab_idx = 2
+            with tab_objects[2]:  # Time Series Analysis
+                st.markdown("### 🕒 Time Series Analysis")
+                st.markdown("*Analyze funnel metrics trends over time with configurable periods*")
+                
+                # Business explanation for Time Series Analysis
+                st.info("""
+                **📈 How to read Time Series:**
+                
+                • **Temporal trends** — see conversion dynamics changing over time periods  
+                • **Seasonality and anomalies** — identify growth/decline patterns for decision making  
+                • **Period-specific conversions** — each point = conversion only in that period (≤100%)  
+                
+                ⚠️ *Conversions may differ from Funnel Chart, as these are calculated by periods, not over entire time*
+                """)
+                
+                # Check if data is available
+                if st.session_state.events_data is None or results is None:
+                    st.info("📊 No event data available. Please upload data to enable time series analysis.")
+                    return
+                
+                # Control panel for time series configuration
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    # Aggregation period selection
+                    aggregation_options = {
+                        "Hours": "1h",
+                        "Days": "1d", 
+                        "Weeks": "1w",
+                        "Months": "1mo"
+                    }
+                    aggregation_period = st.selectbox(
+                        "📅 Aggregate by:",
+                        options=list(aggregation_options.keys()),
+                        index=1,  # Default to "Days"
+                        key="timeseries_aggregation"
+                    )
+                    polars_period = aggregation_options[aggregation_period]
+                
+                with col2:
+                    # Primary metric (left Y-axis) selection
+                    primary_options = {
+                        "Users Starting Funnel": "started_funnel_users",
+                        "Users Completing Funnel": "completed_funnel_users", 
+                        "Total Unique Users": "total_unique_users",
+                        "Total Events": "total_events"
+                    }
+                    primary_metric_display = st.selectbox(
+                        "📊 Primary Metric (Bars):",
+                        options=list(primary_options.keys()),
+                        index=0,  # Default to "Users Starting Funnel"
+                        key="timeseries_primary"
+                    )
+                    primary_metric = primary_options[primary_metric_display]
+                
+                with col3:
+                    # Secondary metric (right Y-axis) selection
+                    # Build dynamic options based on actual funnel steps
+                    secondary_options = {
+                        "Overall Conversion Rate": "conversion_rate"
+                    }
+                    
+                    # Add step-by-step conversion options dynamically
+                    if results and results.steps and len(results.steps) > 1:
+                        for i in range(len(results.steps)-1):
+                            step_from = results.steps[i]
+                            step_to = results.steps[i+1]
+                            display_name = f"{step_from} → {step_to} Conversion"
+                            metric_name = f"{step_from}_to_{step_to}_rate"
+                            secondary_options[display_name] = metric_name
+                    
+                    secondary_metric_display = st.selectbox(
+                        "📈 Secondary Metric (Line):",
+                        options=list(secondary_options.keys()),
+                        index=0,  # Default to "Overall Conversion Rate"
+                        key="timeseries_secondary"
+                    )
+                    secondary_metric = secondary_options[secondary_metric_display]
+                
+                # Calculate time series data only if we have all required data
+                try:
+                    with st.spinner("🔄 Calculating time series metrics..."):
+                        # Get the calculator from session state if available
+                        if hasattr(st.session_state, 'last_calculator') and st.session_state.last_calculator:
+                            calculator = st.session_state.last_calculator
+                        else:
+                            # Create a new calculator with current config
+                            calculator = FunnelCalculator(st.session_state.funnel_config)
+                        
+                        # Calculate timeseries metrics
+                        timeseries_data = calculator.calculate_timeseries_metrics(
+                            st.session_state.events_data,
+                            results.steps,
+                            polars_period
+                        )
+                        
+                        if not timeseries_data.empty:
+                            # Verify that the selected secondary metric exists in the data
+                            if secondary_metric not in timeseries_data.columns:
+                                st.warning(f"⚠️ Metric '{secondary_metric_display}' not available for current funnel configuration.")
+                                available_metrics = [col for col in timeseries_data.columns if col.endswith('_rate')]
+                                if available_metrics:
+                                    st.info(f"Available conversion metrics: {', '.join(available_metrics)}")
+                            else:
+                                # Create and display the chart
+                                timeseries_chart = visualizer.create_timeseries_chart(
+                                    timeseries_data,
+                                    primary_metric,
+                                    secondary_metric
+                                )
+                                st.plotly_chart(timeseries_chart, use_container_width=True)
+                                
+                                # Show summary statistics
+                                st.markdown("#### 📊 Time Series Summary")
+                                
+                                col1, col2, col3, col4 = st.columns(4)
+                                
+                                with col1:
+                                    avg_primary = timeseries_data[primary_metric].mean()
+                                    st.metric(
+                                        f"Avg {primary_metric_display}",
+                                        f"{avg_primary:,.0f}",
+                                        delta=f"Per {aggregation_period.lower()[:-1]}"
+                                    )
+                                
+                                with col2:
+                                    avg_secondary = timeseries_data[secondary_metric].mean()
+                                    st.metric(
+                                        f"Avg {secondary_metric_display}",
+                                        f"{avg_secondary:.1f}%"
+                                    )
+                                
+                                with col3:
+                                    max_primary = timeseries_data[primary_metric].max()
+                                    st.metric(
+                                        f"Peak {primary_metric_display}",
+                                        f"{max_primary:,.0f}"
+                                    )
+                                
+                                with col4:
+                                    # Calculate trend direction
+                                    if len(timeseries_data) >= 2:
+                                        recent_avg = timeseries_data[secondary_metric].tail(3).mean()
+                                        earlier_avg = timeseries_data[secondary_metric].head(3).mean()
+                                        trend = "📈 Improving" if recent_avg > earlier_avg else "📉 Declining"
+                                    else:
+                                        trend = "📊 Stable"
+                                    
+                                    st.metric(
+                                        "Trend",
+                                        trend,
+                                        delta=f"{secondary_metric_display}"
+                                    )
+                                
+                                # Optional: Show raw data table
+                                if st.checkbox("📋 Show Raw Time Series Data", key="show_timeseries_data"):
+                                    # Format the data for display
+                                    display_data = timeseries_data.copy()
+                                    display_data['period_date'] = display_data['period_date'].dt.strftime('%Y-%m-%d %H:%M')
+                                    
+                                    # Select relevant columns for display
+                                    display_columns = ['period_date', primary_metric, secondary_metric]
+                                    if 'total_unique_users' in display_data.columns and 'total_unique_users' not in display_columns:
+                                        display_columns.append('total_unique_users')
+                                    if 'total_events' in display_data.columns and 'total_events' not in display_columns:
+                                        display_columns.append('total_events')
+                                    
+                                    st.dataframe(
+                                        display_data[display_columns],
+                                        use_container_width=True,
+                                        hide_index=True
+                                    )
+                        else:
+                            st.info("📊 No time series data available for the selected period. Try adjusting the aggregation period or check your data range.")
+                
+                except Exception as e:
+                    st.error(f"❌ Error calculating time series metrics: {str(e)}")
+                    st.info("💡 This might occur with limited data. Try using a larger dataset or different aggregation period.")
+            
+            tab_idx = 3
             
             if results.time_to_convert:
                 with tab_objects[tab_idx]:  # Time to Convert
