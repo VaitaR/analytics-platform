@@ -26,11 +26,22 @@ import sys
 import os
 import subprocess
 import argparse
-import re
-import json
 import tempfile
+import json
+import time
+import re
+import math
+import logging
+import importlib.util
 from pathlib import Path
 from typing import List, Dict, Callable, Optional, Tuple, Set, Union, Any, TypedDict
+
+
+# Add missing imports
+try:
+    import pkg_resources
+except ImportError:
+    pkg_resources = None
 
 
 class TestResult(TypedDict):
@@ -114,23 +125,13 @@ def run_command(cmd: List[str], description: str = "", capture_output: bool = Tr
         if capture_output:
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
             
-            if result.returncode == 0:
-                # Don't print status for pytest commands - let JSON report handle it
-                if "pytest" not in ' '.join(cmd):
+            # Don't print immediate success/failure status here for pytest commands
+            # Let the JSON report determine the real status
+            if "pytest" not in ' '.join(cmd):
+                if result.returncode == 0:
                     print(f"✅ {description or 'Command'} completed successfully")
-                if result.stdout and len(result.stdout) < 1000:  # Only print short outputs
-                    print(result.stdout)
-            else:
-                # For pytest commands, only print failure if it's a real failure (not just warnings)
-                if "pytest" in ' '.join(cmd):
-                    # Let the JSON report handler decide for pytest
-                    pass
                 else:
                     print(f"❌ {description or 'Command'} failed")
-                if result.stderr and len(result.stderr) < 1000:
-                    print("STDERR:", result.stderr)
-                if result.stdout and len(result.stdout) < 1000:
-                    print("STDOUT:", result.stdout)
             
             return result.returncode == 0, result.stdout, result.stderr
         else:
@@ -225,8 +226,6 @@ def run_pytest(test_files: List[str], description: str,
     # Run the command
     success, stdout, stderr = run_command(cmd, full_description, capture_output)
     
-    # Don't print immediate success/failure status here - let the JSON report determine the real status
-    
     # Initialize default result
     result = TestResult(
         group=description,
@@ -299,14 +298,11 @@ def check_test_dependencies() -> bool:
     for dep in dependencies:
         try:
             if dep.startswith("pytest-"):
-                # For pytest plugins, check differently
-                import pkg_resources
-                pkg_resources.require(dep)
-                print(f"   ✅ {dep}")
+                __import__(dep.replace("-", "_"))
             else:
                 __import__(dep)
-                print(f"   ✅ {dep}")
-        except (ImportError, pkg_resources.DistributionNotFound):
+            print(f"   ✅ {dep}")
+        except (ImportError, pkg_resources.DistributionNotFound if pkg_resources else ImportError):
             print(f"   ❌ {dep}")
             missing.append(dep)
     
@@ -642,6 +638,7 @@ POLARS_TESTS = TestCategory("polars", "Polars engine and migration tests")
 COMPREHENSIVE_TESTS = TestCategory("comprehensive", "Comprehensive tests covering multiple configurations")
 FALLBACK_TESTS = TestCategory("fallback", "Tests for detecting silent fallbacks")
 BENCHMARK_TESTS = TestCategory("benchmark", "Performance benchmarks and comparisons")
+UTILITY_TESTS = TestCategory("utility", "Utility tests")
 
 # Basic tests
 BASIC_TESTS.add_test(
@@ -764,7 +761,6 @@ BENCHMARK_TESTS.add_test(
 )
 
 # Utility tests
-UTILITY_TESTS = TestCategory("utility", "Utility tests")
 UTILITY_TESTS.add_test(
     "smoke", 
     ["tests/test_basic_scenarios.py"], 
@@ -781,6 +777,28 @@ TEST_CATEGORIES = {
     "fallback": FALLBACK_TESTS,
     "benchmark": BENCHMARK_TESTS,
     "utility": UTILITY_TESTS
+}
+
+# Create process mining tests category
+PROCESS_MINING_TESTS = TestCategory("process_mining", "Process mining visualization and analysis tests")
+
+# Add process mining test
+PROCESS_MINING_TESTS.add_test(
+    "process_mining_comprehensive", 
+    ["tests/test_process_mining_comprehensive.py"], 
+    "Running comprehensive process mining tests"
+)
+
+# Update the TEST_CATEGORIES to include process mining
+TEST_CATEGORIES = {
+    "basic": BASIC_TESTS,
+    "advanced": ADVANCED_TESTS,
+    "polars": POLARS_TESTS,
+    "comprehensive": COMPREHENSIVE_TESTS,
+    "fallback": FALLBACK_TESTS,
+    "benchmark": BENCHMARK_TESTS,
+    "utility": UTILITY_TESTS,
+    "process_mining": PROCESS_MINING_TESTS
 }
 
 
@@ -897,7 +915,7 @@ def print_test_summary(categories=None):
         
         for test_name, (_, description, marker) in category.test_functions.items():
             marker_info = f" (marker: {marker})" if marker else ""
-            print(f"   - {test_name}: {description}{marker_info}")
+            print(f"   • {test_name}: {description}{marker_info}")
     
     print("\n💡 Examples:")
     print("   python run_tests.py --basic-all")
@@ -957,10 +975,14 @@ def print_final_summary(test_results: List[TestResult]):
         print("\n======================= 🔬 Failed Tests Details =======================")
         
         for result in failed_groups:
-            if result["failed_tests"]:
-                print(f"\n--- Group: {result['group']} ---")
-                for test in result["failed_tests"]:
-                    print(f"  - {test}")
+            print(f"\n❌ {result['group']}:")
+            if result['failed_tests']:
+                for failed_test in result['failed_tests'][:5]:  # Show first 5 failed tests
+                    print(f"   • {failed_test}")
+                if len(result['failed_tests']) > 5:
+                    print(f"   ... and {len(result['failed_tests']) - 5} more")
+            else:
+                print("   • No specific test failures reported")
     
     # Print overall status
     print("\n" + "=" * 50)
@@ -994,8 +1016,8 @@ def print_llm_agent_summary(test_results: List[TestResult], overall_status: str)
         if result["status"] != "SUCCESS":
             summary["failed_groups"].append({
                 "group": result["group"],
-                "summary": result["summary"],
-                "failed_tests": result["failed_tests"]
+                "status": result["status"],
+                "failed_tests": result["failed_tests"][:3]  # First 3 failed tests
             })
     
     # Print the summary block
@@ -1017,6 +1039,7 @@ Categories:
     - Comprehensive tests: All configuration combinations, edge cases, performance
     - Fallback detection tests: Tests that detect silent fallbacks to slower implementations
     - Benchmarks: Performance tests and comparisons between implementations
+    - Process mining tests: Process mining visualization and analysis
 
 Examples:
   python run_tests.py                     # Run all tests
@@ -1027,6 +1050,7 @@ Examples:
   python run_tests.py --comprehensive-all # Run all comprehensive tests
   python run_tests.py --fallback-all      # Run all fallback detection tests
   python run_tests.py --benchmarks        # Run all benchmarks
+  python run_tests.py --process-mining-all # Run all process mining tests
   python run_tests.py --data-integrity    # Run data integrity tests
   python run_tests.py --coverage          # Run all tests with coverage
   python run_tests.py --parallel          # Run tests in parallel
@@ -1046,6 +1070,7 @@ Examples:
     parser.add_argument("--comprehensive-all", action="store_true", help="Run all comprehensive tests")
     parser.add_argument("--fallback-all", action="store_true", help="Run all fallback detection tests")
     parser.add_argument("--benchmarks", action="store_true", help="Run all benchmark tests")
+    parser.add_argument("--process-mining-all", action="store_true", help="Run all process mining tests")
     
     # Category specific test options
     parser.add_argument("--basic", metavar="TEST", help="Run specific basic test: scenarios, conversion_window, counting_methods")
@@ -1054,6 +1079,7 @@ Examples:
     parser.add_argument("--comprehensive", metavar="TEST", help="Run specific comprehensive test: comprehensive_all, config_combinations, comprehensive_edge")
     parser.add_argument("--fallback", metavar="TEST", help="Run specific fallback test: fallback_detection, path_analysis_fix, comprehensive_fallback, all_fallback, fallback_report")
     parser.add_argument("--benchmark", metavar="TEST", help="Run specific benchmark: performance, comprehensive_performance, data_integrity, polars_fallback")
+    parser.add_argument("--process-mining", metavar="TEST", help="Run specific process mining test: process_mining_comprehensive")
     
     # Specific named tests for backward compatibility
     parser.add_argument("--smoke", action="store_true", help="Run a quick smoke test")
@@ -1089,11 +1115,13 @@ Examples:
     if args.check:
         if not check_test_dependencies():
             sys.exit(1)
+        sys.exit(0)
     
     # Validate test files if requested
     if args.validate:
         if not validate_test_files():
             sys.exit(1)
+        sys.exit(0)
     
     # Track all test results
     test_results = []
@@ -1136,6 +1164,11 @@ Examples:
         test_results.append(result)
         actions_performed = True
     
+    if args.process_mining_all:
+        result = run_tests_by_category("process_mining", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
+        actions_performed = True
+    
     # Run specific tests from categories
     if args.basic:
         result = run_specific_test("basic", args.basic, args.parallel, args.coverage, args.marker)
@@ -1164,6 +1197,11 @@ Examples:
     
     if args.benchmark:
         result = run_specific_test("benchmark", args.benchmark, args.parallel, args.coverage, args.marker)
+        test_results.append(result)
+        actions_performed = True
+    
+    if args.process_mining:
+        result = run_specific_test("process_mining", args.process_mining, args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
     
@@ -1208,4 +1246,4 @@ Examples:
 
 
 if __name__ == "__main__":
-    main() 
+    main()
