@@ -552,191 +552,41 @@ def visualizer(self):
 **Add to Section:** 4.2 (Critical Test Files) + 9 (Known Issues)
 **Search Keywords:** `mock object not subscriptable visualization tests real objects integration testing`
 
-### Template for New Discoveries
-```markdown
-### Discovery Date: [YYYY-MM-DD]
-**Problem Pattern:** [Brief description]
-**Solution Found:** [Working approach]  
-**Code Pattern:**
-```python
-# Working solution code here
-```
-**Add to Section:** [Which section should include this]
-**Search Keywords:** [Keywords for future search]
-```
-
-*[Agent: Add your discoveries above this line using the template]*
-
----
-
-## 🔄 **SELF-IMPROVEMENT PROTOCOL**
-> *Copilot: You can and should improve this document when you discover patterns*
-
-### When to Update This Document
-**ADD entries when you discover:**
-- **New problem patterns** not covered in Problem→Solution mapping
-- **Performance bottlenecks** not documented in optimization sections  
-- **Polars edge cases** that trigger fallbacks consistently
-- **Code patterns** that solve recurring issues efficiently
-- **Test scenarios** that reveal critical gaps
-
-### How to Add Self-Improvement Notes
-**Format for new discoveries:**
-```markdown
-## 📝 **AGENT DISCOVERIES** 
-*(Auto-updated by Copilot based on task patterns)*
-
-### Discovery Date: [YYYY-MM-DD]
-**Problem Pattern:** [Brief description]
-**Solution Found:** [Working approach]
-**Code Pattern:**
-```python
-# Working solution code here
-```
-**Add to Section:** 9.1 (Polars Fallback Scenarios)
-**Search Keywords:** `polars timestamp mixed format errors`
-```
-
-### Self-Update Guidelines
-1. **Be Conservative:** Only add well-tested patterns
-2. **Be Specific:** Include exact error messages and solutions
-3. **Be Searchable:** Use clear keywords future-you can find
-4. **Reference Code:** Link to actual working implementations
-5. **Update Index:** Add new keywords to Quick Reference if significant
-
-### Validation Before Adding
-- [ ] **Tested Solution:** Code actually works in real scenarios
-- [ ] **Reproducible:** Problem occurs consistently 
-- [ ] **Not Documented:** Genuinely new pattern, not duplicate
-- [ ] **Generally Useful:** Will help in future similar tasks
-- [ ] **Clear Keywords:** Easy to search for
-
-**Example Self-Improvement Entry:**
-```markdown
 ### Discovery Date: 2025-06-18
-**Problem Pattern:** Polars fails on DataFrames with mixed timestamp formats
-**Solution Found:** Standardize timestamps before Polars processing
+**Problem Pattern:** Time series conversion rates calculated incorrectly due to cohort misalignment
+**Solution Found:** Implement true cohort analysis with individual conversion windows per user
 **Code Pattern:**
 ```python
-# Fix mixed timestamp formats before Polars
-def standardize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
-    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-    return df.dropna(subset=['timestamp'])
-```
-**Add to Section:** 9.1 (Polars Fallback Scenarios)
-**Search Keywords:** `polars timestamp mixed format errors`
-```
+# ❌ OLD (WRONG): Cross-period misalignment
+conversion_rate = completions_in_period_T / starts_in_period_T  # Mathematically incorrect
 
----
+# ✅ NEW (CORRECT): True cohort analysis
+# Step 1: Define cohorts by start period
+cohorts_df = starter_times.with_columns([
+    pl.col('start_time').dt.truncate(aggregation_period).alias('period_date')
+])
 
-## ✅ 12. Definition of Done
+# Step 2: Individual conversion windows
+starters_with_deadline = starter_times.with_columns([
+    (pl.col('start_time') + pl.duration(hours=conversion_window_hours)).alias('deadline')
+])
 
-For any change to funnel analytics:
-- [ ] **Accuracy:** Mathematical correctness verified
-- [ ] **Performance:** No regression in calculation time
-- [ ] **Fallback Handling:** Graceful Polars→Pandas fallback when needed
-- [ ] **Tests:** Edge cases covered
-- [ ] **Documentation:** Complex logic explained
-- [ ] **Type Safety:** Full type annotations
-- [ ] **Monitoring:** Performance metrics included
-
----
-
-## 🚫 13. Anti-Patterns to Avoid
-
-1. **Silent Failures:** Always log fallbacks and errors
-2. **Premature Pandas:** Try Polars first, fallback only when needed
-3. **Hardcoded Schemas:** Use flexible JSON property extraction
-4. **Memory Leaks:** Clear caches when data/config changes
-5. **UI in Logic:** Keep visualization separate from calculation
-6. **Missing Edge Cases:** Test with empty data, single users, missing events
-
----
-
-## 📚 14. Key Dependencies & Versions
-
-```toml
-[dependencies]
-streamlit = "^1.28.0"      # Web framework
-polars = "^0.19.0"         # High-performance DataFrames  
-pandas = "^2.0.0"          # Fallback DataFrame library
-plotly = "^5.15.0"         # Interactive visualizations
-clickhouse-driver = "^0.2.0"  # Database connectivity
-```
-
----
-
-## 🎯 15. Copilot Success Metrics
-
-**You're succeeding when:**
-1. **Funnel calculations are mathematically accurate** across all configurations
-2. **Performance scales linearly** with dataset size
-3. **Polars optimizations work** with graceful Pandas fallbacks
-4. **Code is self-documenting** with clear type hints
-5. **Tests comprehensively cover** edge cases and configurations
-
-**Red flags:**
-- Silent calculation errors
-- Performance degradation on large datasets  
-- Uncaught Polars exceptions
-- Missing test coverage for new funnel logic
-
----
-
-## 📞 16. Getting Help
-
-**For complex funnel logic questions:** Reference `test_funnel_calculator_comprehensive.py` for examples
-**For performance issues:** Check `get_bottleneck_analysis()` output
-**For Polars problems:** Look at `test_polars_fallback_detection.py` patterns
-**For visualization:** Study `FunnelVisualizer` class methods
-
----
-
-## 🔧 **INSTANT CODE SOLUTIONS**
-
-### Common Polars→Pandas Fallback Pattern
-```python
-@_funnel_performance_monitor('method_name')
-def method_name(self, df: pl.DataFrame) -> FunnelResults:
-    try:
-        return self._polars_implementation(df)
-    except Exception as e:
-        self.logger.warning(f"Polars failed: {e}, falling back to Pandas")
-        return self._pandas_implementation(df.to_pandas())
-```
-
-### Performance Monitoring Template
-```python
-# Check bottlenecks
-perf_report = calculator.get_bottleneck_analysis()
-print(f"Slowest: {perf_report['summary']['top_3_bottlenecks']}")
-```
-
-### Data Validation Quick Check
-```python
-# Required schema
-required_cols = ['user_id', 'event_name', 'timestamp']
-missing = [col for col in required_cols if col not in df.columns]
-if missing:
-    raise ValueError(f"Missing columns: {missing}")
-```
-
-### Funnel Configuration Examples
-```python
-# Standard user funnel
-config = FunnelConfig(
-    counting_method=CountingMethod.UNIQUE_USERS,
-    funnel_order=FunnelOrder.ORDERED,
-    reentry_mode=ReentryMode.FIRST_ONLY,
-    conversion_window_hours=168  # 7 days
-)
-
-# High-performance event counting
-config = FunnelConfig(
-    counting_method=CountingMethod.EVENT_TOTALS,
-    funnel_order=FunnelOrder.UNORDERED,
-    conversion_window_hours=24
+# Step 3: Check completions within individual windows
+step_matches = (
+    starters_with_deadline
+    .join(step_events, on='user_id', how='inner')
+    .filter(
+        (pl.col('timestamp') >= pl.col('start_time')) &
+        (pl.col('timestamp') <= pl.col('deadline'))
+    )
 )
 ```
+**Add to Section:** 8.1 (Domain Knowledge) + 9 (Known Issues)
+**Search Keywords:** `time series cohort analysis conversion window individual periods cross-period`
 
-*End of document*
+**Impact:** 
+- ✅ Eliminates impossible >100% conversion rates
+- ✅ Provides mathematically correct cohort performance metrics  
+- ✅ Enables accurate period-to-period comparisons
+- ✅ Maintains Polars performance optimizations
+````

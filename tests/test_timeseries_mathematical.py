@@ -232,6 +232,124 @@ class TestTimeSeriesMathematicalPrecision:
         )
         return FunnelCalculator(config, use_polars=True)
     
+    @pytest.fixture
+    def multi_week_month_data(self):
+        """Create data spanning 8-10 weeks across 2-3 months for weekly/monthly aggregation testing."""
+        events = []
+        base_date = datetime(2024, 1, 15, 9, 0, 0)  # Start mid-January
+        
+        # Generate data for 10 weeks (70 days) spanning Jan-Mar
+        for week in range(10):
+            week_start = base_date + timedelta(weeks=week)
+            
+            # Each week has varying number of users (50-150)
+            users_this_week = 50 + (week * 10)
+            
+            for i in range(users_this_week):
+                user_id = f'week{week:02d}_user{i:04d}'
+                
+                # User starts funnel at random time during the week
+                start_time = week_start + timedelta(
+                    days=i % 7, 
+                    hours=(i * 7) % 24,
+                    minutes=(i * 13) % 60
+                )
+                
+                # All users sign up
+                events.append({
+                    'user_id': user_id,
+                    'event_name': 'Signup',
+                    'timestamp': start_time,
+                    'event_properties': '{}',
+                    'user_properties': '{}'
+                })
+                
+                # 80% verify email (within 2 hours)
+                if i < users_this_week * 0.8:
+                    events.append({
+                        'user_id': user_id,
+                        'event_name': 'Verify',
+                        'timestamp': start_time + timedelta(hours=1),
+                        'event_properties': '{}',
+                        'user_properties': '{}'
+                    })
+                    
+                    # 60% complete profile (within 4 hours)
+                    if i < users_this_week * 0.6:
+                        events.append({
+                            'user_id': user_id,
+                            'event_name': 'Complete',
+                            'timestamp': start_time + timedelta(hours=3),
+                            'event_properties': '{}',
+                            'user_properties': '{}'
+                        })
+                        
+                        # 40% make purchase (within 8 hours)
+                        if i < users_this_week * 0.4:
+                            events.append({
+                                'user_id': user_id,
+                                'event_name': 'Purchase',
+                                'timestamp': start_time + timedelta(hours=6),
+                                'event_properties': '{}',
+                                'user_properties': '{}'
+                            })
+        
+        return pd.DataFrame(events)
+    
+    @pytest.fixture
+    def skipped_steps_data(self):
+        """Create data where users skip middle steps in the funnel."""
+        events = []
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        
+        # User 1: Complete all steps in order (A->B->C)
+        user1_events = [
+            {'user_id': 'complete_user', 'event_name': 'Step A', 'timestamp': base_time},
+            {'user_id': 'complete_user', 'event_name': 'Step B', 'timestamp': base_time + timedelta(minutes=30)},
+            {'user_id': 'complete_user', 'event_name': 'Step C', 'timestamp': base_time + timedelta(minutes=60)},
+        ]
+        
+        # User 2: Skip middle step (A->C, missing B)
+        user2_events = [
+            {'user_id': 'skip_user', 'event_name': 'Step A', 'timestamp': base_time + timedelta(hours=1)},
+            {'user_id': 'skip_user', 'event_name': 'Step C', 'timestamp': base_time + timedelta(hours=1, minutes=45)},
+        ]
+        
+        # User 3: Complete all steps but out of order (A->C->B)
+        user3_events = [
+            {'user_id': 'out_of_order_user', 'event_name': 'Step A', 'timestamp': base_time + timedelta(hours=2)},
+            {'user_id': 'out_of_order_user', 'event_name': 'Step C', 'timestamp': base_time + timedelta(hours=2, minutes=20)},
+            {'user_id': 'out_of_order_user', 'event_name': 'Step B', 'timestamp': base_time + timedelta(hours=2, minutes=40)},
+        ]
+        
+        # User 4: Another skip pattern (starts at A, jumps to C)
+        user4_events = [
+            {'user_id': 'another_skip_user', 'event_name': 'Step A', 'timestamp': base_time + timedelta(hours=3)},
+            {'user_id': 'another_skip_user', 'event_name': 'Step C', 'timestamp': base_time + timedelta(hours=3, minutes=30)},
+        ]
+        
+        for event_list in [user1_events, user2_events, user3_events, user4_events]:
+            for event in event_list:
+                events.append({**event, 'event_properties': '{}', 'user_properties': '{}'})
+        
+        return pd.DataFrame(events)
+    
+    @pytest.fixture
+    def skipped_steps_funnel(self):
+        """3-step funnel for skipped steps testing."""
+        return ['Step A', 'Step B', 'Step C']
+    
+    @pytest.fixture
+    def optimized_reentry_calculator(self):
+        """Calculator with optimized reentry mode for comparison tests."""
+        config = FunnelConfig(
+            counting_method=CountingMethod.UNIQUE_USERS,
+            reentry_mode=ReentryMode.OPTIMIZED_REENTRY,
+            funnel_order=FunnelOrder.ORDERED,
+            conversion_window_hours=168  # 1 week
+        )
+        return FunnelCalculator(config, use_polars=True)
+
     def test_exact_cohort_calculation(self, long_window_calculator, controlled_cohort_data, funnel_steps_4):
         """Test exact cohort calculation with precise known data."""
         result = long_window_calculator.calculate_timeseries_metrics(
@@ -571,4 +689,351 @@ class TestTimeSeriesPerformance:
         
         print(f"✅ Large dataset performance test passed in {calculation_time:.2f} seconds")
         print(f"   Processed {len(large_df)} events, {large_df['user_id'].nunique()} users")
+        print(f"   Performance: {len(large_df)/calculation_time:.0f} events/second")
+    
+    def test_weekly_and_monthly_aggregation(self, long_window_calculator, multi_week_month_data, funnel_steps_4):
+        """Test weekly and monthly aggregation produces correct results."""
+        # Test weekly aggregation
+        weekly_result = long_window_calculator.calculate_timeseries_metrics(
+            multi_week_month_data, funnel_steps_4, aggregation_period='1w'
+        )
+        
+        # Should have approximately 10 weeks of data
+        assert 9 <= len(weekly_result) <= 11, f"Expected ~10 weeks, got {len(weekly_result)}"
+        
+        # Test monthly aggregation  
+        monthly_result = long_window_calculator.calculate_timeseries_metrics(
+            multi_week_month_data, funnel_steps_4, aggregation_period='1mo'
+        )
+        
+        # Should have 3 months (Jan, Feb, Mar)
+        assert 2 <= len(monthly_result) <= 3, f"Expected 2-3 months, got {len(monthly_result)}"
+        
+        # Validate totals are consistent
+        total_weekly_starters = weekly_result['started_funnel_users'].sum()
+        total_weekly_completers = weekly_result['completed_funnel_users'].sum()
+        
+        total_monthly_starters = monthly_result['started_funnel_users'].sum()
+        total_monthly_completers = monthly_result['completed_funnel_users'].sum()
+        
+        # Weekly and monthly totals should match (within small tolerance for boundary effects)
+        starters_diff = abs(total_weekly_starters - total_monthly_starters)
+        completers_diff = abs(total_weekly_completers - total_monthly_completers)
+        
+        assert starters_diff <= 50, f"Weekly/monthly starters mismatch: weekly={total_weekly_starters}, monthly={total_monthly_starters}"
+        assert completers_diff <= 30, f"Weekly/monthly completers mismatch: weekly={total_weekly_completers}, monthly={total_monthly_completers}"
+        
+        # Validate mathematical properties for each period
+        for i, row in weekly_result.iterrows():
+            assert row['completed_funnel_users'] <= row['started_funnel_users'], \
+                f"Week {i}: Completers > starters"
+            assert 0 <= row['conversion_rate'] <= 100, \
+                f"Week {i}: Invalid conversion rate {row['conversion_rate']}"
+        
+        for i, row in monthly_result.iterrows():
+            assert row['completed_funnel_users'] <= row['started_funnel_users'], \
+                f"Month {i}: Completers > starters"
+            assert 0 <= row['conversion_rate'] <= 100, \
+                f"Month {i}: Invalid conversion rate {row['conversion_rate']}"
+        
+        print("✅ Weekly and monthly aggregation test passed")
+        print(f"   Weekly periods: {len(weekly_result)}, Monthly periods: {len(monthly_result)}")
+        print(f"   Total events processed: {len(multi_week_month_data)}")
+
+    @pytest.mark.parametrize("reentry_mode,expected_completers", [
+        (ReentryMode.FIRST_ONLY, 1),     # Only within_1h completes within window from first start
+        (ReentryMode.OPTIMIZED_REENTRY, 2) # both within_1h and multi_start (from second attempt)
+    ])
+    def test_conversion_window_enforcement_reentry_modes(self, conversion_window_test_data, funnel_steps_3, reentry_mode, expected_completers):
+        """Test conversion window enforcement with different reentry modes."""
+        config = FunnelConfig(
+            counting_method=CountingMethod.UNIQUE_USERS,
+            reentry_mode=reentry_mode,
+            funnel_order=FunnelOrder.ORDERED,
+            conversion_window_hours=1  # 1 hour
+        )
+        calculator = FunnelCalculator(config, use_polars=True)
+        
+        result = calculator.calculate_timeseries_metrics(
+            conversion_window_test_data, funnel_steps_3, aggregation_period='1d'
+        )
+        
+        assert len(result) == 1, f"Expected 1 day of data, got {len(result)}"
+        
+        day_result = result.iloc[0]
+        
+        # All 3 users should start the funnel regardless of reentry mode
+        assert day_result['started_funnel_users'] == 3, f"Expected 3 starters, got {day_result['started_funnel_users']}"
+        
+        # Completers depend on reentry mode
+        assert day_result['completed_funnel_users'] == expected_completers, \
+            f"Expected {expected_completers} completers for {reentry_mode.value}, got {day_result['completed_funnel_users']}"
+        
+        # Conversion rate should match expectations
+        expected_rate = (expected_completers / 3) * 100
+        assert abs(day_result['conversion_rate'] - expected_rate) < 0.1, \
+            f"Expected {expected_rate}% conversion for {reentry_mode.value}, got {day_result['conversion_rate']}"
+        
+        print(f"✅ Conversion window enforcement test passed for {reentry_mode.value} mode")
+
+    def test_skipped_step_handling(self, long_window_calculator, skipped_steps_data, skipped_steps_funnel):
+        """Test handling of users who skip steps in the funnel."""
+        result = long_window_calculator.calculate_timeseries_metrics(
+            skipped_steps_data, skipped_steps_funnel, aggregation_period='1d'
+        )
+        
+        assert len(result) == 1, f"Expected 1 day of data, got {len(result)}"
+        
+        day_result = result.iloc[0]
+        
+        # All 4 users started with Step A
+        assert day_result['started_funnel_users'] == 4, \
+            f"Expected 4 starters (all users did Step A), got {day_result['started_funnel_users']}"
+        
+        # Step A: All 4 users
+        assert day_result['Step A_users'] == 4, \
+            f"Expected 4 users at Step A, got {day_result['Step A_users']}"
+        
+        # Step B: Only 2 users (complete_user and out_of_order_user)
+        # skip_user and another_skip_user skip Step B entirely
+        assert day_result['Step B_users'] == 2, \
+            f"Expected 2 users at Step B, got {day_result['Step B_users']}"
+        
+        # Step C: All 4 users eventually reach Step C
+        # (complete_user, skip_user, out_of_order_user, another_skip_user)
+        assert day_result['Step C_users'] == 4, \
+            f"Expected 4 users at Step C, got {day_result['Step C_users']}"
+        
+        # All 4 users completed the funnel (reached final step)
+        assert day_result['completed_funnel_users'] == 4, \
+            f"Expected 4 completers, got {day_result['completed_funnel_users']}"
+        
+        # Conversion rate should be 100% (all starters completed)
+        assert abs(day_result['conversion_rate'] - 100.0) < 0.01, \
+            f"Expected 100% conversion, got {day_result['conversion_rate']}"
+        
+        # Step-to-step conversion rates validation
+        # A_to_B_rate: 2/4 = 50% (only 2 out of 4 users went from A to B)
+        if 'Step A_to_Step B_rate' in day_result:
+            assert abs(day_result['Step A_to_Step B_rate'] - 50.0) < 0.1, \
+                f"Expected 50% A->B conversion, got {day_result['Step A_to_Step B_rate']}"
+        
+        # B_to_C_rate: 2/2 = 100% (both users who reached B also reached C)
+        if 'Step B_to_Step C_rate' in day_result:
+            assert abs(day_result['Step B_to_Step C_rate'] - 100.0) < 0.1, \
+                f"Expected 100% B->C conversion, got {day_result['Step B_to_Step C_rate']}"
+        
+        print("✅ Skipped step handling test passed")
+        print(f"   Step A: {day_result['Step A_users']} users")
+        print(f"   Step B: {day_result['Step B_users']} users (skipped by 2 users)")
+        print(f"   Step C: {day_result['Step C_users']} users")
+        print(f"   Final conversion: {day_result['conversion_rate']:.1f}%")
+
+    def test_boundary_conditions_weekly_monthly(self, long_window_calculator, funnel_steps_4):
+        """Test boundary conditions for weekly and monthly aggregation periods."""
+        events = []
+        
+        # Create events right at week and month boundaries
+        # Week boundary: Sunday -> Monday transition
+        # Month boundary: Last day of month -> First day of next month
+        
+        boundary_times = [
+            datetime(2024, 1, 28, 23, 59, 0),  # End of January (week boundary)
+            datetime(2024, 1, 29, 0, 1, 0),    # Start of last week of January
+            datetime(2024, 1, 31, 23, 58, 0),  # End of January (month boundary)
+            datetime(2024, 2, 1, 0, 2, 0),     # Start of February (month boundary)
+            datetime(2024, 2, 4, 23, 59, 0),   # End of week 5 (week boundary)
+            datetime(2024, 2, 5, 0, 1, 0),     # Start of week 6 (week boundary)
+        ]
+        
+        for i, timestamp in enumerate(boundary_times):
+            user_id = f'boundary_user_{i:02d}'
+            
+            # Each user completes full funnel quickly (within 2 hours)
+            for j, step in enumerate(funnel_steps_4):
+                events.append({
+                    'user_id': user_id,
+                    'event_name': step,
+                    'timestamp': timestamp + timedelta(minutes=j * 20),
+                    'event_properties': '{}',
+                    'user_properties': '{}'
+                })
+        
+        boundary_df = pd.DataFrame(events)
+        
+        # Test weekly aggregation with boundaries
+        weekly_result = long_window_calculator.calculate_timeseries_metrics(
+            boundary_df, funnel_steps_4, aggregation_period='1w'
+        )
+        
+        # Test monthly aggregation with boundaries
+        monthly_result = long_window_calculator.calculate_timeseries_metrics(
+            boundary_df, funnel_steps_4, aggregation_period='1mo'
+        )
+        
+        # Validate that all users are accounted for
+        total_weekly_starters = weekly_result['started_funnel_users'].sum()
+        total_weekly_completers = weekly_result['completed_funnel_users'].sum()
+        
+        total_monthly_starters = monthly_result['started_funnel_users'].sum()
+        total_monthly_completers = monthly_result['completed_funnel_users'].sum()
+        
+        # All 6 users should be counted
+        assert total_weekly_starters == 6, f"Weekly: Expected 6 starters, got {total_weekly_starters}"
+        assert total_weekly_completers == 6, f"Weekly: Expected 6 completers, got {total_weekly_completers}"
+        
+        assert total_monthly_starters == 6, f"Monthly: Expected 6 starters, got {total_monthly_starters}"
+        assert total_monthly_completers == 6, f"Monthly: Expected 6 completers, got {total_monthly_completers}"
+        
+        # Should have reasonable number of periods
+        assert 2 <= len(weekly_result) <= 4, f"Expected 2-4 weeks, got {len(weekly_result)}"
+        assert len(monthly_result) == 2, f"Expected 2 months (Jan, Feb), got {len(monthly_result)}"
+        
+        print("✅ Boundary conditions test passed for weekly/monthly aggregation")
+
+    def test_aggregation_consistency_validation(self, long_window_calculator, controlled_cohort_data, funnel_steps_4):
+        """Test mathematical consistency across daily, weekly, and monthly aggregations."""
+        # Get results for all three aggregation periods
+        daily_result = long_window_calculator.calculate_timeseries_metrics(
+            controlled_cohort_data, funnel_steps_4, aggregation_period='1d'
+        )
+        
+        weekly_result = long_window_calculator.calculate_timeseries_metrics(
+            controlled_cohort_data, funnel_steps_4, aggregation_period='1w'
+        )
+        
+        monthly_result = long_window_calculator.calculate_timeseries_metrics(
+            controlled_cohort_data, funnel_steps_4, aggregation_period='1mo'
+        )
+        
+        # Calculate totals for each aggregation
+        daily_totals = {
+            'starters': daily_result['started_funnel_users'].sum(),
+            'completers': daily_result['completed_funnel_users'].sum()
+        }
+        
+        weekly_totals = {
+            'starters': weekly_result['started_funnel_users'].sum(),
+            'completers': weekly_result['completed_funnel_users'].sum()
+        }
+        
+        monthly_totals = {
+            'starters': monthly_result['started_funnel_users'].sum(),
+            'completers': monthly_result['completed_funnel_users'].sum()
+        }
+        
+        # All aggregations should have same totals (controlled data spans 2 days)
+        assert daily_totals['starters'] == 1500, f"Daily starters: expected 1500, got {daily_totals['starters']}"
+        assert daily_totals['completers'] == 500, f"Daily completers: expected 500, got {daily_totals['completers']}"
+        
+        # Weekly and monthly should match daily (since data spans only 2 days)
+        assert weekly_totals['starters'] == daily_totals['starters'], \
+            f"Weekly/daily starters mismatch: {weekly_totals['starters']} vs {daily_totals['starters']}"
+        assert weekly_totals['completers'] == daily_totals['completers'], \
+            f"Weekly/daily completers mismatch: {weekly_totals['completers']} vs {daily_totals['completers']}"
+        
+        assert monthly_totals['starters'] == daily_totals['starters'], \
+            f"Monthly/daily starters mismatch: {monthly_totals['starters']} vs {daily_totals['starters']}"
+        assert monthly_totals['completers'] == daily_totals['completers'], \
+            f"Monthly/daily completers mismatch: {monthly_totals['completers']} vs {daily_totals['completers']}"
+        
+        # Overall conversion rates should be consistent
+        daily_rate = (daily_totals['completers'] / daily_totals['starters']) * 100
+        weekly_rate = (weekly_totals['completers'] / weekly_totals['starters']) * 100
+        monthly_rate = (monthly_totals['completers'] / monthly_totals['starters']) * 100
+        
+        assert abs(daily_rate - 33.33) < 0.1, f"Daily rate: expected 33.33%, got {daily_rate:.2f}%"
+        assert abs(weekly_rate - daily_rate) < 0.01, f"Weekly rate differs from daily: {weekly_rate:.2f}% vs {daily_rate:.2f}%"
+        assert abs(monthly_rate - daily_rate) < 0.01, f"Monthly rate differs from daily: {monthly_rate:.2f}% vs {daily_rate:.2f}%"
+        
+        print("✅ Aggregation consistency validation test passed")
+        print(f"   Daily: {len(daily_result)} periods, Weekly: {len(weekly_result)} periods, Monthly: {len(monthly_result)} periods")
+        print(f"   Consistent totals: {daily_totals['starters']} starters, {daily_totals['completers']} completers")
+        print(f"   Consistent conversion rate: {daily_rate:.2f}%")
+
+    def test_performance_with_large_weekly_dataset(self, long_window_calculator):
+        """Test performance of weekly aggregation with large dataset."""
+        import time
+        
+        # Generate 6 months of data with weekly variations
+        events = []
+        base_date = datetime(2024, 1, 1, 0, 0, 0)
+        
+        for week in range(26):  # 26 weeks = ~6 months
+            week_start = base_date + timedelta(weeks=week)
+            
+            # Weekly volume varies (simulate seasonal patterns)
+            weekly_multiplier = 1 + 0.5 * (week % 4) / 4  # 1.0 to 1.5 multiplier
+            users_this_week = int(200 * weekly_multiplier)
+            
+            for i in range(users_this_week):
+                user_id = f'perf_w{week:02d}_u{i:04d}'
+                start_time = week_start + timedelta(
+                    days=i % 7,
+                    hours=(i * 3) % 24,
+                    minutes=(i * 7) % 60
+                )
+                
+                # Generate funnel events (80% -> 60% -> 40% conversion)
+                events.append({
+                    'user_id': user_id,
+                    'event_name': 'Start',
+                    'timestamp': start_time,
+                    'event_properties': '{}',
+                    'user_properties': '{}'
+                })
+                
+                if i < users_this_week * 0.8:
+                    events.append({
+                        'user_id': user_id,
+                        'event_name': 'Middle',
+                        'timestamp': start_time + timedelta(hours=2),
+                        'event_properties': '{}',
+                        'user_properties': '{}'
+                    })
+                    
+                    if i < users_this_week * 0.6:
+                        events.append({
+                            'user_id': user_id,
+                            'event_name': 'End',
+                            'timestamp': start_time + timedelta(hours=4),
+                            'event_properties': '{}',
+                            'user_properties': '{}'
+                        })
+        
+        large_df = pd.DataFrame(events)
+        
+        print(f"Testing weekly aggregation performance with {len(large_df)} events, {large_df['user_id'].nunique()} users")
+        
+        # Time the weekly aggregation
+        start_time = time.time()
+        
+        result = long_window_calculator.calculate_timeseries_metrics(
+            large_df, ['Start', 'Middle', 'End'], aggregation_period='1w'
+        )
+        
+        calculation_time = time.time() - start_time
+        
+        # Validate results
+        assert len(result) == 26, f"Expected 26 weeks, got {len(result)}"
+        
+        total_starters = result['started_funnel_users'].sum()
+        total_completers = result['completed_funnel_users'].sum()
+        
+        # Validate reasonable totals
+        assert total_starters > 5000, f"Expected >5000 starters, got {total_starters}"
+        assert total_completers > 3000, f"Expected >3000 completers, got {total_completers}"
+        assert total_completers <= total_starters, "Completers should not exceed starters"
+        
+        # Performance requirement: should complete in under 15 seconds
+        assert calculation_time < 15.0, f"Weekly aggregation too slow: {calculation_time:.2f} seconds for {len(large_df)} events"
+        
+        # Validate weekly patterns
+        for i, row in result.iterrows():
+            assert row['started_funnel_users'] > 0, f"Week {i}: Should have starters"
+            assert row['completed_funnel_users'] >= 0, f"Week {i}: Non-negative completers"
+            assert 0 <= row['conversion_rate'] <= 100, f"Week {i}: Valid conversion rate"
+        
+        print(f"✅ Large weekly dataset performance test passed in {calculation_time:.2f} seconds")
+        print(f"   26 weeks processed: {total_starters} starters, {total_completers} completers")
         print(f"   Performance: {len(large_df)/calculation_time:.0f} events/second")
