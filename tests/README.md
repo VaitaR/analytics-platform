@@ -105,13 +105,13 @@
 class TestFunnelCalculator:
     def test_unique_users_ordered_funnel(self, calculator_factory, medium_linear_funnel_data):
         \"\"\"Test UNIQUE_USERS counting with ORDERED funnel logic.\"\"\"
-        config = FunnelConfig(counting_method=CountingMethod.UNIQUE_USERS, 
+        config = FunnelConfig(counting_method=CountingMethod.UNIQUE_USERS,
                              funnel_order=FunnelOrder.ORDERED)
         calculator = calculator_factory(config)
         results = calculator.calculate_funnel_metrics(medium_linear_funnel_data, steps)
         assert_funnel_results_valid(results, steps)
 
-# ❌ BAD: Debugging script approach  
+# ❌ BAD: Debugging script approach
 def test_funnel_calculation():
     print("🧪 Запускаем тест расчета воронки...")
     # ... manual debugging code
@@ -172,14 +172,14 @@ def large_funnel_data(standard_funnel_steps):
 @pytest.mark.performance
 def test_large_dataset_performance(self, calculator_factory, large_funnel_data, performance_monitor):
     calculator = calculator_factory()
-    
+
     results = performance_monitor.time_operation(
         "large_dataset_calculation",
         calculator.calculate_funnel_metrics,
         large_funnel_data,
         steps
     )
-    
+
     # Assert performance requirements
     assert performance_monitor.timings["large_dataset_calculation"] < 30.0  # <30 seconds
     assert_funnel_results_valid(results, steps)
@@ -190,12 +190,12 @@ def test_large_dataset_performance(self, calculator_factory, large_funnel_data, 
 @pytest.mark.fallback
 def test_polars_fallback_detection(self, calculator_factory, complex_data, caplog):
     calculator = calculator_factory(use_polars=True)
-    
+
     with caplog.at_level(logging.WARNING):
         results = calculator.calculate_funnel_metrics(complex_data, steps)
-    
+
     # Assert no fallbacks occurred
-    fallback_messages = [record for record in caplog.records 
+    fallback_messages = [record for record in caplog.records
                         if "falling back to Pandas" in record.message]
     assert len(fallback_messages) == 0, f"Unexpected fallbacks: {fallback_messages}"
 ```
@@ -207,7 +207,7 @@ def assert_funnel_results_valid(results: FunnelResults, expected_steps: List[str
     \"\"\"Comprehensive validation of FunnelResults structure and data.\"\"\"
     # Structure validation
     assert results.steps == expected_steps
-    # Data consistency validation  
+    # Data consistency validation
     assert all(count >= 0 for count in results.users_count)
     # Logical consistency
     assert results.conversion_rates[0] == 100.0  # First step always 100%
@@ -240,7 +240,7 @@ def test_scalability_by_dataset_size(data_size, performance_monitor):
 #### **B. Algorithm Efficiency Tests**
 ```python
 @pytest.mark.performance
-@pytest.mark.parametrize("counting_method", [CountingMethod.UNIQUE_USERS, 
+@pytest.mark.parametrize("counting_method", [CountingMethod.UNIQUE_USERS,
                                             CountingMethod.EVENT_TOTALS,
                                             CountingMethod.UNIQUE_PAIRS])
 def test_algorithm_efficiency(counting_method, large_dataset):
@@ -303,7 +303,7 @@ assert results is not None
 def test_invalid_funnel_steps_raises_error():
     with pytest.raises(ValueError, match="Missing events in data"):
         calculator.calculate_funnel_metrics(data, ['Non Existent Step'])
-        
+
 def test_empty_dataset_returns_zero_results():
     results = calculator.calculate_funnel_metrics(empty_df, steps)
     assert all(count == 0 for count in results.users_count)
@@ -318,7 +318,7 @@ def test_empty_dataset_returns_zero_results():
 2. ✅ **Delete Redundant Tests**: Remove 7 obsolete test files
 3. ✅ **Update pytest.ini**: Configure new markers and settings
 
-### **Phase 2: Core Tests (Week 2)** 
+### **Phase 2: Core Tests (Week 2)**
 1. **Consolidate Core Logic**: Merge similar tests into comprehensive suites
 2. **Performance Baseline**: Establish performance benchmarks
 3. **Documentation**: Update test documentation and runbooks
@@ -349,7 +349,7 @@ def test_empty_dataset_returns_zero_results():
 - ✅ **Fallback Detection**: Zero unexpected fallbacks in core scenarios
 - ✅ **Memory Efficiency**: Memory usage stays within defined limits
 
-### **Maintenance Metrics**  
+### **Maintenance Metrics**
 - ✅ **Code Reduction**: 40% reduction in test code volume
 - ✅ **Standardization**: 100% of tests follow unified patterns
 - ✅ **Reusability**: 80% of test data via factories

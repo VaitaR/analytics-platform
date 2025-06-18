@@ -66,13 +66,13 @@ Choose your data source from the sidebar:
 For enterprise deployments, configure ClickHouse connection:
 ```sql
 -- Sample query structure
-SELECT 
+SELECT
     user_id,
     event_name,
     timestamp,
     event_properties
-FROM events 
-WHERE timestamp >= '2024-01-01' 
+FROM events
+WHERE timestamp >= '2024-01-01'
 ORDER BY user_id, timestamp
 ```
 
@@ -155,4 +155,4 @@ For developers working on the platform:
 
 ## 📄 License
 
-Enterprise-grade funnel analytics platform for professional use. 
+Enterprise-grade funnel analytics platform for professional use.
