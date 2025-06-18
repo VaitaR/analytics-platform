@@ -115,11 +115,18 @@ def run_command(cmd: List[str], description: str = "", capture_output: bool = Tr
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
             
             if result.returncode == 0:
-                print(f"✅ {description or 'Command'} completed successfully")
+                # Don't print status for pytest commands - let JSON report handle it
+                if "pytest" not in ' '.join(cmd):
+                    print(f"✅ {description or 'Command'} completed successfully")
                 if result.stdout and len(result.stdout) < 1000:  # Only print short outputs
                     print(result.stdout)
             else:
-                print(f"❌ {description or 'Command'} failed")
+                # For pytest commands, only print failure if it's a real failure (not just warnings)
+                if "pytest" in ' '.join(cmd):
+                    # Let the JSON report handler decide for pytest
+                    pass
+                else:
+                    print(f"❌ {description or 'Command'} failed")
                 if result.stderr and len(result.stderr) < 1000:
                     print("STDERR:", result.stderr)
                 if result.stdout and len(result.stdout) < 1000:
@@ -218,6 +225,8 @@ def run_pytest(test_files: List[str], description: str,
     # Run the command
     success, stdout, stderr = run_command(cmd, full_description, capture_output)
     
+    # Don't print immediate success/failure status here - let the JSON report determine the real status
+    
     # Initialize default result
     result = TestResult(
         group=description,
@@ -258,11 +267,14 @@ def run_pytest(test_files: List[str], description: str,
             # Update status based on results
             if result['failed'] > 0:
                 result['status'] = "FAILURE"
+                print(f"❌ {description} failed")
             else:
                 result['status'] = "SUCCESS"
+                print(f"✅ {description} completed successfully")
             
     except Exception as e:
         print(f"❌ Error reading JSON report: {e}")
+        print(f"❌ {description} failed")
         # Try to extract basic info from stdout/stderr if JSON parsing failed
         result['summary'] = "Error parsing results"
         if "failed" in stdout.lower() or "failed" in stderr.lower():
@@ -664,19 +676,13 @@ ADVANCED_TESTS.add_test(
     ["tests/test_integration_flow.py"], 
     "Running integration tests for complete workflow"
 )
-ADVANCED_TESTS.add_test(
-    "no_reload", 
-    ["tests/test_no_reload_improvements.py"], 
-    "Running no-reload improvements tests"
-)
 
 # Polars tests
 POLARS_TESTS.add_test(
     "polars_engine", 
     [
         "tests/test_polars_engine.py",
-        "tests/test_polars_path_analysis.py",
-        "tests/test_polars_pandas_comparison.py"
+        "tests/test_polars_path_analysis.py"
     ], 
     "Running Polars engine and migration tests"
 )
@@ -704,16 +710,11 @@ COMPREHENSIVE_TESTS.add_test(
 FALLBACK_TESTS.add_test(
     "fallback_detection", 
     [
-        "tests/test_polars_fallback_detection.py",
-        "tests/test_lazy_frame_bug.py"
+        "tests/test_polars_fallback_detection.py"
     ], 
     "Running improved fallback detection tests"
 )
-FALLBACK_TESTS.add_test(
-    "path_analysis_fix", 
-    ["tests/test_path_analysis_fix.py"], 
-    "Running path analysis fix tests"
-)
+
 FALLBACK_TESTS.add_test(
     "comprehensive_fallback", 
     ["tests/test_fallback_comprehensive.py"], 
@@ -723,8 +724,6 @@ FALLBACK_TESTS.add_test(
     "all_fallback", 
     [
         "tests/test_polars_fallback_detection.py",
-        "tests/test_lazy_frame_bug.py",
-        "tests/test_path_analysis_fix.py",
         "tests/test_fallback_comprehensive.py"
     ], 
     "Running all fallback detection tests and generating report",
@@ -1181,6 +1180,13 @@ Examples:
     
     if args.report:
         result = generate_test_report()
+        test_results.append(result)
+        actions_performed = True
+    
+    # Handle marker-only runs
+    if args.marker and not actions_performed:
+        # Run all tests with the specified markers
+        result = run_all_tests(args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
     

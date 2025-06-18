@@ -1,9 +1,14 @@
 import pandas as pd
 import polars as pl
-from app import FunnelCalculator, FunnelConfig, CountingMethod, ReentryMode, FunnelOrder
 import time
 import sys
 import numpy as np
+import os
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app import FunnelCalculator, FunnelConfig, CountingMethod, ReentryMode, FunnelOrder
 
 # Load test dataset
 print("Loading test dataset...")

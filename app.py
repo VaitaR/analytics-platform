@@ -482,8 +482,9 @@ class DataSourceManager:
             for prop_str in df['event_properties'].dropna():
                 try:
                     props = json.loads(prop_str)
-                    properties['event_properties'].update(props.keys())
-                except json.JSONDecodeError: # Specific exception
+                    if props and isinstance(props, dict):
+                        properties['event_properties'].update(props.keys())
+                except (json.JSONDecodeError, TypeError): # Handle both JSON errors and type errors
                     self.logger.debug(f"Failed to decode event_properties: {prop_str[:50]}")
                     continue
         
@@ -492,8 +493,9 @@ class DataSourceManager:
             for prop_str in df['user_properties'].dropna():
                 try:
                     props = json.loads(prop_str)
-                    properties['user_properties'].update(props.keys())
-                except json.JSONDecodeError: # Specific exception
+                    if props and isinstance(props, dict):
+                        properties['user_properties'].update(props.keys())
+                except (json.JSONDecodeError, TypeError): # Handle both JSON errors and type errors
                     self.logger.debug(f"Failed to decode user_properties: {prop_str[:50]}")
                     continue
         
@@ -559,9 +561,9 @@ class DataSourceManager:
             for prop_str in df[column].dropna():
                 try:
                     props = json.loads(prop_str)
-                    if prop_name in props:
+                    if props is not None and prop_name in props:
                         values.add(str(props[prop_name]))
-                except json.JSONDecodeError: # Specific exception
+                except (json.JSONDecodeError, TypeError): # Handle both JSON errors and None types
                     self.logger.debug(f"Failed to decode JSON in get_property_values: {prop_str[:50]}")
                     continue
         
@@ -594,7 +596,7 @@ class DataSourceManager:
         
         # Try to load demo events metadata
         try:
-            demo_df = pd.read_csv('demo_events.csv')
+            demo_df = pd.read_csv('test_data/demo_events.csv')
             metadata = {}
             
             # First, add all demo events with their base metadata
@@ -1932,7 +1934,7 @@ class FunnelCalculator:
                 )
                 time_stats.append(stats_obj)
         
-            return time_stats
+        return time_stats
     
     @_funnel_performance_monitor('calculate_timeseries_metrics')
     def calculate_timeseries_metrics(self, events_df: pd.DataFrame, funnel_steps: List[str], 
@@ -2115,7 +2117,7 @@ class FunnelCalculator:
     def _calculate_timeseries_metrics_polars(self, events_df: pl.DataFrame, funnel_steps: List[str], 
                                            aggregation_period: str = '1d') -> pd.DataFrame:
         """
-        Polars implementation for efficient time series metrics calculation.
+        Optimized Polars implementation for efficient time series metrics calculation.
         
         Args:
             events_df: Polars DataFrame with event data
@@ -2140,25 +2142,26 @@ class FunnelCalculator:
             if relevant_events.height == 0:
                 return pd.DataFrame()
             
-            # Create period boundaries for correct cohort analysis
-            period_boundaries = (
-                relevant_events
-                .select('timestamp')
-                .with_columns([
-                    pl.col('timestamp').dt.truncate(aggregation_period).alias('period_date')
-                ])
+            # Add period column using truncate for efficient grouping
+            events_with_period = relevant_events.with_columns([
+                pl.col('timestamp').dt.truncate(aggregation_period).alias('period_date')
+            ])
+            
+            # Get unique periods for iteration
+            unique_periods = (
+                events_with_period
                 .select('period_date')
                 .unique()
                 .sort('period_date')
+                .to_series()
+                .to_list()
             )
             
             results = []
             
-            # Process each period to calculate TRUE cohort conversion rates
-            for period_row in period_boundaries.iter_rows(named=True):
-                period_date = period_row['period_date']
-                
-                # Define period boundaries
+            # Vectorized approach: process each period efficiently
+            for period_date in unique_periods:
+                # Calculate period boundaries
                 if aggregation_period == '1h':
                     period_end = period_date + timedelta(hours=1)
                 elif aggregation_period == '1d':
@@ -2166,129 +2169,126 @@ class FunnelCalculator:
                 elif aggregation_period == '1w':
                     period_end = period_date + timedelta(weeks=1)
                 elif aggregation_period == '1mo':
-                    period_end = period_date + timedelta(days=30)  # Approximate
+                    period_end = period_date + timedelta(days=30)
                 else:
-                    period_end = period_date + timedelta(days=1)  # Default to daily
+                    period_end = period_date + timedelta(days=1)
                 
-                # 1. Find users who STARTED the funnel in this period (first step in period)
+                # Get all events in this period
+                period_events = events_with_period.filter(
+                    pl.col('period_date') == period_date
+                )
+                
+                # Find users who started the funnel in this period
                 period_starters = (
-                    relevant_events
-                    .filter(
-                        (pl.col('event_name') == first_step) &
-                        (pl.col('timestamp') >= period_date) &
-                        (pl.col('timestamp') < period_end)
-                    )
+                    period_events
+                    .filter(pl.col('event_name') == first_step)
                     .select('user_id')
                     .unique()
                 )
                 
                 started_count = period_starters.height
                 
-                # 2. For users who started in this period, check if they completed the full funnel within conversion window
-                if started_count > 0:
-                    completed_count = 0
-                    starter_user_ids = period_starters.select('user_id').to_series().to_list()
+                if started_count == 0:
+                    # No starters in this period - but still calculate daily activity metrics
+                    daily_activity_events = relevant_events.filter(
+                        (pl.col('timestamp') >= period_date) &
+                        (pl.col('timestamp') < period_end)
+                    )
                     
-                    for user_id in starter_user_ids:
-                        # Get user's first event in this period (their start time)
-                        user_start_events = (
-                            relevant_events
-                            .filter(
-                                (pl.col('user_id') == user_id) &
-                                (pl.col('event_name') == first_step) &
-                                (pl.col('timestamp') >= period_date) &
-                                (pl.col('timestamp') < period_end)
-                            )
-                            .sort('timestamp')
-                            .head(1)
+                    daily_active_users = daily_activity_events.select('user_id').n_unique()
+                    daily_events_total = daily_activity_events.height
+                    
+                    result_row = {
+                        'period_date': period_date,
+                        'started_funnel_users': 0,
+                        'completed_funnel_users': 0,
+                        'conversion_rate': 0.0,
+                        'total_unique_users': period_events.select('user_id').n_unique(),
+                        'total_events': period_events.height,
+                        # NEW: Daily activity metrics even when no cohort exists
+                        'daily_active_users': daily_active_users,
+                        'daily_events_total': daily_events_total
+                    }
+                    for step in funnel_steps:
+                        result_row[f'{step}_users'] = 0
+                    results.append(result_row)
+                    continue
+                
+                # Get starter user IDs efficiently
+                starter_user_ids = period_starters.select('user_id').to_series().to_list()
+                
+                # For each starter, get their start time in this period (vectorized)
+                starter_times = (
+                    period_events
+                    .filter(
+                        (pl.col('event_name') == first_step) &
+                        (pl.col('user_id').is_in(starter_user_ids))
+                    )
+                    .group_by('user_id')
+                    .agg(pl.col('timestamp').min().alias('start_time'))
+                )
+                
+                # Calculate conversion deadline for each user
+                starters_with_deadline = starter_times.with_columns([
+                    (pl.col('start_time') + pl.duration(hours=conversion_window_hours)).alias('deadline')
+                ])
+                
+                # Initialize step user counts
+                step_users = {}
+                for step in funnel_steps:
+                    step_users[f'{step}_users'] = 0
+                
+                # Count users who reached each step within their conversion window (vectorized)
+                for step in funnel_steps:
+                    # Get all relevant step events
+                    step_events = relevant_events.filter(pl.col('event_name') == step)
+                    
+                    if step_events.height == 0:
+                        step_users[f'{step}_users'] = 0
+                        continue
+                    
+                    # Join starters with their step events to find matches within conversion window
+                    step_matches = (
+                        starters_with_deadline
+                        .join(step_events, on='user_id', how='inner')
+                        .filter(
+                            (pl.col('timestamp') >= pl.col('start_time')) &
+                            (pl.col('timestamp') <= pl.col('deadline'))
                         )
-                        
-                        if user_start_events.height > 0:
-                            start_time = user_start_events.select('timestamp').item()
-                            conversion_deadline = start_time + timedelta(hours=conversion_window_hours)
-                            
-                            # Check if user completed the full funnel within conversion window
-                            user_completed = self._check_user_funnel_completion_within_window(
-                                events_df, user_id, funnel_steps, start_time, conversion_deadline
-                            )
-                            
-                            if user_completed:
-                                completed_count += 1
+                        .select('user_id')
+                        .unique()
+                    )
+                    
+                    step_users[f'{step}_users'] = step_matches.height
                 
-                else:
-                    completed_count = 0
+                # Completed funnel count is users who reached the last step
+                completed_count = step_users[f'{last_step}_users']
                 
-                # Calculate metrics for this period
+                # Calculate conversion rate
                 conversion_rate = (completed_count / started_count * 100) if started_count > 0 else 0.0
                 
-                # Count cohort progress for each step (how many from the starting cohort reached each step)
-                step_users = {}
-                if started_count > 0:
-                    starter_user_ids = period_starters.select('user_id').to_series().to_list()
-                    
-                    for step in funnel_steps:
-                        step_count = 0
-                        for user_id in starter_user_ids:
-                            # Get user's first event in this period (their start time)
-                            user_start_events = (
-                                relevant_events
-                                .filter(
-                                    (pl.col('user_id') == user_id) &
-                                    (pl.col('event_name') == first_step) &
-                                    (pl.col('timestamp') >= period_date) &
-                                    (pl.col('timestamp') < period_end)
-                                )
-                                .sort('timestamp')
-                                .head(1)
-                            )
-                            
-                            if user_start_events.height > 0:
-                                start_time = user_start_events.select('timestamp').item()
-                                conversion_deadline = start_time + timedelta(hours=conversion_window_hours)
-                                
-                                # Check if user reached this step within conversion window
-                                user_step_events = (
-                                    relevant_events
-                                    .filter(
-                                        (pl.col('user_id') == user_id) &
-                                        (pl.col('event_name') == step) &
-                                        (pl.col('timestamp') >= start_time) &
-                                        (pl.col('timestamp') <= conversion_deadline)
-                                    )
-                                )
-                                
-                                if user_step_events.height > 0:
-                                    step_count += 1
-                        
-                        step_users[f'{step}_users'] = step_count
-                else:
-                    # No starters in this period
-                    for step in funnel_steps:
-                        step_users[f'{step}_users'] = 0
+                # Calculate daily activity metrics (separate from cohort metrics)
+                # Daily metrics count ALL activity on this date, not just cohort activity
+                daily_activity_events = relevant_events.filter(
+                    (pl.col('timestamp') >= period_date) &
+                    (pl.col('timestamp') < period_end)
+                )
                 
-                # Build result row
+                daily_active_users = daily_activity_events.select('user_id').n_unique()
+                daily_events_total = daily_activity_events.height
+                
+                # Build result row with enhanced metrics
                 result_row = {
                     'period_date': period_date,
                     'started_funnel_users': started_count,
                     'completed_funnel_users': completed_count,
-                    'conversion_rate': min(conversion_rate, 100.0),  # Cap at 100%
-                    'total_unique_users': (
-                        relevant_events
-                        .filter(
-                            (pl.col('timestamp') >= period_date) &
-                            (pl.col('timestamp') < period_end)
-                        )
-                        .select('user_id')
-                        .n_unique()
-                    ),
-                    'total_events': (
-                        relevant_events
-                        .filter(
-                            (pl.col('timestamp') >= period_date) &
-                            (pl.col('timestamp') < period_end)
-                        )
-                        .height
-                    ),
+                    'conversion_rate': min(conversion_rate, 100.0),
+                    # Legacy metrics (kept for backward compatibility)
+                    'total_unique_users': period_events.select('user_id').n_unique(),
+                    'total_events': period_events.height,
+                    # NEW: Daily activity metrics (separate from cohort attribution)
+                    'daily_active_users': daily_active_users,
+                    'daily_events_total': daily_events_total,
                     **step_users
                 }
                 
@@ -2297,14 +2297,13 @@ class FunnelCalculator:
             # Convert to DataFrame
             result_df = pd.DataFrame(results)
             
-            # Add step-by-step conversion rates with proper bounds
+            # Add step-by-step conversion rates
             if len(result_df) > 0:
                 for i in range(len(funnel_steps)-1):
                     step_from_col = f'{funnel_steps[i]}_users'
                     step_to_col = f'{funnel_steps[i+1]}_users'
                     col_name = f'{funnel_steps[i]}_to_{funnel_steps[i+1]}_rate'
                     
-                    # Calculate with 100% cap to prevent unrealistic values
                     result_df[col_name] = result_df.apply(
                         lambda row: min((row[step_to_col] / row[step_from_col] * 100), 100.0) 
                         if row[step_from_col] > 0 else 0.0, axis=1
@@ -2449,11 +2448,22 @@ class FunnelCalculator:
                     for step in funnel_steps:
                         step_users_metrics[f'{step}_users'] = 0
                 
+                # Calculate daily activity metrics (separate from cohort metrics)
+                # Daily metrics count ALL activity on this date, not just cohort activity
+                daily_activity_events = relevant_events[
+                    (relevant_events['timestamp'] >= period) &
+                    (relevant_events['timestamp'] < period_end)
+                ]
+                
+                daily_active_users = daily_activity_events['user_id'].nunique()
+                daily_events_total = len(daily_activity_events)
+                
                 metrics = {
                     'period_date': period,
                     'started_funnel_users': started_count,
                     'completed_funnel_users': completed_count,
                     'conversion_rate': min(conversion_rate, 100.0),  # Cap at 100%
+                    # Legacy metrics (kept for backward compatibility)
                     'total_unique_users': relevant_events[
                         (relevant_events['timestamp'] >= period) &
                         (relevant_events['timestamp'] < period_end)
@@ -2462,6 +2472,9 @@ class FunnelCalculator:
                         (relevant_events['timestamp'] >= period) &
                         (relevant_events['timestamp'] < period_end)
                     ]),
+                    # NEW: Daily activity metrics (separate from cohort attribution)
+                    'daily_active_users': daily_active_users,
+                    'daily_events_total': daily_events_total,
                     **step_users_metrics
                 }
                 
@@ -6143,6 +6156,8 @@ class ColorPalette:
     
     # Primary semantic colors with accessibility compliance
     SEMANTIC = {
+        'primary': '#3B82F6',     # Blue - primary brand color
+        'secondary': '#6B7280',   # Gray - secondary brand color
         'success': '#10B981',     # Green - 4.5:1 contrast ratio
         'warning': '#F59E0B',     # Amber - 4.5:1 contrast ratio
         'error': '#EF4444',       # Red - 4.5:1 contrast ratio
@@ -6185,12 +6200,28 @@ class ColorPalette:
     @staticmethod
     def get_color_with_opacity(color: str, opacity: float) -> str:
         """Convert hex color to rgba with specified opacity"""
+        # If color is already in rgba format, extract rgb values and apply new opacity
+        if color.startswith('rgba('):
+            # Extract rgb values from rgba string
+            import re
+            rgba_match = re.match(r'rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)', color)
+            if rgba_match:
+                r, g, b = rgba_match.groups()
+                return f'rgba({r}, {g}, {b}, {opacity})'
+        
+        # Handle hex colors
         if color.startswith('#'):
             color = color[1:]
-        r = int(color[0:2], 16)
-        g = int(color[2:4], 16)
-        b = int(color[4:6], 16)
-        return f'rgba({r}, {g}, {b}, {opacity})'
+        
+        # Ensure we have a valid hex color
+        if len(color) == 6:
+            r = int(color[0:2], 16)
+            g = int(color[2:4], 16)
+            b = int(color[4:6], 16)
+            return f'rgba({r}, {g}, {b}, {opacity})'
+        
+        # Fallback - return original color if parsing fails
+        return color
     
     @staticmethod
     def get_colorblind_scale(n_colors: int) -> List[str]:
@@ -6273,28 +6304,32 @@ class LayoutConfig:
     
     # Chart dimensions and aspect ratios
     CHART_DIMENSIONS = {
-        'small': {'width': 400, 'height': 300, 'ratio': 4/3},
-        'medium': {'width': 600, 'height': 400, 'ratio': 3/2},
-        'large': {'width': 800, 'height': 500, 'ratio': 8/5},
-        'wide': {'width': 1200, 'height': 600, 'ratio': 2/1}
+        'small': {'width': 400, 'height': 350, 'ratio': 8/7},    # Mobile-friendly, meets 350px minimum
+        'medium': {'width': 600, 'height': 400, 'ratio': 3/2},   # Standard desktop
+        'large': {'width': 800, 'height': 500, 'ratio': 8/5},    # Large desktop
+        'wide': {'width': 1200, 'height': 600, 'ratio': 2/1}     # Ultra-wide displays
     }
     
     @staticmethod
     def get_responsive_height(base_height: int, content_count: int = 1) -> int:
-        """Calculate responsive height based on content and screen size"""
-        # Enhanced responsive height calculation
-        dynamic_height = base_height + (content_count - 1) * 40
-        
-        # Ensure minimum height for usability on narrow screens
+        """Calculate responsive height based on content and screen size with reasonable caps"""
+        # Ensure minimum height for usability
         min_height = 400
         
-        # Scale based on content complexity
-        if content_count > 10:
-            dynamic_height = max(dynamic_height, base_height * 1.5)
-        elif content_count > 20:
-            dynamic_height = max(dynamic_height, base_height * 2)
-            
-        return max(min_height, dynamic_height)
+        # Cap the content scaling to prevent excessive growth
+        # Only allow scaling up to 20 items worth of growth
+        max_scaling_items = min(content_count - 1, 20)
+        scaling_height = max_scaling_items * 20  # Reduced from 40 to 20 per item
+        
+        dynamic_height = base_height + scaling_height
+        
+        # Set reasonable maximum height limits
+        max_height = min(800, base_height * 1.6)  # Cap at 1.6x base or 800px max
+        
+        # Apply all constraints
+        final_height = max(min_height, min(dynamic_height, max_height))
+        
+        return final_height
     
     @staticmethod
     def get_margins(size: str = 'md') -> Dict[str, int]:
@@ -6573,7 +6608,8 @@ class FunnelVisualizer:
         return style_guide.strip()
 
     def create_timeseries_chart(self, timeseries_df: pd.DataFrame, 
-                               primary_metric: str, secondary_metric: str) -> go.Figure:
+                               primary_metric: str, secondary_metric: str,
+                               primary_metric_display: str = None, secondary_metric_display: str = None) -> go.Figure:
         """
         Create interactive time series chart with dual y-axes for funnel metrics analysis.
         
@@ -6681,8 +6717,11 @@ class FunnelVisualizer:
         # Calculate dynamic height based on data points
         height = self.layout.get_responsive_height(500, len(timeseries_df))
         
-        # Apply theme and return
-        title = "Time Series Analysis"
+        # Apply theme and return with dynamic title
+        if primary_metric_display and secondary_metric_display:
+            title = f"Time Series: {primary_metric_display} vs {secondary_metric_display}"
+        else:
+            title = "Time Series Analysis"
         subtitle = f"Tracking {self._format_metric_name(primary_metric)} and {self._format_metric_name(secondary_metric)} over time"
         
         themed_fig = self.apply_theme(fig, title, subtitle, height)
@@ -6699,20 +6738,21 @@ class FunnelVisualizer:
                 bgcolor="rgba(0,0,0,0)",
                 font=dict(color=self.text_color)
             ),
-            # Enable range slider for time navigation
+            # Enable range slider for time navigation with optimized height
             xaxis=dict(
                 rangeslider=dict(
                     visible=True,
                     bgcolor=self.color_palette.DARK_MODE['surface'],
                     bordercolor=self.color_palette.DARK_MODE['border'],
-                    borderwidth=1
+                    borderwidth=1,
+                    thickness=0.15  # Reduce thickness to prevent excessive height usage
                 ),
                 type='date'
             ),
             # Improve hover interaction
             hovermode='x unified',
-            # Better margins for dual axis labels
-            margin=dict(l=80, r=80, t=100, b=120)
+            # Optimized margins for dual axis labels - reduced for better mobile experience
+            margin=dict(l=60, r=60, t=80, b=100)
         )
         
         return themed_fig
@@ -6990,6 +7030,7 @@ class FunnelVisualizer:
         layout_config = {
             'plot_bgcolor': 'rgba(0,0,0,0)',  # Transparent for dark mode
             'paper_bgcolor': 'rgba(0,0,0,0)',
+            'autosize': True,  # Enable responsive behavior
             'font': {
                 'family': body_font['family'],
                 'size': body_font['size'],
@@ -7367,6 +7408,8 @@ class FunnelVisualizer:
     @staticmethod
     def create_conversion_flow_sankey(results: FunnelResults) -> go.Figure:
         """Create Sankey diagram showing user flow through funnel with dark theme"""
+        visualizer = FunnelVisualizer()
+        
         if len(results.steps) < 2:
             return go.Figure()
         
@@ -7390,14 +7433,14 @@ class FunnelVisualizer:
             source.append(i)
             target.append(i + 1)
             value.append(results.users_count[i + 1])
-            colors.append(FunnelVisualizer.SUCCESS_COLOR)
+            colors.append(visualizer.SUCCESS_COLOR)
             
             # Flow from step i to drop-off (not converted) 
             if results.drop_offs[i + 1] > 0:
                 source.append(i)
                 target.append(len(results.steps) + i)
                 value.append(results.drop_offs[i + 1])
-                colors.append(FunnelVisualizer.FAILURE_COLOR)
+                colors.append(visualizer.FAILURE_COLOR)
         
         fig = go.Figure(data=[go.Sankey(
             node=dict(
@@ -7405,7 +7448,7 @@ class FunnelVisualizer:
                 thickness=20,
                 line=dict(color="rgba(255, 255, 255, 0.3)", width=0.5),
                 label=labels,
-                color=[FunnelVisualizer.COLORS[0] for _ in range(len(labels))]
+                color=[visualizer.COLORS[0] for _ in range(len(labels))]
             ),
             link=dict(
                 source=source,
@@ -7417,7 +7460,7 @@ class FunnelVisualizer:
         )])
         
         # Apply dark theme
-        return FunnelVisualizer.apply_dark_theme(fig, "User Flow Through Funnel")
+        return visualizer.apply_dark_theme(fig, "User Flow Through Funnel")
     
     def create_enhanced_time_to_convert_chart(self, time_stats: List[TimeToConvertStats]) -> go.Figure:
         """Create enhanced time to convert analysis with accessibility features"""
@@ -7620,6 +7663,8 @@ class FunnelVisualizer:
     @staticmethod
     def create_cohort_heatmap(cohort_data: CohortData) -> go.Figure:
         """Create cohort analysis heatmap with dark theme"""
+        visualizer = FunnelVisualizer()
+        
         if not cohort_data.cohort_labels:
             return go.Figure()
         
@@ -7666,8 +7711,8 @@ class FunnelVisualizer:
             colorbar=dict(
                 title="Conversion Rate (%)",
                 titleside="right",
-                titlefont=dict(size=12, color=FunnelVisualizer.TEXT_COLOR),
-                tickfont=dict(color=FunnelVisualizer.TEXT_COLOR),
+                titlefont=dict(size=12, color=visualizer.TEXT_COLOR),
+                tickfont=dict(color=visualizer.TEXT_COLOR),
                 ticks="outside"
             )
         ))
@@ -7681,7 +7726,7 @@ class FunnelVisualizer:
         )
         
         # Apply dark theme
-        return FunnelVisualizer.apply_dark_theme(fig, "How do different cohorts perform in the funnel?")
+        return visualizer.apply_dark_theme(fig, "How do different cohorts perform in the funnel?")
     
     def create_enhanced_path_analysis_chart(self, path_data: PathAnalysisData) -> go.Figure:
         """Create enhanced path analysis with progressive disclosure and guided discovery"""
@@ -8930,15 +8975,53 @@ ORDER BY user_id, timestamp""",
                 st.markdown("### 🕒 Time Series Analysis")
                 st.markdown("*Analyze funnel metrics trends over time with configurable periods*")
                 
-                # Business explanation for Time Series Analysis
+                # Enhanced business explanation for Time Series Analysis
                 st.info("""
-                **📈 How to read Time Series:**
+                **� Understanding Time Series Metrics - Critical for Accurate Analysis**
                 
-                • **Temporal trends** — see conversion dynamics changing over time periods  
-                • **Seasonality and anomalies** — identify growth/decline patterns for decision making  
-                • **Period-specific conversions** — each point = conversion only in that period (≤100%)  
+                **🎯 COHORT METRICS** (attributed to signup date - answers "How effective was marketing on day X?"):
+                • **Users Starting Funnel (Cohort)** — Number of users who began their journey on this specific date
+                • **Users Completing Funnel (Cohort)** — Number of users from this cohort who eventually completed the entire funnel (may convert days later)
+                • **Cohort Conversion Rate (%)** — Percentage of users from this cohort who eventually converted: `completed ÷ started × 100`
                 
-                ⚠️ *Conversions may differ from Funnel Chart, as these are calculated by periods, not over entire time*
+                **� DAILY ACTIVITY METRICS** (attributed to event date - answers "How busy was our platform on day X?"):
+                • **Daily Active Users** — Total unique users who performed ANY activity on this specific date
+                • **Daily Events Total** — Total number of events that occurred on this date (regardless of user cohort)
+                
+                **🔍 CRITICAL EXAMPLE - Why Attribution Matters:**
+                ```
+                User John: Signs up Jan 1 → Purchases Jan 3
+                
+                Cohort View (Marketing Analysis):
+                • Jan 1 cohort gets credit for John's conversion
+                • Shows: "Users who signed up Jan 1 had X% conversion rate"
+                
+                Daily Activity View (Platform Usage):
+                • Jan 1: 1 signup event (John's signup)
+                • Jan 3: 1 purchase event (John's purchase)
+                • Shows actual daily platform traffic patterns
+                ```
+                
+                **⚠️ IMPORTANT**: Always check which metric type you're viewing! Cohort metrics help evaluate marketing effectiveness by signup date, while Daily metrics show actual platform activity patterns.
+                """)
+                
+                # Add metric interpretation guide
+                st.expander("📖 **Metric Interpretation Guide**", expanded=False).markdown("""
+                **When to use COHORT metrics:**
+                - Evaluating marketing campaign effectiveness
+                - A/B testing signup experiences  
+                - Understanding user journey quality by acquisition date
+                - Calculating true conversion rates for business planning
+                
+                **When to use DAILY ACTIVITY metrics:**
+                - Monitoring platform usage and traffic patterns
+                - Detecting anomalies in daily user behavior
+                - Capacity planning and infrastructure scaling
+                - Understanding seasonal usage patterns
+                
+                **Summary Statistics Explanation:**
+                - **Aggregate Cohort Conversion**: `Total completers across all cohorts ÷ Total starters across all cohorts`
+                - **Average Daily Rate**: Simple average of individual daily conversion rates (less meaningful for business decisions)
                 """)
                 
                 # Check if data is available
@@ -8966,26 +9049,30 @@ ORDER BY user_id, timestamp""",
                     polars_period = aggregation_options[aggregation_period]
                 
                 with col2:
-                    # Primary metric (left Y-axis) selection
+                    # Primary metric (left Y-axis) selection with clearer labeling
                     primary_options = {
-                        "Users Starting Funnel": "started_funnel_users",
-                        "Users Completing Funnel": "completed_funnel_users", 
-                        "Total Unique Users": "total_unique_users",
-                        "Total Events": "total_events"
+                        "Users Starting Funnel (Cohort)": "started_funnel_users",
+                        "Users Completing Funnel (Cohort)": "completed_funnel_users", 
+                        "Daily Active Users": "daily_active_users",
+                        "Daily Events Total": "daily_events_total",
+                        # Legacy options (kept for compatibility)
+                        "Total Unique Users (Legacy)": "total_unique_users",
+                        "Total Events (Legacy)": "total_events"
                     }
                     primary_metric_display = st.selectbox(
                         "📊 Primary Metric (Bars):",
                         options=list(primary_options.keys()),
-                        index=0,  # Default to "Users Starting Funnel"
-                        key="timeseries_primary"
+                        index=0,  # Default to "Users Starting Funnel (Cohort)"
+                        key="timeseries_primary",
+                        help="Select the metric to display as bars on the left Y-axis. Cohort metrics are attributed to signup dates, Daily metrics to event dates."
                     )
                     primary_metric = primary_options[primary_metric_display]
                 
                 with col3:
-                    # Secondary metric (right Y-axis) selection
+                    # Secondary metric (right Y-axis) selection with clearer labeling
                     # Build dynamic options based on actual funnel steps
                     secondary_options = {
-                        "Overall Conversion Rate": "conversion_rate"
+                        "Cohort Conversion Rate (%)": "conversion_rate"
                     }
                     
                     # Add step-by-step conversion options dynamically
@@ -8993,15 +9080,16 @@ ORDER BY user_id, timestamp""",
                         for i in range(len(results.steps)-1):
                             step_from = results.steps[i]
                             step_to = results.steps[i+1]
-                            display_name = f"{step_from} → {step_to} Conversion"
+                            display_name = f"{step_from} → {step_to} Rate (%)"
                             metric_name = f"{step_from}_to_{step_to}_rate"
                             secondary_options[display_name] = metric_name
                     
                     secondary_metric_display = st.selectbox(
                         "📈 Secondary Metric (Line):",
                         options=list(secondary_options.keys()),
-                        index=0,  # Default to "Overall Conversion Rate"
-                        key="timeseries_secondary"
+                        index=0,  # Default to "Cohort Conversion Rate (%)"
+                        key="timeseries_secondary",
+                        help="Select the percentage metric to display as a line on the right Y-axis. All rates shown are cohort-based (attributed to signup dates)."
                     )
                     secondary_metric = secondary_options[secondary_metric_display]
                 
@@ -9034,50 +9122,107 @@ ORDER BY user_id, timestamp""",
                                 timeseries_chart = visualizer.create_timeseries_chart(
                                     timeseries_data,
                                     primary_metric,
-                                    secondary_metric
+                                    secondary_metric,
+                                    primary_metric_display,
+                                    secondary_metric_display
                                 )
                                 st.plotly_chart(timeseries_chart, use_container_width=True)
                                 
-                                # Show summary statistics
+                                # Show enhanced summary statistics with clear metric explanations
                                 st.markdown("#### 📊 Time Series Summary")
+                                
+                                # Add explanation based on selected metrics
+                                if "cohort" in primary_metric_display.lower():
+                                    st.caption("📍 **Cohort Analysis View**: Metrics below show performance by signup date cohorts")
+                                elif "daily" in primary_metric_display.lower():
+                                    st.caption("📍 **Daily Activity View**: Metrics below show platform usage by event dates")
+                                else:
+                                    st.caption("📍 **Legacy View**: Using backward-compatible metrics")
                                 
                                 col1, col2, col3, col4 = st.columns(4)
                                 
                                 with col1:
                                     avg_primary = timeseries_data[primary_metric].mean()
                                     st.metric(
-                                        f"Avg {primary_metric_display}",
+                                        f"Avg {primary_metric_display.replace(' (Cohort)', '').replace(' (Legacy)', '')}",
                                         f"{avg_primary:,.0f}",
-                                        delta=f"Per {aggregation_period.lower()[:-1]}"
+                                        delta=f"Per {aggregation_period.lower()[:-1]}",
+                                        help=f"Average {primary_metric_display} across all time periods"
                                     )
                                 
                                 with col2:
-                                    avg_secondary = timeseries_data[secondary_metric].mean()
-                                    st.metric(
-                                        f"Avg {secondary_metric_display}",
-                                        f"{avg_secondary:.1f}%"
-                                    )
+                                    # Enhanced calculation with clear labeling for different metric types
+                                    if secondary_metric == 'conversion_rate':
+                                        # For cohort conversion rate, calculate properly weighted average
+                                        total_started = timeseries_data['started_funnel_users'].sum()
+                                        total_completed = timeseries_data['completed_funnel_users'].sum()
+                                        weighted_avg_secondary = (total_completed / total_started * 100) if total_started > 0 else 0
+                                        st.metric(
+                                            "Aggregate Cohort Conversion",
+                                            f"{weighted_avg_secondary:.1f}%",
+                                            help=f"Total completers ({total_completed:,}) ÷ Total starters ({total_started:,}). This is the TRUE business conversion rate across all cohorts."
+                                        )
+                                    else:
+                                        # For other step-to-step metrics, use arithmetic mean
+                                        avg_secondary = timeseries_data[secondary_metric].mean()
+                                        metric_name = secondary_metric_display.replace(' (%)', '').replace(' Rate', '')
+                                        st.metric(
+                                            f"Avg {metric_name}",
+                                            f"{avg_secondary:.1f}%",
+                                            help=f"Arithmetic average of {secondary_metric_display} across time periods"
+                                        )
                                 
                                 with col3:
                                     max_primary = timeseries_data[primary_metric].max()
+                                    peak_date = timeseries_data.loc[timeseries_data[primary_metric].idxmax(), 'period_date'].strftime('%m-%d')
                                     st.metric(
-                                        f"Peak {primary_metric_display}",
-                                        f"{max_primary:,.0f}"
+                                        f"Peak {primary_metric_display.replace(' (Cohort)', '').replace(' (Legacy)', '')}",
+                                        f"{max_primary:,.0f}",
+                                        delta=f"On {peak_date}",
+                                        help=f"Highest single-period value for {primary_metric_display}"
                                     )
                                 
                                 with col4:
-                                    # Calculate trend direction
+                                    # Enhanced trend calculation with cohort awareness
                                     if len(timeseries_data) >= 2:
-                                        recent_avg = timeseries_data[secondary_metric].tail(3).mean()
-                                        earlier_avg = timeseries_data[secondary_metric].head(3).mean()
-                                        trend = "📈 Improving" if recent_avg > earlier_avg else "📉 Declining"
+                                        if secondary_metric == 'conversion_rate':
+                                            # For conversion rate, compare recent vs earlier cohort performance
+                                            mid_point = len(timeseries_data) // 2
+                                            recent_periods = timeseries_data.iloc[mid_point:]
+                                            earlier_periods = timeseries_data.iloc[:mid_point]
+                                            
+                                            recent_total_started = recent_periods['started_funnel_users'].sum()
+                                            recent_total_completed = recent_periods['completed_funnel_users'].sum()
+                                            recent_rate = (recent_total_completed / recent_total_started * 100) if recent_total_started > 0 else 0
+                                            
+                                            earlier_total_started = earlier_periods['started_funnel_users'].sum()
+                                            earlier_total_completed = earlier_periods['completed_funnel_users'].sum()
+                                            earlier_rate = (earlier_total_completed / earlier_total_started * 100) if earlier_total_started > 0 else 0
+                                            
+                                            if recent_rate > earlier_rate + 1:
+                                                trend = "📈 Improving"
+                                                delta = f"+{recent_rate - earlier_rate:.1f}pp"
+                                            elif recent_rate < earlier_rate - 1:
+                                                trend = "📉 Declining"
+                                                delta = f"{recent_rate - earlier_rate:.1f}pp"
+                                            else:
+                                                trend = "📊 Stable"
+                                                delta = "±1pp"
+                                        else:
+                                            # For other metrics, use simple average comparison
+                                            recent_avg = timeseries_data[secondary_metric].tail(3).mean()
+                                            earlier_avg = timeseries_data[secondary_metric].head(3).mean()
+                                            trend = "📈 Improving" if recent_avg > earlier_avg else "📉 Declining" if recent_avg < earlier_avg else "📊 Stable"
+                                            delta = f"{secondary_metric_display}"
                                     else:
-                                        trend = "📊 Stable"
+                                        trend = "📊 Single Period"
+                                        delta = "N/A"
                                     
                                     st.metric(
-                                        "Trend",
+                                        "Trend Analysis",
                                         trend,
-                                        delta=f"{secondary_metric_display}"
+                                        delta=delta,
+                                        help="Compares recent performance vs earlier periods. For conversion rates, uses proper cohort-weighted calculation."
                                     )
                                 
                                 # Optional: Show raw data table
