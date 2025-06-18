@@ -42,17 +42,42 @@ user_00001,Verify Email,2024-01-01 10:15:00,"{""platform"": ""mobile""}"
 user_00001,First Login,2024-01-01 11:30:00,"{""platform"": ""mobile""}"
 ```
 
-## 🔧 Installation
+## 🔧 Installation & Development
 
+### Quick Start
 1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Run the application:
+### Development Setup
+For contributing to the project, set up the complete development environment:
+
 ```bash
-streamlit run app.py
+# Install development dependencies (linting, formatting, testing)
+make install-dev
+
+# Install pre-commit hooks for code quality gates
+make pre-commit
+
+# Verify setup
+make check
 ```
+
+### Development Workflow
+```bash
+# Before committing changes
+make check          # Format code + run all quality checks
+
+# Run tests
+make test           # Full test suite with coverage
+make test-fast      # Quick validation
+
+# See all available commands
+make help
+```
+
+> 📋 **Code Quality**: This project uses modern Python tooling (ruff, black, mypy) with pre-commit hooks to enforce code quality standards. See `CODE_QUALITY_WORKFLOW.md` for details.
 
 ## 📊 Usage
 
