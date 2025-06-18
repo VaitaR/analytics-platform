@@ -1932,7 +1932,7 @@ class FunnelCalculator:
                 )
                 time_stats.append(stats_obj)
         
-            return time_stats
+        return time_stats
     
     @_funnel_performance_monitor('calculate_timeseries_metrics')
     def calculate_timeseries_metrics(self, events_df: pd.DataFrame, funnel_steps: List[str], 
@@ -2115,7 +2115,7 @@ class FunnelCalculator:
     def _calculate_timeseries_metrics_polars(self, events_df: pl.DataFrame, funnel_steps: List[str], 
                                            aggregation_period: str = '1d') -> pd.DataFrame:
         """
-        Polars implementation for efficient time series metrics calculation.
+        Optimized Polars implementation for efficient time series metrics calculation.
         
         Args:
             events_df: Polars DataFrame with event data
@@ -2140,25 +2140,26 @@ class FunnelCalculator:
             if relevant_events.height == 0:
                 return pd.DataFrame()
             
-            # Create period boundaries for correct cohort analysis
-            period_boundaries = (
-                relevant_events
-                .select('timestamp')
-                .with_columns([
-                    pl.col('timestamp').dt.truncate(aggregation_period).alias('period_date')
-                ])
+            # Add period column using truncate for efficient grouping
+            events_with_period = relevant_events.with_columns([
+                pl.col('timestamp').dt.truncate(aggregation_period).alias('period_date')
+            ])
+            
+            # Get unique periods for iteration
+            unique_periods = (
+                events_with_period
                 .select('period_date')
                 .unique()
                 .sort('period_date')
+                .to_series()
+                .to_list()
             )
             
             results = []
             
-            # Process each period to calculate TRUE cohort conversion rates
-            for period_row in period_boundaries.iter_rows(named=True):
-                period_date = period_row['period_date']
-                
-                # Define period boundaries
+            # Vectorized approach: process each period efficiently
+            for period_date in unique_periods:
+                # Calculate period boundaries
                 if aggregation_period == '1h':
                     period_end = period_date + timedelta(hours=1)
                 elif aggregation_period == '1d':
@@ -2166,129 +2167,101 @@ class FunnelCalculator:
                 elif aggregation_period == '1w':
                     period_end = period_date + timedelta(weeks=1)
                 elif aggregation_period == '1mo':
-                    period_end = period_date + timedelta(days=30)  # Approximate
+                    period_end = period_date + timedelta(days=30)
                 else:
-                    period_end = period_date + timedelta(days=1)  # Default to daily
+                    period_end = period_date + timedelta(days=1)
                 
-                # 1. Find users who STARTED the funnel in this period (first step in period)
+                # Get all events in this period
+                period_events = events_with_period.filter(
+                    pl.col('period_date') == period_date
+                )
+                
+                # Find users who started the funnel in this period
                 period_starters = (
-                    relevant_events
-                    .filter(
-                        (pl.col('event_name') == first_step) &
-                        (pl.col('timestamp') >= period_date) &
-                        (pl.col('timestamp') < period_end)
-                    )
+                    period_events
+                    .filter(pl.col('event_name') == first_step)
                     .select('user_id')
                     .unique()
                 )
                 
                 started_count = period_starters.height
                 
-                # 2. For users who started in this period, check if they completed the full funnel within conversion window
-                if started_count > 0:
-                    completed_count = 0
-                    starter_user_ids = period_starters.select('user_id').to_series().to_list()
-                    
-                    for user_id in starter_user_ids:
-                        # Get user's first event in this period (their start time)
-                        user_start_events = (
-                            relevant_events
-                            .filter(
-                                (pl.col('user_id') == user_id) &
-                                (pl.col('event_name') == first_step) &
-                                (pl.col('timestamp') >= period_date) &
-                                (pl.col('timestamp') < period_end)
-                            )
-                            .sort('timestamp')
-                            .head(1)
-                        )
-                        
-                        if user_start_events.height > 0:
-                            start_time = user_start_events.select('timestamp').item()
-                            conversion_deadline = start_time + timedelta(hours=conversion_window_hours)
-                            
-                            # Check if user completed the full funnel within conversion window
-                            user_completed = self._check_user_funnel_completion_within_window(
-                                events_df, user_id, funnel_steps, start_time, conversion_deadline
-                            )
-                            
-                            if user_completed:
-                                completed_count += 1
+                if started_count == 0:
+                    # No starters in this period - create empty row
+                    result_row = {
+                        'period_date': period_date,
+                        'started_funnel_users': 0,
+                        'completed_funnel_users': 0,
+                        'conversion_rate': 0.0,
+                        'total_unique_users': period_events.select('user_id').n_unique(),
+                        'total_events': period_events.height
+                    }
+                    for step in funnel_steps:
+                        result_row[f'{step}_users'] = 0
+                    results.append(result_row)
+                    continue
                 
-                else:
-                    completed_count = 0
+                # Get starter user IDs efficiently
+                starter_user_ids = period_starters.select('user_id').to_series().to_list()
                 
-                # Calculate metrics for this period
-                conversion_rate = (completed_count / started_count * 100) if started_count > 0 else 0.0
+                # For each starter, get their start time in this period (vectorized)
+                starter_times = (
+                    period_events
+                    .filter(
+                        (pl.col('event_name') == first_step) &
+                        (pl.col('user_id').is_in(starter_user_ids))
+                    )
+                    .group_by('user_id')
+                    .agg(pl.col('timestamp').min().alias('start_time'))
+                )
                 
-                # Count cohort progress for each step (how many from the starting cohort reached each step)
+                # Calculate conversion deadline for each user
+                starters_with_deadline = starter_times.with_columns([
+                    (pl.col('start_time') + pl.duration(hours=conversion_window_hours)).alias('deadline')
+                ])
+                
+                # Initialize step user counts
                 step_users = {}
-                if started_count > 0:
-                    starter_user_ids = period_starters.select('user_id').to_series().to_list()
+                for step in funnel_steps:
+                    step_users[f'{step}_users'] = 0
+                
+                # Count users who reached each step within their conversion window (vectorized)
+                for step in funnel_steps:
+                    # Get all relevant step events
+                    step_events = relevant_events.filter(pl.col('event_name') == step)
                     
-                    for step in funnel_steps:
-                        step_count = 0
-                        for user_id in starter_user_ids:
-                            # Get user's first event in this period (their start time)
-                            user_start_events = (
-                                relevant_events
-                                .filter(
-                                    (pl.col('user_id') == user_id) &
-                                    (pl.col('event_name') == first_step) &
-                                    (pl.col('timestamp') >= period_date) &
-                                    (pl.col('timestamp') < period_end)
-                                )
-                                .sort('timestamp')
-                                .head(1)
-                            )
-                            
-                            if user_start_events.height > 0:
-                                start_time = user_start_events.select('timestamp').item()
-                                conversion_deadline = start_time + timedelta(hours=conversion_window_hours)
-                                
-                                # Check if user reached this step within conversion window
-                                user_step_events = (
-                                    relevant_events
-                                    .filter(
-                                        (pl.col('user_id') == user_id) &
-                                        (pl.col('event_name') == step) &
-                                        (pl.col('timestamp') >= start_time) &
-                                        (pl.col('timestamp') <= conversion_deadline)
-                                    )
-                                )
-                                
-                                if user_step_events.height > 0:
-                                    step_count += 1
-                        
-                        step_users[f'{step}_users'] = step_count
-                else:
-                    # No starters in this period
-                    for step in funnel_steps:
+                    if step_events.height == 0:
                         step_users[f'{step}_users'] = 0
+                        continue
+                    
+                    # Join starters with their step events to find matches within conversion window
+                    step_matches = (
+                        starters_with_deadline
+                        .join(step_events, on='user_id', how='inner')
+                        .filter(
+                            (pl.col('timestamp') >= pl.col('start_time')) &
+                            (pl.col('timestamp') <= pl.col('deadline'))
+                        )
+                        .select('user_id')
+                        .unique()
+                    )
+                    
+                    step_users[f'{step}_users'] = step_matches.height
+                
+                # Completed funnel count is users who reached the last step
+                completed_count = step_users[f'{last_step}_users']
+                
+                # Calculate conversion rate
+                conversion_rate = (completed_count / started_count * 100) if started_count > 0 else 0.0
                 
                 # Build result row
                 result_row = {
                     'period_date': period_date,
                     'started_funnel_users': started_count,
                     'completed_funnel_users': completed_count,
-                    'conversion_rate': min(conversion_rate, 100.0),  # Cap at 100%
-                    'total_unique_users': (
-                        relevant_events
-                        .filter(
-                            (pl.col('timestamp') >= period_date) &
-                            (pl.col('timestamp') < period_end)
-                        )
-                        .select('user_id')
-                        .n_unique()
-                    ),
-                    'total_events': (
-                        relevant_events
-                        .filter(
-                            (pl.col('timestamp') >= period_date) &
-                            (pl.col('timestamp') < period_end)
-                        )
-                        .height
-                    ),
+                    'conversion_rate': min(conversion_rate, 100.0),
+                    'total_unique_users': period_events.select('user_id').n_unique(),
+                    'total_events': period_events.height,
                     **step_users
                 }
                 
@@ -2297,14 +2270,13 @@ class FunnelCalculator:
             # Convert to DataFrame
             result_df = pd.DataFrame(results)
             
-            # Add step-by-step conversion rates with proper bounds
+            # Add step-by-step conversion rates
             if len(result_df) > 0:
                 for i in range(len(funnel_steps)-1):
                     step_from_col = f'{funnel_steps[i]}_users'
                     step_to_col = f'{funnel_steps[i+1]}_users'
                     col_name = f'{funnel_steps[i]}_to_{funnel_steps[i+1]}_rate'
                     
-                    # Calculate with 100% cap to prevent unrealistic values
                     result_df[col_name] = result_df.apply(
                         lambda row: min((row[step_to_col] / row[step_from_col] * 100), 100.0) 
                         if row[step_from_col] > 0 else 0.0, axis=1
@@ -6185,12 +6157,28 @@ class ColorPalette:
     @staticmethod
     def get_color_with_opacity(color: str, opacity: float) -> str:
         """Convert hex color to rgba with specified opacity"""
+        # If color is already in rgba format, extract rgb values and apply new opacity
+        if color.startswith('rgba('):
+            # Extract rgb values from rgba string
+            import re
+            rgba_match = re.match(r'rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)', color)
+            if rgba_match:
+                r, g, b = rgba_match.groups()
+                return f'rgba({r}, {g}, {b}, {opacity})'
+        
+        # Handle hex colors
         if color.startswith('#'):
             color = color[1:]
-        r = int(color[0:2], 16)
-        g = int(color[2:4], 16)
-        b = int(color[4:6], 16)
-        return f'rgba({r}, {g}, {b}, {opacity})'
+        
+        # Ensure we have a valid hex color
+        if len(color) == 6:
+            r = int(color[0:2], 16)
+            g = int(color[2:4], 16)
+            b = int(color[4:6], 16)
+            return f'rgba({r}, {g}, {b}, {opacity})'
+        
+        # Fallback - return original color if parsing fails
+        return color
     
     @staticmethod
     def get_colorblind_scale(n_colors: int) -> List[str]:
@@ -7367,6 +7355,8 @@ class FunnelVisualizer:
     @staticmethod
     def create_conversion_flow_sankey(results: FunnelResults) -> go.Figure:
         """Create Sankey diagram showing user flow through funnel with dark theme"""
+        visualizer = FunnelVisualizer()
+        
         if len(results.steps) < 2:
             return go.Figure()
         
@@ -7390,14 +7380,14 @@ class FunnelVisualizer:
             source.append(i)
             target.append(i + 1)
             value.append(results.users_count[i + 1])
-            colors.append(FunnelVisualizer.SUCCESS_COLOR)
+            colors.append(visualizer.SUCCESS_COLOR)
             
             # Flow from step i to drop-off (not converted) 
             if results.drop_offs[i + 1] > 0:
                 source.append(i)
                 target.append(len(results.steps) + i)
                 value.append(results.drop_offs[i + 1])
-                colors.append(FunnelVisualizer.FAILURE_COLOR)
+                colors.append(visualizer.FAILURE_COLOR)
         
         fig = go.Figure(data=[go.Sankey(
             node=dict(
@@ -7405,7 +7395,7 @@ class FunnelVisualizer:
                 thickness=20,
                 line=dict(color="rgba(255, 255, 255, 0.3)", width=0.5),
                 label=labels,
-                color=[FunnelVisualizer.COLORS[0] for _ in range(len(labels))]
+                color=[visualizer.COLORS[0] for _ in range(len(labels))]
             ),
             link=dict(
                 source=source,
@@ -7417,7 +7407,7 @@ class FunnelVisualizer:
         )])
         
         # Apply dark theme
-        return FunnelVisualizer.apply_dark_theme(fig, "User Flow Through Funnel")
+        return visualizer.apply_dark_theme(fig, "User Flow Through Funnel")
     
     def create_enhanced_time_to_convert_chart(self, time_stats: List[TimeToConvertStats]) -> go.Figure:
         """Create enhanced time to convert analysis with accessibility features"""
@@ -7620,6 +7610,8 @@ class FunnelVisualizer:
     @staticmethod
     def create_cohort_heatmap(cohort_data: CohortData) -> go.Figure:
         """Create cohort analysis heatmap with dark theme"""
+        visualizer = FunnelVisualizer()
+        
         if not cohort_data.cohort_labels:
             return go.Figure()
         
@@ -7666,8 +7658,8 @@ class FunnelVisualizer:
             colorbar=dict(
                 title="Conversion Rate (%)",
                 titleside="right",
-                titlefont=dict(size=12, color=FunnelVisualizer.TEXT_COLOR),
-                tickfont=dict(color=FunnelVisualizer.TEXT_COLOR),
+                titlefont=dict(size=12, color=visualizer.TEXT_COLOR),
+                tickfont=dict(color=visualizer.TEXT_COLOR),
                 ticks="outside"
             )
         ))
@@ -7681,7 +7673,7 @@ class FunnelVisualizer:
         )
         
         # Apply dark theme
-        return FunnelVisualizer.apply_dark_theme(fig, "How do different cohorts perform in the funnel?")
+        return visualizer.apply_dark_theme(fig, "How do different cohorts perform in the funnel?")
     
     def create_enhanced_path_analysis_chart(self, path_data: PathAnalysisData) -> go.Figure:
         """Create enhanced path analysis with progressive disclosure and guided discovery"""
