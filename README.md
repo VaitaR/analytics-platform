@@ -146,6 +146,13 @@ This platform is designed for enterprise use cases. For customization:
 3. Create new visualizations in `FunnelVisualizer`
 4. Define custom configuration options in `FunnelConfig`
 
+### Development & Testing
+
+For developers working on the platform:
+- **Testing Documentation**: See [`tests/README.md`](tests/README.md) for comprehensive testing architecture
+- **Test Data**: See [`test_data/README.md`](test_data/README.md) for test data organization
+- **Run Tests**: Use `python run_tests.py` for professional test execution
+
 ## 📄 License
 
 Enterprise-grade funnel analytics platform for professional use. 

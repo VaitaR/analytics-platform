@@ -594,7 +594,7 @@ class DataSourceManager:
         
         # Try to load demo events metadata
         try:
-            demo_df = pd.read_csv('demo_events.csv')
+            demo_df = pd.read_csv('test_data/demo_events.csv')
             metadata = {}
             
             # First, add all demo events with their base metadata

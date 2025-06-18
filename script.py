@@ -141,13 +141,13 @@ print("\nA/B Test Conversion Rates (%):")
 print(df_ab_test_rates)
 
 # Export to CSV files
-df_events.to_csv("demo_events.csv", index=False)
-df_funnel.to_csv("sample_funnel.csv", index=False)
-df_time_series.to_csv("time_series_data.csv")
-df_segments.to_csv("segment_data.csv")
-df_time_to_convert.describe().to_csv("time_to_convert_stats.csv")
-df_ab_test.to_csv("ab_test_data.csv")
-df_ab_test_rates.to_csv("ab_test_rates.csv")
+df_events.to_csv("test_data/demo_events.csv", index=False)
+df_funnel.to_csv("test_data/sample_funnel.csv", index=False)
+df_time_series.to_csv("test_data/time_series_data.csv")
+df_segments.to_csv("test_data/segment_data.csv")
+df_time_to_convert.describe().to_csv("test_data/time_to_convert_stats.csv")
+df_ab_test.to_csv("test_data/ab_test_data.csv")
+df_ab_test_rates.to_csv("test_data/ab_test_rates.csv")
 
 # Create a comprehensive data package for the application
 data_package = {
