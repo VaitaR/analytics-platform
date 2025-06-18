@@ -6,7 +6,7 @@ import polars as pl
 # Import necessary classes from models.py
 from models import FunnelConfig, FunnelOrder, ReentryMode, PathAnalysisData
 
-class _PathAnalyzerHelper:
+class PathAnalyzer:
     """
     Helper class for path analysis with optimized implementations for different funnel configurations.
     This class encapsulates the complex logic for path analysis to improve performance and maintainability.
