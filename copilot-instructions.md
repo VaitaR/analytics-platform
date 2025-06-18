@@ -75,6 +75,8 @@
 | Streamlit app crashing on large files | `streamlit caching memory clear` | Section 9.2 + DataSourceManager |
 | **Duplicate test files causing confusion** | `duplicate test files consolidation conftest` | **Section "AGENT DISCOVERIES" + unified run_tests.py** |
 | **Test runner status misleading** | `pytest status reporting json test runner` | **Section "AGENT DISCOVERIES" + run_tests.py fixes** |
+| **Time Series charts vertically stretched** | `chart stretching vertical ui responsive height` | **Section "AGENT DISCOVERIES" + TIME_SERIES_UI_FIXES.md** |
+| **Inconsistent chart sizing and poor responsive design** | `universal visualization standards responsive design mobile` | **Section "AGENT DISCOVERIES" + test_universal_visualization_standards.py** |
 
 ---
 
@@ -433,6 +435,123 @@ else:
 **Add to Section:** 4.3 (Running Tests Professional Commands)
 **Search Keywords:** `pytest status reporting json test runner misleading status`
 
+### Discovery Date: 2025-06-18
+**Problem Pattern:** Time series calculations lack comprehensive UI accuracy testing and edge case coverage
+**Solution Found:** Create mathematical precision test suite with boundary condition validation
+**Code Pattern:**
+```python
+# Mathematical precision testing for time series
+@pytest.mark.timeseries
+def test_exact_cohort_calculation(calculator, controlled_data, funnel_steps):
+    result = calculator.calculate_timeseries_metrics(data, steps, '1d')
+    
+    # Exact mathematical validation
+    assert day1['started_funnel_users'] == 1000
+    assert day1['completed_funnel_users'] == 300
+    assert abs(day1['conversion_rate'] - 30.0) < 0.01
+    
+    # Funnel monotonicity validation
+    step_counts = [row[f'{step}_users'] for step in funnel_steps]
+    for j in range(1, len(step_counts)):
+        assert step_counts[j] <= step_counts[j-1]
+
+# Boundary condition testing with tolerance
+def test_hourly_aggregation_accuracy(calculator, data):
+    # Allow tolerance for hour boundary effects
+    assert 48 <= len(result) <= 49  # Hour boundaries
+    assert 350 <= total_starters <= 370  # Boundary tolerance
+```
+**Add to Section:** 4.2 (Critical Test Files)
+**Search Keywords:** `time series mathematical precision boundary testing ui accuracy`
+
+### Discovery Date: 2025-06-18
+**Problem Pattern:** Time Series charts vertically stretched on different screens due to unbounded height calculation
+**Solution Found:** Implement responsive height caps and optimized margins for dual-axis charts
+**Code Pattern:**
+```python
+# Fixed responsive height calculation with caps
+@staticmethod
+def get_responsive_height(base_height: int, content_count: int = 1) -> int:
+    """Calculate responsive height based on content and screen size with reasonable caps"""
+    # Cap the content scaling to prevent excessive growth
+    max_scaling_items = min(content_count - 1, 20)
+    scaling_height = max_scaling_items * 20  # Reduced from 40 to 20 per item
+    dynamic_height = base_height + scaling_height
+    max_height = min(800, base_height * 1.6)  # Cap at 1.6x base or 800px max
+    return max(400, min(dynamic_height, max_height))
+
+# Optimized margins for time series dual-axis charts
+margin=dict(l=60, r=60, t=80, b=100)  # Reduced by 20-25%
+
+# Thinner range slider
+rangeslider=dict(thickness=0.15)  # Reduce vertical footprint
+```
+**Add to Section:** 2.3 (Visualization & UI)
+**Search Keywords:** `chart stretching vertical ui responsive height calculation margins range slider`
+
+### Discovery Date: 2025-06-18
+**Problem Pattern:** Inconsistent visualization sizing and poor responsive behavior across different chart types and screen sizes
+**Solution Found:** Implement universal visualization standards with comprehensive testing and responsive design patterns
+**Code Pattern:**
+```python
+# Universal visualization standards enforced across all charts
+HEIGHT_STANDARDS = {
+    'minimum': 350,    # Mobile usability minimum
+    'maximum': 800,    # Prevent excessive stretching
+    'optimal_range': (400, 600)  # Best viewing experience
+}
+
+# Responsive design patterns
+layout_config = {
+    'autosize': True,  # Enable responsive behavior
+    'height': LayoutConfig.get_responsive_height(base_height, content_count),
+    'margin': LayoutConfig.get_margins('md')  # Standardized margins
+}
+
+# Color palette accessibility
+SEMANTIC = {
+    'primary': '#3B82F6', 'secondary': '#6B7280',
+    'success': '#10B981', 'warning': '#F59E0B', 'error': '#EF4444'
+}
+
+# Chart dimensions standardization
+CHART_DIMENSIONS = {
+    'small': {'width': 400, 'height': 350, 'ratio': 8/7},    # Mobile-friendly
+    'medium': {'width': 600, 'height': 400, 'ratio': 3/2},   # Desktop standard
+    'large': {'width': 800, 'height': 500, 'ratio': 8/5}     # Large screens
+}
+```
+**Add to Section:** 2.3 (Visualization & UI)
+**Search Keywords:** `universal visualization standards responsive design chart sizing accessibility mobile compatibility`
+
+### Discovery Date: 2025-06-18
+**Problem Pattern:** Legacy visualization tests with incomplete mock setup causing "Mock object not subscriptable" errors
+**Solution Found:** Replace complex mock hierarchies with real object instances for visualization testing  
+**Code Pattern:**
+```python
+# ❌ BAD: Complex mock setup that breaks with real method calls
+@pytest.fixture
+def mock_visualizer(self):
+    visualizer = Mock()
+    visualizer.color_palette = ColorPalette()
+    visualizer.create_timeseries_chart = FunnelVisualizer.create_timeseries_chart.__get__(visualizer)
+    # Fails when real methods access nested mock attributes
+
+# ✅ GOOD: Real object instance for integration testing
+@pytest.fixture
+def visualizer(self):
+    return FunnelVisualizer(theme='dark', colorblind_friendly=False)
+
+# Update test expectations to match actual responsive height calculation
+@pytest.mark.parametrize("dataset_size,expected_height", [
+    (10, 680),   # Actual: min(800, 500 + min(10-1, 20) * 20) = 680
+    (30, 800),   # Actual: capped at 800px maximum
+    (100, 800),  # Actual: capped at 800px maximum  
+])
+```
+**Add to Section:** 4.2 (Critical Test Files) + 9 (Known Issues)
+**Search Keywords:** `mock object not subscriptable visualization tests real objects integration testing`
+
 ### Template for New Discoveries
 ```markdown
 ### Discovery Date: [YYYY-MM-DD]
@@ -515,7 +634,7 @@ def standardize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
 For any change to funnel analytics:
 - [ ] **Accuracy:** Mathematical correctness verified
 - [ ] **Performance:** No regression in calculation time
-- [ ] **Fallback:** Graceful Polars→Pandas handling
+- [ ] **Fallback Handling:** Graceful Polars→Pandas fallback when needed
 - [ ] **Tests:** Edge cases covered
 - [ ] **Documentation:** Complex logic explained
 - [ ] **Type Safety:** Full type annotations

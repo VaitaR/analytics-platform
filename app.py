@@ -482,8 +482,9 @@ class DataSourceManager:
             for prop_str in df['event_properties'].dropna():
                 try:
                     props = json.loads(prop_str)
-                    properties['event_properties'].update(props.keys())
-                except json.JSONDecodeError: # Specific exception
+                    if props and isinstance(props, dict):
+                        properties['event_properties'].update(props.keys())
+                except (json.JSONDecodeError, TypeError): # Handle both JSON errors and type errors
                     self.logger.debug(f"Failed to decode event_properties: {prop_str[:50]}")
                     continue
         
@@ -492,8 +493,9 @@ class DataSourceManager:
             for prop_str in df['user_properties'].dropna():
                 try:
                     props = json.loads(prop_str)
-                    properties['user_properties'].update(props.keys())
-                except json.JSONDecodeError: # Specific exception
+                    if props and isinstance(props, dict):
+                        properties['user_properties'].update(props.keys())
+                except (json.JSONDecodeError, TypeError): # Handle both JSON errors and type errors
                     self.logger.debug(f"Failed to decode user_properties: {prop_str[:50]}")
                     continue
         
@@ -559,9 +561,9 @@ class DataSourceManager:
             for prop_str in df[column].dropna():
                 try:
                     props = json.loads(prop_str)
-                    if prop_name in props:
+                    if props is not None and prop_name in props:
                         values.add(str(props[prop_name]))
-                except json.JSONDecodeError: # Specific exception
+                except (json.JSONDecodeError, TypeError): # Handle both JSON errors and None types
                     self.logger.debug(f"Failed to decode JSON in get_property_values: {prop_str[:50]}")
                     continue
         
@@ -6115,6 +6117,8 @@ class ColorPalette:
     
     # Primary semantic colors with accessibility compliance
     SEMANTIC = {
+        'primary': '#3B82F6',     # Blue - primary brand color
+        'secondary': '#6B7280',   # Gray - secondary brand color
         'success': '#10B981',     # Green - 4.5:1 contrast ratio
         'warning': '#F59E0B',     # Amber - 4.5:1 contrast ratio
         'error': '#EF4444',       # Red - 4.5:1 contrast ratio
@@ -6261,28 +6265,32 @@ class LayoutConfig:
     
     # Chart dimensions and aspect ratios
     CHART_DIMENSIONS = {
-        'small': {'width': 400, 'height': 300, 'ratio': 4/3},
-        'medium': {'width': 600, 'height': 400, 'ratio': 3/2},
-        'large': {'width': 800, 'height': 500, 'ratio': 8/5},
-        'wide': {'width': 1200, 'height': 600, 'ratio': 2/1}
+        'small': {'width': 400, 'height': 350, 'ratio': 8/7},    # Mobile-friendly, meets 350px minimum
+        'medium': {'width': 600, 'height': 400, 'ratio': 3/2},   # Standard desktop
+        'large': {'width': 800, 'height': 500, 'ratio': 8/5},    # Large desktop
+        'wide': {'width': 1200, 'height': 600, 'ratio': 2/1}     # Ultra-wide displays
     }
     
     @staticmethod
     def get_responsive_height(base_height: int, content_count: int = 1) -> int:
-        """Calculate responsive height based on content and screen size"""
-        # Enhanced responsive height calculation
-        dynamic_height = base_height + (content_count - 1) * 40
-        
-        # Ensure minimum height for usability on narrow screens
+        """Calculate responsive height based on content and screen size with reasonable caps"""
+        # Ensure minimum height for usability
         min_height = 400
         
-        # Scale based on content complexity
-        if content_count > 10:
-            dynamic_height = max(dynamic_height, base_height * 1.5)
-        elif content_count > 20:
-            dynamic_height = max(dynamic_height, base_height * 2)
-            
-        return max(min_height, dynamic_height)
+        # Cap the content scaling to prevent excessive growth
+        # Only allow scaling up to 20 items worth of growth
+        max_scaling_items = min(content_count - 1, 20)
+        scaling_height = max_scaling_items * 20  # Reduced from 40 to 20 per item
+        
+        dynamic_height = base_height + scaling_height
+        
+        # Set reasonable maximum height limits
+        max_height = min(800, base_height * 1.6)  # Cap at 1.6x base or 800px max
+        
+        # Apply all constraints
+        final_height = max(min_height, min(dynamic_height, max_height))
+        
+        return final_height
     
     @staticmethod
     def get_margins(size: str = 'md') -> Dict[str, int]:
@@ -6687,20 +6695,21 @@ class FunnelVisualizer:
                 bgcolor="rgba(0,0,0,0)",
                 font=dict(color=self.text_color)
             ),
-            # Enable range slider for time navigation
+            # Enable range slider for time navigation with optimized height
             xaxis=dict(
                 rangeslider=dict(
                     visible=True,
                     bgcolor=self.color_palette.DARK_MODE['surface'],
                     bordercolor=self.color_palette.DARK_MODE['border'],
-                    borderwidth=1
+                    borderwidth=1,
+                    thickness=0.15  # Reduce thickness to prevent excessive height usage
                 ),
                 type='date'
             ),
             # Improve hover interaction
             hovermode='x unified',
-            # Better margins for dual axis labels
-            margin=dict(l=80, r=80, t=100, b=120)
+            # Optimized margins for dual axis labels - reduced for better mobile experience
+            margin=dict(l=60, r=60, t=80, b=100)
         )
         
         return themed_fig
@@ -6978,6 +6987,7 @@ class FunnelVisualizer:
         layout_config = {
             'plot_bgcolor': 'rgba(0,0,0,0)',  # Transparent for dark mode
             'paper_bgcolor': 'rgba(0,0,0,0)',
+            'autosize': True,  # Enable responsive behavior
             'font': {
                 'family': body_font['family'],
                 'size': body_font['size'],
