@@ -169,6 +169,66 @@ class DataSourceManager:
         self.clickhouse_client = None
         self.logger = logging.getLogger(__name__)
         self._performance_metrics = {}  # Performance monitoring for data operations
+
+    def _safe_json_decode(self, column_expr: pl.Expr, infer_all: bool = True) -> pl.Expr:
+        """
+        Safely decode JSON strings to struct type with flexible schema handling.
+        
+        Args:
+            column_expr: Polars column expression containing JSON strings
+            infer_all: Whether to infer schema from all rows (True) or sample (False)
+            
+        Returns:
+            Polars expression for decoded JSON struct
+        """
+        # Always try with explicit schema inference control first
+        try:
+            # Try with larger schema inference window to handle varying fields
+            return column_expr.str.json_decode(infer_schema_length=50000)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "extra field" in error_msg or "consider increasing infer_schema_length" in error_msg:
+                self.logger.debug(f"JSON schema mismatch detected (extra fields), trying relaxed approach: {str(e)}")
+                try:
+                    # Try with null inference (no schema validation)
+                    return column_expr.str.json_decode(infer_schema_length=None)
+                except Exception as e2:
+                    self.logger.debug(f"Extended schema inference failed: {str(e2)}")
+                    try:
+                        # Final attempt: Use very basic schema inference
+                        return column_expr.str.json_decode(infer_schema_length=1)
+                    except Exception as e3:
+                        self.logger.debug(f"All JSON decode attempts failed: {str(e3)}")
+                        # Return original column as string - will be handled by pandas fallback
+                        return column_expr
+            else:
+                self.logger.debug(f"JSON decode failed: {str(e)}")
+                try:
+                    # Second attempt: Use null schema inference
+                    return column_expr.str.json_decode(infer_schema_length=None)
+                except Exception as e2:
+                    self.logger.debug(f"Fallback JSON decode failed: {str(e2)}")
+                    # Final fallback: Return original column as string
+                    return column_expr
+
+    def _safe_json_field_access(self, column_expr: pl.Expr, field_name: str) -> pl.Expr:
+        """
+        Safely access a field from a JSON struct with error handling.
+        
+        Args:
+            column_expr: Polars column expression containing JSON strings
+            field_name: Name of the field to extract
+            
+        Returns:
+            Polars expression for the field value or null if field doesn't exist
+        """
+        try:
+            # Attempt to decode JSON and access field
+            return self._safe_json_decode(column_expr).struct.field(field_name)
+        except Exception as e:
+            self.logger.debug(f"JSON field access failed for field '{field_name}': {str(e)}")
+            # Return null expression as fallback
+            return pl.lit(None)
     
     def validate_event_data(self, df: pd.DataFrame) -> Tuple[bool, str]:
         """Validate that DataFrame has required columns for funnel analysis"""
@@ -364,15 +424,15 @@ class DataSourceManager:
                     # Filter out nulls first
                     valid_props = pl_df.filter(pl.col('event_properties').is_not_null())
                     if not valid_props.is_empty():
-                        # Decode JSON strings to struct type
+                        # Decode JSON strings to struct type with flexible schema
                         decoded = valid_props.select(
-                            pl.col('event_properties').str.json_decode().alias('decoded_props')
+                            self._safe_json_decode(pl.col('event_properties')).alias('decoded_props')
                         )
                         # Get all unique keys from all JSON objects
                         if not decoded.is_empty():
                             # Extract keys from each JSON object
                             all_keys = decoded.select(
-                                pl.col('decoded_props').struct.field_names()
+                                pl.col('decoded_props').struct.fields()
                             ).to_series().explode().unique()
                             
                             # Add to properties set
@@ -383,22 +443,26 @@ class DataSourceManager:
                     # Filter out nulls first
                     valid_props = pl_df.filter(pl.col('user_properties').is_not_null())
                     if not valid_props.is_empty():
-                        # Decode JSON strings to struct type
+                        # Decode JSON strings to struct type with flexible schema
                         decoded = valid_props.select(
-                            pl.col('user_properties').str.json_decode().alias('decoded_props')
+                            self._safe_json_decode(pl.col('user_properties')).alias('decoded_props')
                         )
                         # Get all unique keys from all JSON objects
                         if not decoded.is_empty():
                             # Extract keys from each JSON object
                             all_keys = decoded.select(
-                                pl.col('decoded_props').struct.field_names()
+                                pl.col('decoded_props').struct.fields()
                             ).to_series().explode().unique()
                             
                             # Add to properties set
                             properties['user_properties'].update(all_keys)
             
             except Exception as e:
-                self.logger.warning(f"Polars JSON processing failed: {str(e)}, falling back to Pandas")
+                error_msg = str(e).lower()
+                if "extra field" in error_msg or "consider increasing infer_schema_length" in error_msg:
+                    self.logger.debug(f"Polars JSON schema inference detected varying structures (using pandas fallback): {str(e)}")
+                else:
+                    self.logger.warning(f"Polars JSON processing failed: {str(e)}, falling back to Pandas")
                 # Fall back to pandas implementation
                 return self._get_segmentation_properties_pandas(df)
         else:
@@ -455,9 +519,9 @@ class DataSourceManager:
                 if valid_props.is_empty():
                     return []
                 
-                # Decode JSON strings to struct type
+                # Decode JSON strings to struct type with flexible schema
                 decoded = valid_props.select(
-                    pl.col(column).str.json_decode().alias('decoded_props')
+                    self._safe_json_decode(pl.col(column)).alias('decoded_props')
                 )
                 
                 # Extract the specific property value and get unique values
@@ -475,7 +539,11 @@ class DataSourceManager:
                     )
                     return values
             except Exception as e:
-                self.logger.warning(f"Polars JSON processing failed in get_property_values: {str(e)}, falling back to Pandas")
+                error_msg = str(e).lower()
+                if "extra field" in error_msg or "consider increasing infer_schema_length" in error_msg:
+                    self.logger.debug(f"Polars JSON schema inference detected varying structures in get_property_values (using pandas fallback): {str(e)}")
+                else:
+                    self.logger.warning(f"Polars JSON processing failed in get_property_values: {str(e)}, falling back to Pandas")
                 # Fall back to pandas implementation
                 return self._get_property_values_pandas(df, prop_name, prop_type)
         
@@ -1003,7 +1071,7 @@ class FunnelCalculator:
                 try:
                     # Modern Polars version approach
                     all_keys = decoded.select(
-                        pl.col('decoded_props').struct.field_names()
+                        pl.col('decoded_props').struct.fields()
                     ).to_series().explode()
                 except Exception as e:
                     self.logger.debug(f"Field names retrieval error: {str(e)}, trying alternate method")
@@ -1065,7 +1133,7 @@ class FunnelCalculator:
                     col_name = f"{column}_{prop}"
                     # Create expression to extract property with error handling
                     try:
-                        expr = pl.col(column).str.json_decode().struct.field(prop)
+                        expr = self._safe_json_field_access(pl.col(column), prop)
                         expanded_cols[col_name] = expr
                     except Exception as e:
                         self.logger.debug(f"Error creating expression for {prop}: {str(e)}")
@@ -1347,7 +1415,7 @@ class FunnelCalculator:
             try:
                 # Second attempt: Parse JSON and check field
                 return filtered_df.filter(
-                    pl.col(prop_type).str.json_decode().struct.field(prop_name) == prop_value
+                    self._safe_json_field_access(pl.col(prop_type), prop_name) == prop_value
                 )
             except Exception as e:
                 self.logger.warning(f"JSON struct field extraction failed: {str(e)}")
@@ -1398,7 +1466,7 @@ class FunnelCalculator:
         # First decode the JSON string to a struct
         # Then extract the property and check if it equals the value
         filtered_df = pl_df.filter(
-            pl.col(prop_type).str.json_decode().struct.field(prop_name) == prop_value
+            self._safe_json_field_access(pl.col(prop_type), prop_name) == prop_value
         )
         
         # Convert back to pandas
@@ -8939,7 +9007,7 @@ ORDER BY user_id, timestamp""",
                 
                 # Calculate time series data only if we have all required data
                 try:
-                    with st.spinner("🔄 Calculating time series metrics..."):
+                    with st.spinner("🔄 Расчет метрик временного ряда..."):
                         # Get the calculator from session state if available
                         if hasattr(st.session_state, 'last_calculator') and st.session_state.last_calculator:
                             calculator = st.session_state.last_calculator
