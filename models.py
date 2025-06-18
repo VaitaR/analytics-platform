@@ -102,69 +102,22 @@ class FunnelResults:
     statistical_tests: Optional[List[StatSignificanceResult]] = None
 
 @dataclass
-class ProcessMiningActivity:
-    """Single activity in process mining analysis"""
-    name: str
-    total_users: int
-    total_occurrences: int
-    avg_duration_seconds: float
-    activity_type: str  # 'start', 'end', 'intermediate'
-    success_rate: float
-    
-@dataclass
-class ProcessMiningTransition:
-    """Transition between activities in process mining"""
-    from_activity: str
-    to_activity: str
-    frequency: int
-    unique_users: int
-    avg_transition_time_seconds: float
-    probability: float
-    
-@dataclass
-class ProcessMiningCycle:
-    """Detected cycle in user behavior"""
-    path: List[str]
-    frequency: int
-    cycle_type: str  # 'loop' or 'cycle'
-    avg_cycle_duration_seconds: float
-    
-@dataclass
-class ProcessMiningVariant:
-    """Process variant (complete path through the process)"""
-    path: List[str]
-    frequency: int
-    success_rate: float
-    avg_duration_seconds: float
-    
-@dataclass
 class ProcessMiningData:
-    """Complete process mining analysis results"""
-    activities: Dict[str, ProcessMiningActivity]
-    transitions: Dict[Tuple[str, str], ProcessMiningTransition]
-    cycles: List[ProcessMiningCycle]
-    variants: List[ProcessMiningVariant]
-    start_activities: List[str]
-    end_activities: List[str]
-    statistics: Dict[str, float]  # total_cases, avg_duration, completion_rate
+    """Process mining analysis results for user journey discovery"""
+    activities: Dict[str, Dict[str, Any]]  # activity_name -> {users, avg_time, type, success_rate}
+    transitions: Dict[Tuple[str, str], Dict[str, Any]]  # (from, to) -> {frequency, users, avg_duration, probability}
+    cycles: List[Dict[str, Any]]  # [{path: [steps], frequency: int, type: 'loop'|'cycle', impact: 'positive'|'negative'}]
+    variants: List[Dict[str, Any]]  # [{path: [steps], frequency: int, success_rate: float, avg_duration: float}]
+    start_activities: List[str]  # Process start events
+    end_activities: List[str]    # Process end events
+    statistics: Dict[str, float] # {total_cases, avg_duration, completion_rate, unique_paths}
+    insights: List[str]  # Auto-generated insights about the process
     
-    def get_transition_matrix(self) -> Dict[str, Dict[str, float]]:
-        """Get transition probabilities as matrix"""
-        matrix = {}
-        for (from_act, to_act), transition in self.transitions.items():
-            if from_act not in matrix:
-                matrix[from_act] = {}
-            matrix[from_act][to_act] = transition.probability
-        return matrix
-        
-    def get_activity_statistics(self) -> Dict[str, Dict[str, float]]:
-        """Get activity statistics summary"""
-        return {
-            name: {
-                'users': activity.total_users,
-                'occurrences': activity.total_occurrences,
-                'avg_duration': activity.avg_duration_seconds,
-                'success_rate': activity.success_rate
-            }
-            for name, activity in self.activities.items()
-        }
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization"""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ProcessMiningData':
+        """Create from dictionary"""
+        return cls(**data)
