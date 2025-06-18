@@ -2147,9 +2147,10 @@ class FunnelCalculator:
                 pl.col('timestamp').dt.truncate(aggregation_period).alias('period_date')
             ])
             
-            # Get unique periods for iteration
-            unique_periods = (
+            # Get unique periods where the first step occurred (cohort periods only)
+            cohort_periods = (
                 events_with_period
+                .filter(pl.col('event_name') == first_step)
                 .select('period_date')
                 .unique()
                 .sort('period_date')
@@ -2160,7 +2161,7 @@ class FunnelCalculator:
             results = []
             
             # Vectorized approach: process each period efficiently
-            for period_date in unique_periods:
+            for period_date in cohort_periods:
                 # Calculate period boundaries
                 if aggregation_period == '1h':
                     period_end = period_date + timedelta(hours=1)
@@ -8002,16 +8003,16 @@ class FunnelVisualizer:
         return visualizer.create_enhanced_path_analysis_chart(path_data)
     
     def create_process_mining_diagram(self, process_data: 'ProcessMiningData',
-                                     layout_algorithm: str = "hierarchical",
+                                     visualization_type: str = "sankey",
                                      show_frequencies: bool = True,
                                      show_statistics: bool = True,
                                      filter_min_frequency: Optional[int] = None) -> go.Figure:
         """
-        Create interactive process mining diagram in BPMN style
+        Create intuitive process mining visualization
         
         Args:
             process_data: ProcessMiningData with discovered process structure
-            layout_algorithm: Layout algorithm ('hierarchical', 'force', 'circular')
+            visualization_type: Type of visualization ('sankey', 'funnel', 'network', 'journey')
             show_frequencies: Whether to show transition frequencies
             show_statistics: Whether to show activity statistics
             filter_min_frequency: Filter transitions below this frequency
@@ -8022,14 +8023,7 @@ class FunnelVisualizer:
         
         # Handle empty data
         if not process_data.activities and not process_data.transitions:
-            fig = go.Figure()
-            fig.add_annotation(
-                x=0.5, y=0.5,
-                text="No process data available for visualization",
-                showarrow=False,
-                font={'size': 16, 'color': self.secondary_text_color}
-            )
-            return self.apply_theme(fig, "Process Mining Analysis")
+            return self._create_empty_process_figure("No process data available for visualization")
         
         # Filter transitions by frequency if specified
         transitions = process_data.transitions
@@ -8039,6 +8033,387 @@ class FunnelVisualizer:
                 if data['frequency'] >= filter_min_frequency
             }
         
+        # Choose visualization method based on type
+        if visualization_type == "sankey":
+            return self._create_process_sankey_diagram(process_data, transitions, show_frequencies)
+        elif visualization_type == "funnel":
+            return self._create_process_funnel_diagram(process_data, transitions, show_frequencies)
+        elif visualization_type == "journey":
+            return self._create_process_journey_map(process_data, transitions, show_frequencies)
+        else:  # network (legacy)
+            return self._create_process_network_diagram(process_data, transitions, show_frequencies, show_statistics)
+    
+    def _create_empty_process_figure(self, message: str) -> go.Figure:
+        """Create empty figure with informative message"""
+        fig = go.Figure()
+        fig.add_annotation(
+            x=0.5, y=0.5,
+            text=message,
+            showarrow=False,
+            font={'size': 16, 'color': self.secondary_text_color}
+        )
+        return self.apply_theme(fig, "Process Mining Analysis")
+    
+    def _identify_main_process_path(self, process_data: 'ProcessMiningData',
+                                   transitions: Dict[Tuple[str, str], Dict[str, Any]]) -> List[str]:
+        """
+        Identify the main path through the process based on transition frequencies
+        """
+        if not transitions:
+            return list(process_data.activities.keys())[:5]  # Return first 5 activities as fallback
+        
+        # Find start activities (no incoming transitions or marked as start)
+        start_activities = []
+        all_targets = set()
+        all_sources = set()
+        
+        for (from_act, to_act) in transitions.keys():
+            all_sources.add(from_act)
+            all_targets.add(to_act)
+        
+        # Start activities are those with no incoming transitions
+        start_activities = [act for act in all_sources if act not in all_targets]
+        
+        if not start_activities:
+            # If no clear start, use activity with highest frequency
+            start_activities = [max(process_data.activities.keys(), 
+                                  key=lambda x: process_data.activities[x].get('frequency', 0))]
+        
+        # Build main path by following highest frequency transitions
+        main_path = []
+        current_activity = start_activities[0]
+        visited = set()
+        
+        while current_activity and current_activity not in visited:
+            main_path.append(current_activity)
+            visited.add(current_activity)
+            
+            # Find next activity with highest transition frequency
+            next_transitions = [(to_act, data) for (from_act, to_act), data in transitions.items() 
+                               if from_act == current_activity]
+            
+            if next_transitions:
+                next_activity = max(next_transitions, key=lambda x: x[1]['frequency'])[0]
+                current_activity = next_activity
+            else:
+                break
+        
+        return main_path
+    
+    def _create_process_sankey_diagram(self, process_data: 'ProcessMiningData', 
+                                     transitions: Dict[Tuple[str, str], Dict[str, Any]],
+                                     show_frequencies: bool) -> go.Figure:
+        """
+        Create Sankey diagram for process flow - most intuitive for understanding user journeys
+        """
+        if not transitions:
+            return self._create_empty_process_figure("No transitions found for Sankey diagram")
+        
+        # Build nodes and links for Sankey
+        nodes = {}
+        node_index = 0
+        
+        # Collect all unique activities
+        all_activities = set()
+        for (from_act, to_act) in transitions.keys():
+            all_activities.add(from_act)
+            all_activities.add(to_act)
+        
+        # Create node mapping
+        for activity in sorted(all_activities):
+            nodes[activity] = node_index
+            node_index += 1
+        
+        # Prepare Sankey data
+        source_indices = []
+        target_indices = []
+        values = []
+        labels = []
+        colors = []
+        
+        # Node labels and colors
+        for activity in sorted(all_activities):
+            labels.append(activity)
+            
+            # Color nodes based on activity type
+            activity_data = process_data.activities.get(activity, {})
+            activity_type = activity_data.get('activity_type', 'process')
+            
+            if activity_type == 'entry':
+                colors.append(self.color_palette.SEMANTIC['success'])
+            elif activity_type == 'conversion':
+                colors.append(self.color_palette.SEMANTIC['info'])
+            elif activity_type == 'error':
+                colors.append(self.color_palette.SEMANTIC['error'])
+            else:
+                colors.append(self.color_palette.SEMANTIC['neutral'])
+        
+        # Links
+        for (from_act, to_act), data in transitions.items():
+            if from_act in nodes and to_act in nodes:
+                source_indices.append(nodes[from_act])
+                target_indices.append(nodes[to_act])
+                values.append(data['frequency'])
+        
+        # Create Sankey diagram
+        fig = go.Figure(data=[go.Sankey(
+            node=dict(
+                pad=15,
+                thickness=20,
+                line=dict(color="black", width=0.5),
+                label=labels,
+                color=colors
+            ),
+            link=dict(
+                source=source_indices,
+                target=target_indices,
+                value=values,
+                color=[self.color_palette.get_color_with_opacity(self.color_palette.SEMANTIC['info'], 0.3)] * len(values)
+            )
+        )])
+        
+        fig.update_layout(
+            title={
+                'text': f"🌊 User Journey Flow - {len(process_data.activities)} Activities",
+                'font': {'size': self.typography.SCALE['lg'], 'color': self.text_color},
+                'x': 0.5,
+                'xanchor': 'center'
+            },
+            font_size=self.typography.SCALE['sm'],
+            height=600,
+            margin=dict(l=20, r=20, t=80, b=20)
+        )
+        
+        return self.apply_theme(fig, "🌊 Process Mining - Sankey Flow")
+    
+    def _create_process_funnel_diagram(self, process_data: 'ProcessMiningData',
+                                     transitions: Dict[Tuple[str, str], Dict[str, Any]],
+                                     show_frequencies: bool) -> go.Figure:
+        """
+        Create funnel-style diagram showing user drop-off at each step
+        """
+        # Find the main path through the process
+        main_path = self._identify_main_process_path(process_data, transitions)
+        
+        if not main_path:
+            return self._create_empty_process_figure("Cannot identify main process path for funnel view")
+        
+        # Calculate user counts at each step
+        step_counts = []
+        step_names = []
+        dropout_rates = []
+        
+        for i, activity in enumerate(main_path):
+            activity_data = process_data.activities.get(activity, {})
+            user_count = activity_data.get('unique_users', 0)
+            
+            step_counts.append(user_count)
+            step_names.append(activity)
+            
+            # Calculate dropout rate
+            if i > 0 and step_counts[i-1] > 0:
+                dropout = (step_counts[i-1] - user_count) / step_counts[i-1] * 100
+                dropout_rates.append(dropout)
+            else:
+                dropout_rates.append(0)
+        
+        # Create funnel chart
+        fig = go.Figure()
+        
+        # Add funnel bars
+        for i, (name, count, dropout) in enumerate(zip(step_names, step_counts, dropout_rates)):
+            color = self.color_palette.COLORBLIND_FRIENDLY[min(i, len(self.color_palette.COLORBLIND_FRIENDLY)-1)]
+            
+            fig.add_trace(go.Funnel(
+                y=step_names,
+                x=step_counts,
+                textposition="inside",
+                textinfo="value+percent initial",
+                opacity=0.8,
+                marker=dict(
+                    color=color,
+                    line=dict(
+                        width=2,
+                        color=self.text_color
+                    )
+                ),
+                connector=dict(
+                    line=dict(
+                        color=self.grid_color,
+                        dash="dot",
+                        width=3
+                    )
+                ),
+                hovertemplate=(
+                    "<b>%{label}</b><br>"
+                    "👥 Users: %{value:,}<br>"
+                    "📉 Dropout: " + f"{dropout:.1f}%" + "<br>"
+                    "<extra></extra>"
+                )
+            ))
+        
+        fig.update_layout(
+            title={
+                'text': f"📊 Process Funnel - User Journey Through {len(main_path)} Steps",
+                'font': {'size': self.typography.SCALE['lg'], 'color': self.text_color},
+                'x': 0.5,
+                'xanchor': 'center'
+            },
+            height=600,
+            margin=dict(l=50, r=50, t=80, b=50)
+        )
+        
+        return self.apply_theme(fig, "🔽 Process Mining - Funnel View")
+    
+    def _create_process_journey_map(self, process_data: 'ProcessMiningData',
+                                   transitions: Dict[Tuple[str, str], Dict[str, Any]],
+                                   show_frequencies: bool) -> go.Figure:
+        """
+        Create journey map visualization showing user flow with detailed statistics
+        """
+        main_path = self._identify_main_process_path(process_data, transitions)
+        
+        if not main_path:
+            return self._create_empty_process_figure("Cannot create journey map - no clear path found")
+        
+        fig = go.Figure()
+        
+        # Journey steps
+        y_positions = list(range(len(main_path)))
+        y_positions.reverse()  # Start from top
+        
+        step_sizes = []
+        step_colors = []
+        hover_texts = []
+        
+        for i, activity in enumerate(main_path):
+            activity_data = process_data.activities.get(activity, {})
+            user_count = activity_data.get('unique_users', 0)
+            frequency = activity_data.get('frequency', 0)
+            
+            # Scale marker size by user count
+            size = max(20, min(60, user_count / 10))
+            step_sizes.append(size)
+            
+            # Color by activity type
+            activity_type = activity_data.get('activity_type', 'process')
+            if activity_type == 'entry':
+                color = self.color_palette.SEMANTIC['success']
+            elif activity_type == 'conversion':
+                color = self.color_palette.SEMANTIC['info']
+            elif activity_type == 'error':
+                color = self.color_palette.SEMANTIC['error']
+            else:
+                color = self.color_palette.COLORBLIND_FRIENDLY[i % len(self.color_palette.COLORBLIND_FRIENDLY)]
+            
+            step_colors.append(color)
+            
+            # Hover text
+            hover_text = (
+                f"<b>Step {i+1}: {activity}</b><br>"
+                f"👥 Users: {user_count:,}<br>"
+                f"📊 Events: {frequency:,}<br>"
+                f"🏷️ Type: {activity_type}<br>"
+                f"⏱️ Avg Duration: {activity_data.get('avg_duration', 0):.1f}h"
+            )
+            
+            # Add dropout information if not first step
+            if i > 0:
+                prev_activity = main_path[i-1]
+                prev_users = process_data.activities.get(prev_activity, {}).get('unique_users', 0)
+                if prev_users > 0:
+                    dropout = (prev_users - user_count) / prev_users * 100
+                    hover_text += f"<br>📉 Dropout: {dropout:.1f}%"
+            
+            hover_text += "<extra></extra>"
+            hover_texts.append(hover_text)
+        
+        # Draw journey steps
+        fig.add_trace(go.Scatter(
+            x=[0.5] * len(main_path),
+            y=y_positions,
+            mode='markers+text',
+            marker=dict(
+                size=step_sizes,
+                color=step_colors,
+                line=dict(width=2, color='white'),
+                symbol='circle'
+            ),
+            text=[f"<b>{i+1}</b>" for i in range(len(main_path))],
+            textfont=dict(size=14, color='white'),
+            hovertemplate=hover_texts,
+            showlegend=False,
+            name="Journey Steps"
+        ))
+        
+        # Draw connecting lines
+        for i in range(len(main_path) - 1):
+            # Find transition data
+            transition_key = (main_path[i], main_path[i+1])
+            transition_data = transitions.get(transition_key, {})
+            frequency = transition_data.get('frequency', 0)
+            
+            # Line thickness based on frequency
+            line_width = max(2, min(8, frequency / 100))
+            
+            fig.add_trace(go.Scatter(
+                x=[0.5, 0.5],
+                y=[y_positions[i], y_positions[i+1]],
+                mode='lines',
+                line=dict(
+                    color=self.color_palette.SEMANTIC['info'],
+                    width=line_width
+                ),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+        
+        # Add step labels on the right
+        fig.add_trace(go.Scatter(
+            x=[0.8] * len(main_path),
+            y=y_positions,
+            mode='text',
+            text=main_path,
+            textfont=dict(
+                size=self.typography.SCALE['sm'],
+                color=self.text_color
+            ),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+        
+        fig.update_layout(
+            title={
+                'text': f"🗺️ User Journey Map - {len(main_path)} Steps",
+                'font': {'size': self.typography.SCALE['lg'], 'color': self.text_color},
+                'x': 0.5,
+                'xanchor': 'center'
+            },
+            xaxis=dict(
+                showgrid=False,
+                showticklabels=False,
+                zeroline=False,
+                range=[0, 1]
+            ),
+            yaxis=dict(
+                showgrid=False,
+                showticklabels=False,
+                zeroline=False
+            ),
+            height=max(400, len(main_path) * 80),
+            margin=dict(l=50, r=200, t=80, b=50),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        
+        return self.apply_theme(fig, "🗺️ Process Mining - Journey Map")
+    
+    def _create_process_network_diagram(self, process_data: 'ProcessMiningData',
+                                       transitions: Dict[Tuple[str, str], Dict[str, Any]],
+                                       show_frequencies: bool, show_statistics: bool) -> go.Figure:
+        """
+        Create network diagram (legacy visualization) - kept for advanced users
+        """
         # Build graph structure for layout
         import networkx as nx
         G = nx.DiGraph()
@@ -8053,7 +8428,7 @@ class FunnelVisualizer:
                 G.add_edge(from_activity, to_activity, **data)
         
         # Calculate layout positions
-        pos = self._calculate_layout_positions(G, layout_algorithm)
+        pos = self._calculate_layout_positions(G, "hierarchical")
         
         # Create figure
         fig = go.Figure()
@@ -8071,7 +8446,7 @@ class FunnelVisualizer:
         # Configure layout
         fig.update_layout(
             title={
-                'text': f"Process Mining Analysis - {len(process_data.activities)} Activities, {len(transitions)} Transitions",
+                'text': f"🕸️ Process Network - {len(process_data.activities)} Activities, {len(transitions)} Transitions",
                 'font': {'size': self.typography.SCALE['lg'], 'color': self.text_color},
                 'x': 0.5,
                 'xanchor': 'center'
@@ -8090,7 +8465,7 @@ class FunnelVisualizer:
         )
         
         # Apply theme
-        fig = self.apply_theme(fig, "Process Mining Analysis")
+        fig = self.apply_theme(fig, "🕸️ Process Mining - Network View")
         
         # Add insights annotations if available
         if show_statistics and process_data.insights:
@@ -8099,7 +8474,6 @@ class FunnelVisualizer:
         return fig
     
     def _calculate_layout_positions(self, G: 'nx.DiGraph', algorithm: str) -> Dict[str, Tuple[float, float]]:
-        """Calculate node positions based on layout algorithm"""
         import networkx as nx
         
         if algorithm == "hierarchical":
@@ -9794,18 +10168,10 @@ ORDER BY user_id, timestamp""",
                         )
                     
                     with col3:
-                        layout_algorithm = st.selectbox(
-                            "Layout algorithm",
-                            options=["hierarchical", "force", "circular"],
-                            index=0,
-                            help="How to arrange the process diagram"
-                        )
-                    
-                    with col4:
                         show_frequencies = st.checkbox(
                             "Show frequencies", 
                             value=True,
-                            help="Display transition counts on arrows"
+                            help="Display transition counts on visualizations"
                         )
                 
                 # Process Mining Analysis
@@ -9853,7 +10219,34 @@ ORDER BY user_id, timestamp""",
                         st.metric("Completion Rate", f"{completion_rate:.1f}%")
                     
                     # Process Mining Visualization
-                    st.markdown("#### 🌐 Process Diagram")
+                    st.markdown("#### � Process Visualization")
+                    
+                    # Visualization controls
+                    viz_col1, viz_col2, viz_col3 = st.columns([2, 1, 1])
+                    
+                    with viz_col1:
+                        visualization_type = st.selectbox(
+                            "📊 Visualization Type",
+                            options=["sankey", "journey", "funnel", "network"],
+                            format_func=lambda x: {
+                                "sankey": "🌊 Flow Diagram (Recommended)",
+                                "journey": "🗺️ Journey Map", 
+                                "funnel": "📊 Funnel Analysis",
+                                "network": "🕸️ Network View (Advanced)"
+                            }[x],
+                            help="Choose visualization style for process analysis"
+                        )
+                    
+                    with viz_col2:
+                        show_frequencies = st.checkbox("📈 Show Frequencies", True)
+                    
+                    with viz_col3:
+                        min_frequency_filter = st.number_input(
+                            "🔍 Min Frequency", 
+                            min_value=0, 
+                            value=0,
+                            help="Filter out transitions below this frequency"
+                        )
                     
                     try:
                         # Create process mining diagram
@@ -9861,15 +10254,27 @@ ORDER BY user_id, timestamp""",
                         
                         process_fig = visualizer.create_process_mining_diagram(
                             process_data,
-                            layout_algorithm=layout_algorithm,
+                            visualization_type=visualization_type,
                             show_frequencies=show_frequencies,
-                            show_statistics=True
+                            show_statistics=True,
+                            filter_min_frequency=min_frequency_filter if min_frequency_filter > 0 else None
                         )
                         
                         st.plotly_chart(process_fig, use_container_width=True)
                         
+                        # Add explanation for each visualization type
+                        if visualization_type == "sankey":
+                            st.info("🌊 **Flow Diagram**: Shows user journey as a flowing river - width represents user volume")
+                        elif visualization_type == "journey":
+                            st.info("🗺️ **Journey Map**: Step-by-step user progression with dropout rates")
+                        elif visualization_type == "funnel":
+                            st.info("📊 **Funnel Analysis**: Classic funnel showing conversion at each stage")
+                        elif visualization_type == "network":
+                            st.info("🕸️ **Network View**: Advanced graph showing all possible paths and cycles")
+                        
                     except Exception as e:
                         st.error(f"❌ Visualization error: {str(e)}")
+                        st.info("💡 Try switching to a different visualization type or adjusting the frequency filter")
                     
                     # Process Insights
                     if process_data.insights:

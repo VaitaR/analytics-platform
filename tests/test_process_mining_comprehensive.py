@@ -374,7 +374,7 @@ class TestProcessMiningVisualization:
         """Test that process mining diagram is created successfully"""
         fig = visualizer.create_process_mining_diagram(
             sample_process_data,
-            layout_algorithm="hierarchical",
+            visualization_type="network",
             show_frequencies=True,
             show_statistics=True
         )
@@ -388,14 +388,14 @@ class TestProcessMiningVisualization:
         assert fig.layout.plot_bgcolor == 'rgba(0,0,0,0)'
         assert fig.layout.paper_bgcolor == 'rgba(0,0,0,0)'
     
-    def test_different_layout_algorithms(self, visualizer, sample_process_data):
-        """Test different layout algorithms work"""
-        algorithms = ["hierarchical", "force", "circular"]
+    def test_different_visualization_types(self, visualizer, sample_process_data):
+        """Test different visualization types work"""
+        visualization_types = ["sankey", "funnel", "network", "journey"]
         
-        for algorithm in algorithms:
+        for viz_type in visualization_types:
             fig = visualizer.create_process_mining_diagram(
                 sample_process_data,
-                layout_algorithm=algorithm,
+                visualization_type=viz_type,
                 show_frequencies=True,
                 show_statistics=True
             )
@@ -419,7 +419,7 @@ class TestProcessMiningVisualization:
         
         fig = visualizer.create_process_mining_diagram(
             empty_data,
-            layout_algorithm="hierarchical",
+            visualization_type="network",
             show_frequencies=True,
             show_statistics=True
         )
@@ -434,7 +434,7 @@ class TestProcessMiningVisualization:
         # Test with high filter that removes all transitions
         fig = visualizer.create_process_mining_diagram(
             sample_process_data,
-            layout_algorithm="hierarchical",
+            visualization_type="network",
             show_frequencies=True,
             show_statistics=True,
             filter_min_frequency=1000  # Very high threshold
@@ -703,7 +703,7 @@ class TestProcessMiningIntegration:
         
         fig = visualizer.create_process_mining_diagram(
             process_data,
-            layout_algorithm="hierarchical",
+            visualization_type="network",
             show_frequencies=True,
             show_statistics=True
         )

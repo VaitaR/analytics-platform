@@ -636,28 +636,35 @@ class PathAnalyzer:
             cutoff_time = datetime.now() - timedelta(hours=time_window_hours)
             events_pl = events_pl.filter(pl.col('timestamp') >= cutoff_time)
         
-        # Build user journeys
-        user_journeys = self._build_user_journeys(events_pl)
+        # Build user journeys (optimized) - avoid dictionary conversion when possible
+        journey_df = self._build_user_journeys_optimized(events_pl)
         
-        # Discover activities and their characteristics
-        activities = self._discover_activities(events_pl, user_journeys)
+        # Discover activities and their characteristics (optimized)
+        activities = self._discover_activities(events_pl, None)  # Pass None to use optimized path
         
-        # Discover transitions between activities
-        transitions = self._discover_transitions(user_journeys, min_frequency)
+        # Discover transitions between activities (optimized)
+        transitions = self._discover_transitions_optimized(journey_df, min_frequency)
         
-        # Detect cycles and loops if requested
+        # Identify process variants (optimized)
+        variants = self._identify_process_variants_optimized(journey_df)
+        
+        # Find start and end activities (optimized)
+        start_activities, end_activities = self._identify_start_end_activities_optimized(journey_df)
+        
+        # Detect cycles and loops if requested (use optimized method first)
         cycles = []
         if include_cycles:
-            cycles = self._detect_cycles(user_journeys, transitions)
+            try:
+                # Try optimized Polars-based cycle detection first
+                cycles = self._detect_cycles_optimized(journey_df, transitions)
+            except Exception as e:
+                self.logger.warning(f"Optimized cycle detection failed: {str(e)}, falling back to legacy method")
+                # Fallback to legacy method only if optimized fails
+                user_journeys = self._build_user_journeys(events_pl)
+                cycles = self._detect_cycles(user_journeys, transitions)
         
-        # Identify process variants (common paths)
-        variants = self._identify_process_variants(user_journeys)
-        
-        # Find start and end activities
-        start_activities, end_activities = self._identify_start_end_activities(user_journeys)
-        
-        # Calculate process statistics
-        statistics = self._calculate_process_statistics(user_journeys, activities, transitions)
+        # Calculate process statistics (optimized to work with Polars DataFrame)
+        statistics = self._calculate_process_statistics_optimized(journey_df, activities, transitions)
         
         # Generate automatic insights
         insights = self._generate_process_insights(activities, transitions, cycles, variants, statistics)
@@ -673,91 +680,103 @@ class PathAnalyzer:
             insights=insights
         )
     
-    def _build_user_journeys(self, events_pl: pl.DataFrame) -> Dict[str, List[Dict[str, Any]]]:
-        """Build user journeys from events"""
-        journeys = {}
+    def _build_user_journeys_optimized(self, events_pl: pl.DataFrame) -> pl.DataFrame:
+        """Build user journeys using pure Polars for maximum performance"""
+        # Sort events by user and timestamp
+        sorted_events = events_pl.sort(['user_id', 'timestamp'])
         
-        # Group by user and sort by timestamp
-        user_events = (
-            events_pl
-            .sort(['user_id', 'timestamp'])
-            .group_by('user_id')
-            .agg([
-                pl.col('event_name').alias('events'),
-                pl.col('timestamp').alias('timestamps')
+        # Add sequence numbers and calculate durations using window functions
+        journey_df = (
+            sorted_events
+            .with_columns([
+                # Add row number within each user group
+                pl.int_range(pl.len()).over('user_id').alias('event_order'),
+                
+                # Calculate duration to next event (in hours)
+                (
+                    pl.col('timestamp').shift(-1).over('user_id') - pl.col('timestamp')
+                ).dt.total_seconds().truediv(3600).alias('duration_to_next'),
+                
+                # Mark start and end events
+                (pl.int_range(pl.len()).over('user_id') == 0).alias('is_start'),
+                (pl.int_range(pl.len()).over('user_id') == (pl.len().over('user_id') - 1)).alias('is_end')
             ])
         )
         
-        for row in user_events.iter_rows(named=True):
-            user_id = row['user_id']
-            events = row['events']
-            timestamps = row['timestamps']
+        return journey_df
+    
+    def _build_user_journeys(self, events_pl: pl.DataFrame) -> Dict[str, List[Dict[str, Any]]]:
+        """Build user journeys from events - optimized version"""
+        # Use optimized Polars implementation
+        journey_df = self._build_user_journeys_optimized(events_pl)
+        
+        # Convert to dictionary format only when needed for legacy methods
+        journeys = {}
+        
+        # Group by user_id and iterate
+        for user_id, user_df in journey_df.group_by('user_id'):
+            user_id = user_id[0] if isinstance(user_id, tuple) else user_id  # Handle group key
             
             journey = []
-            for i, (event, timestamp) in enumerate(zip(events, timestamps)):
+            for row in user_df.iter_rows(named=True):
                 journey.append({
-                    'event': event,
-                    'timestamp': timestamp,
-                    'order': i,
-                    'duration_to_next': None
+                    'event': row['event_name'],
+                    'timestamp': row['timestamp'],
+                    'order': row['event_order'],
+                    'duration_to_next': row['duration_to_next'],
+                    'is_start': row['is_start'],
+                    'is_end': row['is_end']
                 })
-                
-                # Calculate duration to next event
-                if i < len(timestamps) - 1:
-                    duration = (timestamps[i + 1] - timestamp).total_seconds() / 3600  # hours
-                    journey[i]['duration_to_next'] = duration
             
-            journeys[user_id] = journey
+            journeys[str(user_id)] = journey
         
         return journeys
     
     def _discover_activities(self, events_pl: pl.DataFrame, user_journeys: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
-        """Discover activities and their characteristics"""
-        activities = {}
+        """Discover activities and their characteristics - optimized version"""
+        # Get optimized journey DataFrame
+        journey_df = self._build_user_journeys_optimized(events_pl)
         
-        # Calculate basic activity statistics
+        # Calculate activity statistics using pure Polars
         activity_stats = (
-            events_pl
+            journey_df
             .group_by('event_name')
             .agg([
                 pl.len().alias('frequency'),
                 pl.col('user_id').n_unique().alias('unique_users'),
                 pl.col('timestamp').min().alias('first_occurrence'),
-                pl.col('timestamp').max().alias('last_occurrence')
+                pl.col('timestamp').max().alias('last_occurrence'),
+                pl.col('duration_to_next').filter(pl.col('duration_to_next').is_not_null()).mean().alias('avg_duration'),
+                pl.col('is_start').sum().alias('start_count'),
+                pl.col('is_end').sum().alias('end_count')
             ])
         )
         
+        activities = {}
         for row in activity_stats.iter_rows(named=True):
             activity_name = row['event_name']
             
-            # Calculate activity characteristics
-            durations = []
-            is_start_activity = 0
-            is_end_activity = 0
-            
-            for journey in user_journeys.values():
-                for i, step in enumerate(journey):
-                    if step['event'] == activity_name:
-                        if step['duration_to_next']:
-                            durations.append(step['duration_to_next'])
-                        
-                        # Check if this is start/end activity
-                        if i == 0:
-                            is_start_activity += 1
-                        if i == len(journey) - 1:
-                            is_end_activity += 1
-            
             # Classify activity type
-            activity_type = self._classify_activity_type(activity_name, is_start_activity, is_end_activity, row['frequency'])
+            activity_type = self._classify_activity_type(
+                activity_name, 
+                row['start_count'], 
+                row['end_count'], 
+                row['frequency']
+            )
+            
+            # Calculate success rate (simplified for performance)
+            success_rate = self._calculate_activity_success_rate_optimized(
+                activity_name, journey_df
+            )
             
             activities[activity_name] = {
                 'frequency': row['frequency'],
                 'unique_users': row['unique_users'],
-                'avg_duration': sum(durations) / len(durations) if durations else 0,
-                'is_start': is_start_activity > 0,
-                'is_end': is_end_activity > 0,
+                'avg_duration': row['avg_duration'] or 0,
+                'is_start': row['start_count'] > 0,
+                'is_end': row['end_count'] > 0,
                 'activity_type': activity_type,
-                'success_rate': self._calculate_activity_success_rate(activity_name, user_journeys),
+                'success_rate': success_rate,
                 'first_occurrence': row['first_occurrence'],
                 'last_occurrence': row['last_occurrence']
             }
@@ -790,7 +809,7 @@ class PathAnalyzer:
         for transition, frequency in transition_counts.items():
             if frequency >= min_frequency:
                 from_event, to_event = transition
-                durations = transition_durations[transition]
+                durations = transition_durations[transition];
                 
                 transitions[transition] = {
                     'frequency': frequency,
@@ -837,143 +856,226 @@ class PathAnalyzer:
         cycles.sort(key=lambda x: x['frequency'], reverse=True)
         return cycles[:10]  # Return top 10 cycles
     
-    def _identify_process_variants(self, user_journeys: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-        """Identify common process variants (paths)"""
-        path_counts = defaultdict(int)
-        path_success = defaultdict(list)
-        path_durations = defaultdict(list)
+    def _detect_cycles_optimized(self, journey_df: pl.DataFrame, transitions: Dict[Tuple[str, str], Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Optimized cycle detection using Polars operations instead of NetworkX.
+        Focuses on finding the most common and impactful cycles efficiently.
+        """
+        cycles = []
         
-        for user_id, journey in user_journeys.items():
-            path = tuple(step['event'] for step in journey)
-            path_counts[path] += 1
+        try:
+            # Create transitions DataFrame for easier manipulation
+            if not transitions:
+                return cycles
             
-            # Calculate path success (did user complete a conversion event?)
-            success = self._calculate_path_success(journey)
-            path_success[path].append(success)
-            
-            # Calculate total path duration
-            total_duration = sum(step.get('duration_to_next', 0) for step in journey[:-1])
-            path_durations[path].append(total_duration)
-        
-        # Build variants list
-        variants = []
-        total_journeys = len(user_journeys)
-        min_variant_frequency = max(1, total_journeys // 10)  # At least 10% of journeys or 1
-        
-        for path, frequency in path_counts.items():
-            if frequency >= min_variant_frequency:  # Dynamic minimum frequency for variant
-                success_rate = sum(path_success[path]) / len(path_success[path]) * 100
-                avg_duration = sum(path_durations[path]) / len(path_durations[path])
-                
-                variants.append({
-                    'path': list(path),
-                    'frequency': frequency,
-                    'success_rate': success_rate,
-                    'avg_duration': avg_duration,
-                    'variant_type': self._classify_variant_type(path, success_rate)
+            transition_data = []
+            for (from_event, to_event), data in transitions.items():
+                transition_data.append({
+                    'from_event': from_event,
+                    'to_event': to_event,
+                    'frequency': data['frequency']
                 })
+            
+            transitions_df = pl.DataFrame(transition_data)
+            
+            # 1. Find self-loops (most common cycles)
+            self_loops = (
+                transitions_df
+                .filter(pl.col('from_event') == pl.col('to_event'))
+                .sort('frequency', descending=True)
+            )
+            
+            for row in self_loops.iter_rows(named=True):
+                event = row['from_event']
+                frequency = row['frequency']
+                
+                # Calculate impact based on frequency
+                impact = 'negative' if any(keyword in event.lower() for keyword in ['error', 'fail', 'timeout']) else 'positive'
+                
+                cycles.append({
+                    'path': [event],
+                    'frequency': frequency,
+                    'type': 'loop',
+                    'impact': impact,
+                    'avg_cycle_time': self._estimate_avg_cycle_time_optimized(journey_df, [event])
+                })
+            
+            # 2. Find 2-step cycles (A -> B -> A) using efficient joins
+            two_step_cycles = (
+                transitions_df
+                .join(
+                    transitions_df,
+                    left_on='to_event',
+                    right_on='from_event',
+                    how='inner',
+                    suffix='_right'
+                )
+                .filter(pl.col('from_event') == pl.col('to_event_right'))  # Forms a cycle
+                .filter(pl.col('from_event') != pl.col('to_event'))  # Not self-loops
+                .with_columns([
+                    pl.min_horizontal(['frequency', 'frequency_right']).alias('cycle_frequency')
+                ])
+                .select([
+                    'from_event',
+                    pl.col('to_event').alias('middle_event'),
+                    'cycle_frequency'
+                ])
+                .sort('cycle_frequency', descending=True)
+                .limit(5)  # Top 5 two-step cycles
+            )
+            
+            for row in two_step_cycles.iter_rows(named=True):
+                path = [row['from_event'], row['middle_event']]
+                frequency = row['cycle_frequency']
+                
+                # Assess impact
+                impact = 'negative' if any('error' in event.lower() or 'fail' in event.lower() for event in path) else 'positive'
+                
+                cycles.append({
+                    'path': path,
+                    'frequency': frequency,
+                    'type': 'cycle',
+                    'impact': impact,
+                    'avg_cycle_time': self._estimate_avg_cycle_time_optimized(journey_df, path)
+                })
+            
+            # 3. Find 3-step cycles using path extension (limited for performance)
+            if len(transitions_df) < 50:  # Only for smaller datasets to avoid complexity explosion
+                three_step_cycles = self._find_three_step_cycles_optimized(transitions_df)
+                cycles.extend(three_step_cycles[:3])  # Top 3 three-step cycles
+            
+        except Exception as e:
+            self.logger.warning(f"Optimized cycle detection failed: {str(e)}, falling back to simplified detection")
+            # Simplified fallback: just find self-loops from transitions
+            for (from_event, to_event), data in transitions.items():
+                if from_event == to_event:
+                    cycles.append({
+                        'path': [from_event],
+                        'frequency': data['frequency'],
+                        'type': 'loop',
+                        'impact': 'negative' if 'error' in from_event.lower() else 'positive',
+                        'avg_cycle_time': 0
+                    })
         
-        # Sort by frequency
-        variants.sort(key=lambda x: x['frequency'], reverse=True)
-        return variants[:20]  # Return top 20 variants
+        # Sort by frequency and return top cycles
+        cycles.sort(key=lambda x: x['frequency'], reverse=True)
+        return cycles[:10]  # Return top 10 cycles
     
-    def _identify_start_end_activities(self, user_journeys: Dict[str, List[Dict[str, Any]]]) -> Tuple[List[str], List[str]]:
-        """Identify start and end activities"""
-        start_counts = defaultdict(int)
-        end_counts = defaultdict(int)
+    def _find_three_step_cycles_optimized(self, transitions_df: pl.DataFrame) -> List[Dict[str, Any]]:
+        """Find 3-step cycles (A -> B -> C -> A) efficiently"""
+        cycles = []
         
-        for journey in user_journeys.values():
-            if journey:
-                start_counts[journey[0]['event']] += 1
-                end_counts[journey[-1]['event']] += 1
+        try:
+            # Join transitions to find 3-step paths
+            three_step_paths = (
+                transitions_df
+                .join(
+                    transitions_df,
+                    left_on='to_event',
+                    right_on='from_event',
+                    how='inner',
+                    suffix='_2'
+                )
+                .join(
+                    transitions_df,
+                    left_on='to_event_2',
+                    right_on='from_event',
+                    how='inner',
+                    suffix='_3'
+                )
+                .filter(pl.col('from_event') == pl.col('to_event_3'))  # Forms a cycle
+                .filter(
+                    (pl.col('from_event') != pl.col('to_event')) &
+                    (pl.col('to_event') != pl.col('to_event_2')) &
+                    (pl.col('to_event_2') != pl.col('from_event'))
+                )  # Ensure all different steps
+                .with_columns([
+                    pl.min_horizontal(['frequency', 'frequency_2', 'frequency_3']).alias('cycle_frequency')
+                ])
+                .select([
+                    'from_event',
+                    pl.col('to_event').alias('step2'),
+                    pl.col('to_event_2').alias('step3'),
+                    'cycle_frequency'
+                ])
+                .sort('cycle_frequency', descending=True)
+                .limit(3)  # Top 3 only
+            )
+            
+            for row in three_step_paths.iter_rows(named=True):
+                path = [row['from_event'], row['step2'], row['step3']]
+                frequency = row['cycle_frequency']
+                
+                # Assess impact
+                impact = 'negative' if any('error' in event.lower() or 'fail' in event.lower() for event in path) else 'positive'
+                
+                cycles.append({
+                    'path': path,
+                    'frequency': frequency,
+                    'type': 'cycle',
+                    'impact': impact,
+                    'avg_cycle_time': 0  # Simplified for performance
+                })
+                
+        except Exception as e:
+            self.logger.warning(f"3-step cycle detection failed: {str(e)}")
         
-        # Get activities that appear as start/end with significant frequency
-        total_journeys = len(user_journeys)
-        start_threshold = max(1, total_journeys * 0.05)  # 5% threshold
-        end_threshold = max(1, total_journeys * 0.05)
-        
-        start_activities = [event for event, count in start_counts.items() if count >= start_threshold]
-        end_activities = [event for event, count in end_counts.items() if count >= end_threshold]
-        
-        return start_activities, end_activities
+        return cycles
     
-    def _calculate_process_statistics(self, user_journeys: Dict[str, List[Dict[str, Any]]], 
-                                    activities: Dict[str, Dict[str, Any]], 
-                                    transitions: Dict[Tuple[str, str], Dict[str, Any]]) -> Dict[str, float]:
-        """Calculate overall process statistics"""
-        total_cases = len(user_journeys)
+    def _estimate_avg_cycle_time_optimized(self, journey_df: pl.DataFrame, cycle_path: List[str]) -> float:
+        """Estimate average cycle time using Polars operations"""
+        try:
+            if len(cycle_path) == 1:
+                # Self-loop: time between consecutive occurrences of same event
+                event = cycle_path[0]
+                
+                # Find consecutive occurrences of the same event for each user
+                consecutive_times = (
+                    journey_df
+                    .filter(pl.col('event_name') == event)
+                    .sort(['user_id', 'timestamp'])
+                    .with_columns([
+                        pl.col('timestamp').shift(-1).over('user_id').alias('next_timestamp')
+                    ])
+                    .filter(pl.col('next_timestamp').is_not_null())
+                    .with_columns([
+                        (pl.col('next_timestamp') - pl.col('timestamp')).dt.total_hours().alias('cycle_time_hours')
+                    ])
+                    .filter(pl.col('cycle_time_hours') > 0)  # Positive time differences only
+                )
+                
+                if consecutive_times.height > 0:
+                    return consecutive_times.select(pl.col('cycle_time_hours').mean()).item() or 0
+                
+            else:
+                # Multi-step cycle: simplified estimation
+                # Average time between first and last event in cycle path
+                first_event = cycle_path[0]
+                last_event = cycle_path[-1]
+                
+                cycle_times = (
+                    journey_df
+                    .filter(pl.col('event_name').is_in([first_event, last_event]))
+                    .sort(['user_id', 'timestamp'])
+                    .group_by('user_id')
+                    .agg([
+                        pl.col('timestamp').min().alias('start_time'),
+                        pl.col('timestamp').max().alias('end_time')
+                    ])
+                    .filter(pl.col('start_time') != pl.col('end_time'))
+                    .with_columns([
+                        (pl.col('end_time') - pl.col('start_time')).dt.total_hours().alias('cycle_time_hours')
+                    ])
+                )
+                
+                if cycle_times.height > 0:
+                    return cycle_times.select(pl.col('cycle_time_hours').mean()).item() or 0
+                    
+        except Exception as e:
+            self.logger.warning(f"Cycle time estimation failed: {str(e)}")
         
-        # Calculate average journey duration
-        journey_durations = []
-        for journey in user_journeys.values():
-            duration = sum(step.get('duration_to_next', 0) for step in journey[:-1])
-            journey_durations.append(duration)
-        
-        avg_duration = sum(journey_durations) / len(journey_durations) if journey_durations else 0
-        
-        # Calculate completion rate (journeys that end with success events)
-        success_events = {'purchase', 'conversion', 'complete', 'finish', 'success'}
-        completed_journeys = 0
-        
-        for journey in user_journeys.values():
-            if journey and any(keyword in journey[-1]['event'].lower() for keyword in success_events):
-                completed_journeys += 1
-        
-        completion_rate = (completed_journeys / total_cases) * 100 if total_cases > 0 else 0
-        
-        # Count unique paths
-        unique_paths = len(set(tuple(step['event'] for step in journey) for journey in user_journeys.values()))
-        
-        return {
-            'total_cases': total_cases,
-            'avg_duration': avg_duration,
-            'completion_rate': completion_rate,
-            'unique_paths': unique_paths,
-            'total_activities': len(activities),
-            'total_transitions': len(transitions)
-        }
-    
-    def _generate_process_insights(self, activities: Dict[str, Dict[str, Any]], 
-                                 transitions: Dict[Tuple[str, str], Dict[str, Any]], 
-                                 cycles: List[Dict[str, Any]], 
-                                 variants: List[Dict[str, Any]], 
-                                 statistics: Dict[str, float]) -> List[str]:
-        """Generate automatic insights about the process"""
-        insights = []
-        
-        # Process complexity insight
-        if statistics['unique_paths'] > statistics['total_cases'] * 0.8:
-            insights.append(f"🌟 High process variability: {statistics['unique_paths']:.0f} unique paths from {statistics['total_cases']:.0f} cases")
-        
-        # Bottleneck detection
-        bottleneck_activities = []
-        for name, data in activities.items():
-            if data['avg_duration'] > 24:  # More than 24 hours
-                bottleneck_activities.append((name, data['avg_duration']))
-        
-        if bottleneck_activities:
-            bottleneck_activities.sort(key=lambda x: x[1], reverse=True)
-            insights.append(f"🚨 Bottleneck detected: '{bottleneck_activities[0][0]}' takes {bottleneck_activities[0][1]:.1f} hours on average")
-        
-        # Popular path insight
-        if variants:
-            top_variant = variants[0]
-            insights.append(f"📈 Most common path: {' → '.join(top_variant['path'][:3])}... ({top_variant['frequency']} users, {top_variant['success_rate']:.1f}% success)")
-        
-        # Cycle insight
-        problematic_cycles = [c for c in cycles if c.get('impact') == 'negative']
-        if problematic_cycles:
-            cycle = problematic_cycles[0]
-            insights.append(f"🔄 Problematic loop detected: {' → '.join(cycle['path'])} ({cycle['frequency']} occurrences)")
-        
-        # Completion rate insight
-        if statistics['completion_rate'] < 30:
-            insights.append(f"⚠️ Low completion rate: Only {statistics['completion_rate']:.1f}% of users complete the process")
-        elif statistics['completion_rate'] > 70:
-            insights.append(f"✅ High completion rate: {statistics['completion_rate']:.1f}% of users successfully complete the process")
-        
-        return insights
-    
+        return 0.0
+
     # Helper methods
     def _classify_activity_type(self, activity_name: str, start_count: int, end_count: int, frequency: int) -> str:
         """Classify activity type based on patterns"""
@@ -1019,6 +1121,80 @@ class PathAnalyzer:
                         success_count += 1
         
         return (success_count / total_count) * 100 if total_count > 0 else 0
+    
+    def _calculate_activity_success_rate_optimized(self, activity_name: str, journey_df: pl.DataFrame) -> float:
+        """Calculate activity success rate using optimized Polars operations"""
+        # Define success events
+        success_events = ['purchase', 'conversion', 'complete', 'finish', 'success', 'checkout']
+        
+        # Count users who had this activity and later had a success event
+        users_with_activity = (
+            journey_df
+            .filter(pl.col('event_name') == activity_name)
+            .select('user_id')
+            .unique()
+        )
+        
+        if users_with_activity.height == 0:
+            return 0.0
+        
+        # Count how many of these users eventually had a success event
+        users_with_success = (
+            journey_df
+            .filter(
+                pl.col('user_id').is_in(users_with_activity.get_column('user_id')) &
+                pl.col('event_name').str.to_lowercase().str.contains_any(success_events)
+            )
+            .select('user_id')
+            .unique()
+            .height
+        )
+        
+        return (users_with_success / users_with_activity.height) * 100
+    
+    def _discover_transitions_optimized(self, journey_df: pl.DataFrame, min_frequency: int) -> Dict[Tuple[str, str], Dict[str, Any]]:
+        """Discover transitions using optimized Polars operations"""
+        # Create transitions by joining events with their next event
+        transitions_df = (
+            journey_df
+            .with_columns([
+                # Get next event for each user
+                pl.col('event_name').shift(-1).over('user_id').alias('next_event'),
+                pl.col('timestamp').shift(-1).over('user_id').alias('next_timestamp')
+            ])
+            .filter(pl.col('next_event').is_not_null())  # Remove last events that have no next
+        )
+        
+        # Calculate transition statistics
+        transition_stats = (
+            transitions_df
+            .group_by(['event_name', 'next_event'])
+            .agg([
+                pl.len().alias('frequency'),
+                pl.col('user_id').n_unique().alias('unique_users'),
+                pl.col('duration_to_next').filter(pl.col('duration_to_next').is_not_null()).mean().alias('avg_duration')
+            ])
+            .filter(pl.col('frequency') >= min_frequency)
+        )
+        
+        # Calculate total transitions for probability calculation
+        total_transitions = transition_stats.get_column('frequency').sum()
+        
+        transitions = {}
+        for row in transition_stats.iter_rows(named=True):
+            from_event = row['event_name']
+            to_event = row['next_event']
+            transition = (from_event, to_event)
+            
+            transitions[transition] = {
+                'frequency': row['frequency'],
+                'unique_users': row['unique_users'],
+                'avg_duration': row['avg_duration'] or 0,
+                'probability': (row['frequency'] / total_transitions) * 100 if total_transitions > 0 else 0,
+                'transition_type': self._classify_transition_type(from_event, to_event, row['frequency'])
+            }
+        
+        return transitions
     
     def _calculate_cycle_frequency(self, cycle_path: List[str], user_journeys: Dict[str, List[Dict[str, Any]]]) -> int:
         """Calculate how often a cycle occurs"""
@@ -1078,3 +1254,213 @@ class PathAnalyzer:
             return 'low_success'
         else:
             return 'problematic'
+    
+    def _identify_process_variants_optimized(self, journey_df: pl.DataFrame) -> List[Dict[str, Any]]:
+        """Identify process variants using optimized Polars operations"""
+        try:
+            # Create path strings for each user journey
+            user_paths = (
+                journey_df
+                .sort(['user_id', 'event_order'])
+                .group_by('user_id')
+                .agg([
+                    pl.col('event_name').str.concat(' → ').alias('path_string'),
+                    pl.col('duration_to_next').filter(pl.col('duration_to_next').is_not_null()).sum().alias('total_duration')
+                ])
+            )
+            
+            # Group by path to find variants
+            path_stats = (
+                user_paths
+                .group_by('path_string')
+                .agg([
+                    pl.len().alias('frequency'),
+                    pl.col('total_duration').mean().alias('avg_duration')
+                ])
+            )
+            
+            # Calculate success rates (simplified)
+            success_events = ['purchase', 'conversion', 'complete', 'finish', 'success', 'checkout']
+            path_success = (
+                user_paths
+                .with_columns([
+                    pl.col('path_string').str.to_lowercase().str.contains_any(success_events).alias('has_success')
+                ])
+                .group_by('path_string')
+                .agg([
+                    pl.col('has_success').mean().mul(100).alias('success_rate')
+                ])
+            )
+            
+            # Join stats with success rates
+            variant_stats = (
+                path_stats
+                .join(path_success, on='path_string', how='left')
+                .filter(pl.col('frequency') >= max(1, user_paths.height // 10))  # Dynamic threshold
+                .sort('frequency', descending=True)
+            )
+            
+            variants = []
+            for row in variant_stats.iter_rows(named=True):
+                path_steps = row['path_string'].split(' → ')
+                variants.append({
+                    'path': path_steps,
+                    'frequency': row['frequency'],
+                    'success_rate': row['success_rate'] or 0,
+                    'avg_duration': row['avg_duration'] or 0,
+                    'variant_type': self._classify_variant_type(tuple(path_steps), row['success_rate'] or 0)
+                })
+            
+            return variants[:20]  # Return top 20 variants
+            
+        except Exception as e:
+            self.logger.warning(f"Optimized variant discovery failed: {str(e)}, returning empty list")
+            return []
+    
+    def _identify_start_end_activities_optimized(self, journey_df: pl.DataFrame) -> Tuple[List[str], List[str]]:
+        """Identify start and end activities using optimized Polars operations"""
+        try:
+            # Count start activities (first event in each user journey)
+            start_counts = (
+                journey_df
+                .filter(pl.col('is_start'))
+                .group_by('event_name')
+                .agg(pl.len().alias('count'))
+            )
+            
+            # Count end activities (last event in each user journey)
+            end_counts = (
+                journey_df
+                .filter(pl.col('is_end'))
+                .group_by('event_name')
+                .agg(pl.len().alias('count'))
+            )
+            
+            # Get total number of journeys for threshold calculation
+            total_journeys = journey_df.select('user_id').n_unique()
+            threshold = max(1, total_journeys * 0.05)  # 5% threshold
+            
+            # Extract activities above threshold
+            start_activities = [
+                row['event_name'] for row in start_counts.iter_rows(named=True)
+                if row['count'] >= threshold
+            ]
+            
+            end_activities = [
+                row['event_name'] for row in end_counts.iter_rows(named=True)
+                if row['count'] >= threshold
+            ]
+            
+            return start_activities, end_activities
+            
+        except Exception as e:
+            self.logger.warning(f"Optimized start/end activity discovery failed: {str(e)}, returning empty lists")
+            return [], []
+
+    def _calculate_process_statistics_optimized(self, journey_df: pl.DataFrame, 
+                                               activities: Dict[str, Dict[str, Any]], 
+                                               transitions: Dict[Tuple[str, str], Dict[str, Any]]) -> Dict[str, float]:
+        """Calculate overall process statistics using optimized Polars operations"""
+        try:
+            # Get basic counts
+            total_cases = journey_df.select('user_id').n_unique()
+            
+            # Calculate average journey duration using Polars
+            journey_durations = (
+                journey_df
+                .group_by('user_id')
+                .agg(pl.col('duration_to_next').filter(pl.col('duration_to_next').is_not_null()).sum().alias('total_duration'))
+                .select('total_duration')
+                .filter(pl.col('total_duration').is_not_null())
+            )
+            
+            avg_duration = journey_durations.select(pl.col('total_duration').mean()).item() or 0
+            
+            # Calculate completion rate (journeys that end with success events)
+            success_events = ['purchase', 'conversion', 'complete', 'finish', 'success', 'checkout']
+            
+            completed_journeys = (
+                journey_df
+                .filter(pl.col('is_end'))  # Only look at end events
+                .filter(pl.col('event_name').str.to_lowercase().str.contains_any(success_events))
+                .select('user_id')
+                .n_unique()
+            )
+            
+            completion_rate = (completed_journeys / total_cases) * 100 if total_cases > 0 else 0
+            
+            # Count unique paths
+            unique_paths = (
+                journey_df
+                .sort(['user_id', 'event_order'])
+                .group_by('user_id')
+                .agg(pl.col('event_name').str.concat(' → ').alias('path'))
+                .select('path')
+                .n_unique()
+            )
+            
+            return {
+                'total_cases': total_cases,
+                'avg_duration': avg_duration,
+                'completion_rate': completion_rate,
+                'unique_paths': unique_paths,
+                'total_activities': len(activities),
+                'total_transitions': len(transitions)
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"Optimized statistics calculation failed: {str(e)}, using fallback")
+            return {
+                'total_cases': 0,
+                'avg_duration': 0,
+                'completion_rate': 0,
+                'unique_paths': 0,
+                'total_activities': len(activities),
+                'total_transitions': len(transitions)
+            }
+    
+    def _generate_process_insights(self, activities: Dict[str, Dict[str, Any]], 
+                                 transitions: Dict[Tuple[str, str], Dict[str, Any]], 
+                                 cycles: List[Dict[str, Any]], 
+                                 variants: List[Dict[str, Any]], 
+                                 statistics: Dict[str, float]) -> List[str]:
+        """Generate automatic insights about the process"""
+        insights = []
+        
+        try:
+            # Process complexity insight
+            if statistics['unique_paths'] > statistics['total_cases'] * 0.8:
+                insights.append(f"🌟 High process variability: {statistics['unique_paths']:.0f} unique paths from {statistics['total_cases']:.0f} cases")
+            
+            # Bottleneck detection
+            bottleneck_activities = []
+            for name, data in activities.items():
+                if data['avg_duration'] > 24:  # More than 24 hours
+                    bottleneck_activities.append((name, data['avg_duration']))
+            
+            if bottleneck_activities:
+                bottleneck_activities.sort(key=lambda x: x[1], reverse=True)
+                insights.append(f"🚨 Bottleneck detected: '{bottleneck_activities[0][0]}' takes {bottleneck_activities[0][1]:.1f} hours on average")
+            
+            # Popular path insight
+            if variants:
+                top_variant = variants[0]
+                insights.append(f"📈 Most common path: {' → '.join(top_variant['path'][:3])}... ({top_variant['frequency']} users, {top_variant['success_rate']:.1f}% success)")
+            
+            # Cycle insight
+            problematic_cycles = [c for c in cycles if c.get('impact') == 'negative']
+            if problematic_cycles:
+                cycle = problematic_cycles[0]
+                insights.append(f"🔄 Problematic loop detected: {' → '.join(cycle['path'])} ({cycle['frequency']} occurrences)")
+            
+            # Completion rate insight
+            if statistics['completion_rate'] < 30:
+                insights.append(f"⚠️ Low completion rate: Only {statistics['completion_rate']:.1f}% of users complete the process")
+            elif statistics['completion_rate'] > 70:
+                insights.append(f"✅ High completion rate: {statistics['completion_rate']:.1f}% of users successfully complete the process")
+            
+        except Exception as e:
+            self.logger.warning(f"Insight generation failed: {str(e)}")
+            insights.append("⚠️ Unable to generate insights due to data processing error")
+        
+        return insights
