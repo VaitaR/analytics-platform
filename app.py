@@ -7048,7 +7048,9 @@ class FunnelVisualizer:
             "level": (
                 "Simple"
                 if complexity_score < 30
-                else "Moderate" if complexity_score < 60 else "Complex"
+                else "Moderate"
+                if complexity_score < 60
+                else "Complex"
             ),
             "recommendations": self._get_complexity_recommendations(complexity_score),
         }
@@ -9574,9 +9576,9 @@ def get_comprehensive_performance_analysis() -> dict[str, Any]:
     if hasattr(st.session_state, "last_calculator") and hasattr(
         st.session_state.last_calculator, "_performance_metrics"
     ):
-        analysis["funnel_calculator_metrics"] = (
-            st.session_state.last_calculator._performance_metrics
-        )
+        analysis[
+            "funnel_calculator_metrics"
+        ] = st.session_state.last_calculator._performance_metrics
 
         # Get bottleneck analysis from calculator
         bottleneck_analysis = st.session_state.last_calculator.get_bottleneck_analysis()
@@ -10386,16 +10388,12 @@ ORDER BY user_id, timestamp""",
                             "📈 Conv. Rate", width="small"
                         ),
                         "Drop-offs": st.column_config.TextColumn("🚪 Drop-offs", width="small"),
-                        "Drop-off Rate": st.column_config.TextColumn(
-                            "📉 Drop Rate", width="small"
-                        ),
+                        "Drop-off Rate": st.column_config.TextColumn("📉 Drop Rate", width="small"),
                         "Avg Views/User": st.column_config.TextColumn(
                             "👁️ Avg Views", width="small"
                         ),
                         "Avg Time": st.column_config.TextColumn("⏱️ Avg Time", width="small"),
-                        "Median Time": st.column_config.TextColumn(
-                            "📊 Median Time", width="small"
-                        ),
+                        "Median Time": st.column_config.TextColumn("📊 Median Time", width="small"),
                         "Engagement Score": st.column_config.TextColumn(
                             "🎯 Engagement", width="small"
                         ),
@@ -10994,7 +10992,9 @@ ORDER BY user_id, timestamp""",
                                         "Performance": (
                                             "🏆 High"
                                             if final_rate > 50
-                                            else "📈 Medium" if final_rate > 20 else "📉 Low"
+                                            else "📈 Medium"
+                                            if final_rate > 20
+                                            else "📉 Low"
                                         ),
                                     }
                                 )
@@ -11097,7 +11097,9 @@ ORDER BY user_id, timestamp""",
                                                 "Impact": (
                                                     "🔥 High"
                                                     if count > 100
-                                                    else "⚡ Medium" if count > 10 else "💡 Low"
+                                                    else "⚡ Medium"
+                                                    if count > 10
+                                                    else "💡 Low"
                                                 ),
                                             }
                                         )
@@ -11670,9 +11672,7 @@ ORDER BY user_id, timestamp""",
                 tab_idx += 1
 
     else:
-        st.info(
-            "👈 Please select and load a data source from the sidebar to begin funnel analysis"
-        )
+        st.info("👈 Please select and load a data source from the sidebar to begin funnel analysis")
 
     # Test visualizations button
     if "analysis_results" in st.session_state and st.session_state.analysis_results:
