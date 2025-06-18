@@ -25,7 +25,7 @@ from functools import wraps
 from models import (
     CountingMethod, ReentryMode, FunnelOrder, FunnelConfig, 
     TimeToConvertStats, CohortData, PathAnalysisData, 
-    StatSignificanceResult, FunnelResults
+    StatSignificanceResult, FunnelResults, ProcessMiningData
 )
 from path_analyzer import PathAnalyzer
 
@@ -8001,6 +8001,349 @@ class FunnelVisualizer:
         visualizer = FunnelVisualizer()
         return visualizer.create_enhanced_path_analysis_chart(path_data)
     
+    def create_process_mining_diagram(self, process_data: 'ProcessMiningData',
+                                     layout_algorithm: str = "hierarchical",
+                                     show_frequencies: bool = True,
+                                     show_statistics: bool = True,
+                                     filter_min_frequency: Optional[int] = None) -> go.Figure:
+        """
+        Create interactive process mining diagram in BPMN style
+        
+        Args:
+            process_data: ProcessMiningData with discovered process structure
+            layout_algorithm: Layout algorithm ('hierarchical', 'force', 'circular')
+            show_frequencies: Whether to show transition frequencies
+            show_statistics: Whether to show activity statistics
+            filter_min_frequency: Filter transitions below this frequency
+            
+        Returns:
+            Plotly figure with interactive process mining diagram
+        """
+        
+        # Handle empty data
+        if not process_data.activities and not process_data.transitions:
+            fig = go.Figure()
+            fig.add_annotation(
+                x=0.5, y=0.5,
+                text="No process data available for visualization",
+                showarrow=False,
+                font={'size': 16, 'color': self.secondary_text_color}
+            )
+            return self.apply_theme(fig, "Process Mining Analysis")
+        
+        # Filter transitions by frequency if specified
+        transitions = process_data.transitions
+        if filter_min_frequency:
+            transitions = {
+                transition: data for transition, data in transitions.items()
+                if data['frequency'] >= filter_min_frequency
+            }
+        
+        # Build graph structure for layout
+        import networkx as nx
+        G = nx.DiGraph()
+        
+        # Add nodes (activities)
+        for activity, data in process_data.activities.items():
+            G.add_node(activity, **data)
+        
+        # Add edges (transitions)
+        for (from_activity, to_activity), data in transitions.items():
+            if from_activity in G.nodes and to_activity in G.nodes:
+                G.add_edge(from_activity, to_activity, **data)
+        
+        # Calculate layout positions
+        pos = self._calculate_layout_positions(G, layout_algorithm)
+        
+        # Create figure
+        fig = go.Figure()
+        
+        # Draw edges (transitions)
+        self._draw_process_transitions(fig, G, pos, transitions, show_frequencies)
+        
+        # Draw nodes (activities)
+        self._draw_process_activities(fig, G, pos, process_data.activities, show_statistics)
+        
+        # Add cycle indicators if any
+        if process_data.cycles:
+            self._draw_cycle_indicators(fig, process_data.cycles, pos)
+        
+        # Configure layout
+        fig.update_layout(
+            title={
+                'text': f"Process Mining Analysis - {len(process_data.activities)} Activities, {len(transitions)} Transitions",
+                'font': {'size': self.typography.SCALE['lg'], 'color': self.text_color},
+                'x': 0.5,
+                'xanchor': 'center'
+            },
+            showlegend=True,
+            legend=dict(
+                x=1.02,
+                y=1,
+                bgcolor=self.color_palette.get_color_with_opacity(self.background_color, 0.8),
+                bordercolor=self.grid_color,
+                borderwidth=1
+            ),
+            margin=dict(l=50, r=150, t=80, b=50),
+            height=600,
+            dragmode='pan'
+        )
+        
+        # Apply theme
+        fig = self.apply_theme(fig, "Process Mining Analysis")
+        
+        # Add insights annotations if available
+        if show_statistics and process_data.insights:
+            self._add_insights_annotations(fig, process_data.insights)
+        
+        return fig
+    
+    def _calculate_layout_positions(self, G: 'nx.DiGraph', algorithm: str) -> Dict[str, Tuple[float, float]]:
+        """Calculate node positions based on layout algorithm"""
+        import networkx as nx
+        
+        if algorithm == "hierarchical":
+            # Try to use hierarchical layout for process flows
+            try:
+                pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
+            except:
+                # Fallback to spring layout if graphviz not available
+                pos = nx.spring_layout(G, k=3, iterations=50)
+        elif algorithm == "force":
+            pos = nx.spring_layout(G, k=3, iterations=50)
+        elif algorithm == "circular":
+            pos = nx.circular_layout(G)
+        else:
+            # Default to spring layout
+            pos = nx.spring_layout(G, k=3, iterations=50)
+        
+        # Normalize positions to [0, 1] range
+        if pos:
+            x_values = [x for x, y in pos.values()]
+            y_values = [y for x, y in pos.values()]
+            
+            if x_values and y_values:
+                x_min, x_max = min(x_values), max(x_values)
+                y_min, y_max = min(y_values), max(y_values)
+                
+                # Avoid division by zero
+                x_range = x_max - x_min if x_max != x_min else 1
+                y_range = y_max - y_min if y_max != y_min else 1
+                
+                pos = {
+                    node: ((x - x_min) / x_range, (y - y_min) / y_range)
+                    for node, (x, y) in pos.items()
+                }
+        
+        return pos
+    
+    def _draw_process_transitions(self, fig: go.Figure, G: 'nx.DiGraph', pos: Dict[str, Tuple[float, float]],
+                                transitions: Dict[Tuple[str, str], Dict[str, Any]], show_frequencies: bool):
+        """Draw transition arrows between activities"""
+        
+        for (from_activity, to_activity), data in transitions.items():
+            if from_activity not in pos or to_activity not in pos:
+                continue
+                
+            x0, y0 = pos[from_activity]
+            x1, y1 = pos[to_activity]
+            
+            # Determine arrow color based on transition type
+            transition_type = data.get('transition_type', 'normal')
+            if transition_type == 'error_transition':
+                color = self.color_palette.SEMANTIC['error']
+            elif transition_type == 'alternative_flow':
+                color = self.color_palette.SEMANTIC['warning']
+            else:
+                color = self.color_palette.SEMANTIC['info']
+            
+            # Draw arrow line
+            fig.add_trace(go.Scatter(
+                x=[x0, x1, None],
+                y=[y0, y1, None],
+                mode='lines',
+                line=dict(
+                    color=color,
+                    width=max(2, min(8, data['frequency'] / 10))  # Scale line width by frequency
+                ),
+                hovertemplate=(
+                    f"<b>{from_activity} → {to_activity}</b><br>"
+                    f"🔄 Transitions: {data['frequency']:,}<br>"
+                    f"👥 Users: {data['unique_users']:,}<br>"
+                    f"⏱️ Avg Duration: {data['avg_duration']:.1f}h<br>"
+                    f"📈 Probability: {data['probability']:.1f}%<br>"
+                    f"🏷️ Type: {transition_type}<extra></extra>"
+                ),
+                showlegend=False,
+                name=f"{from_activity} → {to_activity}"
+            ))
+            
+            # Add frequency label if requested
+            if show_frequencies:
+                mid_x, mid_y = (x0 + x1) / 2, (y0 + y1) / 2
+                
+                # Format frequency for display
+                if data['frequency'] >= 1000:
+                    freq_text = f"{data['frequency']/1000:.1f}K"
+                else:
+                    freq_text = str(data['frequency'])
+                
+                fig.add_trace(go.Scatter(
+                    x=[mid_x],
+                    y=[mid_y],
+                    mode='text',
+                    text=[freq_text],
+                    textfont=dict(
+                        size=self.typography.SCALE['xs'],
+                        color=color,
+                        family=self.typography.get_font_config()['family']
+                    ),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+    
+    def _draw_process_activities(self, fig: go.Figure, G: 'nx.DiGraph', pos: Dict[str, Tuple[float, float]],
+                               activities: Dict[str, Dict[str, Any]], show_statistics: bool):
+        """Draw activity nodes as rectangles with statistics"""
+        
+        for activity, data in activities.items():
+            if activity not in pos:
+                continue
+                
+            x, y = pos[activity]
+            
+            # Determine node color based on activity type
+            activity_type = data.get('activity_type', 'process')
+            if activity_type == 'entry':
+                color = self.color_palette.SEMANTIC['success']
+            elif activity_type == 'conversion':
+                color = self.color_palette.SEMANTIC['info']
+            elif activity_type == 'error':
+                color = self.color_palette.SEMANTIC['error']
+            else:
+                color = self.color_palette.SEMANTIC['neutral']
+            
+            # Scale node size by frequency
+            base_size = 15
+            size = base_size + min(20, data['frequency'] / 50)
+            
+            # Create hover template
+            hover_text = (
+                f"<b>{activity}</b><br>"
+                f"👥 Users: {data['unique_users']:,}<br>"
+                f"📊 Frequency: {data['frequency']:,}<br>"
+                f"⏱️ Avg Duration: {data.get('avg_duration', 0):.1f}h<br>"
+                f"🎯 Success Rate: {data.get('success_rate', 0):.1f}%<br>"
+                f"🏷️ Type: {activity_type}"
+            )
+            
+            if data.get('is_start'):
+                hover_text += "<br>🚀 Start Activity"
+            if data.get('is_end'):
+                hover_text += "<br>🏁 End Activity"
+                
+            hover_text += "<extra></extra>"
+            
+            # Draw activity node
+            fig.add_trace(go.Scatter(
+                x=[x],
+                y=[y],
+                mode='markers+text',
+                marker=dict(
+                    size=size,
+                    color=color,
+                    line=dict(
+                        width=2,
+                        color=self.text_color
+                    ),
+                    symbol='square'
+                ),
+                text=[activity],
+                textposition='middle center',
+                textfont=dict(
+                    size=self.typography.SCALE['xs'],
+                    color='white',
+                    family=self.typography.get_font_config()['family']
+                ),
+                hovertemplate=hover_text,
+                showlegend=False,
+                name=activity
+            ))
+    
+    def _draw_cycle_indicators(self, fig: go.Figure, cycles: List[Dict[str, Any]], pos: Dict[str, Tuple[float, float]]):
+        """Draw indicators for detected cycles"""
+        
+        for cycle in cycles:
+            cycle_path = cycle.get('path', [])
+            if len(cycle_path) < 2:
+                continue
+            
+            # Draw cycle path
+            cycle_x = []
+            cycle_y = []
+            
+            for activity in cycle_path:
+                if activity in pos:
+                    x, y = pos[activity]
+                    cycle_x.append(x)
+                    cycle_y.append(y)
+            
+            if len(cycle_x) >= 2:
+                # Close the cycle
+                cycle_x.append(cycle_x[0])
+                cycle_y.append(cycle_y[0])
+                
+                color = self.color_palette.SEMANTIC['warning'] if cycle.get('impact') == 'negative' else self.color_palette.SEMANTIC['info']
+                
+                fig.add_trace(go.Scatter(
+                    x=cycle_x,
+                    y=cycle_y,
+                    mode='lines',
+                    line=dict(
+                        color=color,
+                        width=3,
+                        dash='dash'
+                    ),
+                    hovertemplate=(
+                        f"<b>Cycle: {' → '.join(cycle_path)}</b><br>"
+                        f"🔄 Frequency: {cycle.get('frequency', 0)}<br>"
+                        f"🏷️ Type: {cycle.get('type', 'unknown')}<br>"
+                        f"📈 Impact: {cycle.get('impact', 'neutral')}<extra></extra>"
+                    ),
+                    showlegend=True,
+                    name=f"Cycle: {cycle.get('type', 'unknown')}",
+                    legendgroup="cycles"
+                ))
+    
+    def _add_insights_annotations(self, fig: go.Figure, insights: List[str]):
+        """Add insights as annotations on the chart"""
+        
+        if not insights:
+            return
+        
+        # Add insights box
+        insights_text = "<br>".join(insights[:3])  # Show top 3 insights
+        
+        fig.add_annotation(
+            x=0.02,
+            y=0.98,
+            xref="paper",
+            yref="paper",
+            text=f"<b>💡 Key Insights</b><br>{insights_text}",
+            showarrow=False,
+            font=dict(
+                size=self.typography.SCALE['xs'],
+                color=self.text_color,
+                family=self.typography.get_font_config()['family']
+            ),
+            bgcolor=self.color_palette.get_color_with_opacity(self.background_color, 0.9),
+            bordercolor=self.grid_color,
+            borderwidth=1,
+            align="left",
+            xanchor="left",
+            yanchor="top"
+        )
+
     @staticmethod
     def create_statistical_significance_table(stat_tests: List[StatSignificanceResult]) -> pd.DataFrame:
         """Create statistical significance results table optimized for dark interfaces"""
@@ -8708,6 +9051,9 @@ ORDER BY user_id, timestamp""",
             if results.statistical_tests:
                 tabs.append("📈 Statistical Tests")
             
+            # Add process mining tab
+            tabs.append("🔍 Process Mining")
+            
             # Add performance monitoring tab
             if 'performance_history' in st.session_state and st.session_state.performance_history:
                 tabs.append("⚡ Performance Monitor")
@@ -9411,6 +9757,209 @@ ORDER BY user_id, timestamp""",
                     - **Z-score**: Standard score for the difference (>1.96 or <-1.96 indicates significance)
                     """)
                 tab_idx += 1
+            
+            # Process Mining Tab (always show if we have event data)
+            with tab_objects[tab_idx]:  # Process Mining
+                st.markdown("### 🔍 Process Mining: User Journey Discovery")
+                
+                st.info("""
+                **🎯 Process Mining analyzes your user journey data to:**
+                
+                • **Discover hidden patterns** — automatic detection of user behavior flows  
+                • **Identify bottlenecks** — find where users get stuck or confused  
+                • **Detect cycles** — spot repetitive behaviors that may indicate problems  
+                • **Optimize paths** — understand the most efficient user journeys  
+                
+                💡 *This view shows the actual paths users take, not just the predefined funnel steps*
+                """)
+                
+                # Process Mining Configuration
+                with st.expander("🎛️ Process Mining Settings", expanded=True):
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        min_frequency = st.slider(
+                            "Min. transition frequency", 
+                            min_value=1, 
+                            max_value=100, 
+                            value=5,
+                            help="Hide transitions with fewer occurrences to reduce noise"
+                        )
+                    
+                    with col2:
+                        include_cycles = st.checkbox(
+                            "Detect cycles", 
+                            value=True,
+                            help="Find repetitive behavior patterns"
+                        )
+                    
+                    with col3:
+                        layout_algorithm = st.selectbox(
+                            "Layout algorithm",
+                            options=["hierarchical", "force", "circular"],
+                            index=0,
+                            help="How to arrange the process diagram"
+                        )
+                    
+                    with col4:
+                        show_frequencies = st.checkbox(
+                            "Show frequencies", 
+                            value=True,
+                            help="Display transition counts on arrows"
+                        )
+                
+                # Process Mining Analysis
+                if st.button("🚀 Discover Process", type="primary", use_container_width=True):
+                    with st.spinner("Analyzing user journeys..."):
+                        try:
+                            # Initialize path analyzer
+                            config = FunnelConfig()
+                            path_analyzer = PathAnalyzer(config)
+                            
+                            # Discover process structure
+                            process_data = path_analyzer.discover_process_mining_structure(
+                                st.session_state.events_data,
+                                min_frequency=min_frequency,
+                                include_cycles=include_cycles
+                            )
+                            
+                            # Store in session state
+                            st.session_state.process_mining_data = process_data
+                            
+                            st.success(f"✅ Discovered {len(process_data.activities)} activities and {len(process_data.transitions)} transitions")
+                            
+                        except Exception as e:
+                            st.error(f"❌ Process discovery failed: {str(e)}")
+                            st.session_state.process_mining_data = None
+                
+                # Display Process Mining Results
+                if hasattr(st.session_state, 'process_mining_data') and st.session_state.process_mining_data:
+                    process_data = st.session_state.process_mining_data
+                    
+                    # Process Overview Metrics
+                    st.markdown("#### 📊 Process Overview")
+                    col1, col2, col3, col4, col5 = st.columns(5)
+                    
+                    with col1:
+                        st.metric("Activities", len(process_data.activities))
+                    with col2:
+                        st.metric("Transitions", len(process_data.transitions))
+                    with col3:
+                        st.metric("Cycles", len(process_data.cycles))
+                    with col4:
+                        st.metric("Variants", len(process_data.variants))
+                    with col5:
+                        completion_rate = process_data.statistics.get('completion_rate', 0)
+                        st.metric("Completion Rate", f"{completion_rate:.1f}%")
+                    
+                    # Process Mining Visualization
+                    st.markdown("#### 🌐 Process Diagram")
+                    
+                    try:
+                        # Create process mining diagram
+                        visualizer = FunnelVisualizer(theme='dark', colorblind_friendly=True)
+                        
+                        process_fig = visualizer.create_process_mining_diagram(
+                            process_data,
+                            layout_algorithm=layout_algorithm,
+                            show_frequencies=show_frequencies,
+                            show_statistics=True
+                        )
+                        
+                        st.plotly_chart(process_fig, use_container_width=True)
+                        
+                    except Exception as e:
+                        st.error(f"❌ Visualization error: {str(e)}")
+                    
+                    # Process Insights
+                    if process_data.insights:
+                        st.markdown("#### 💡 Key Insights")
+                        for insight in process_data.insights[:5]:  # Show top 5 insights
+                            st.markdown(f"• {insight}")
+                    
+                    # Detailed Analysis Tables
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("#### 🎯 Activity Analysis")
+                        
+                        activity_data = []
+                        for activity, data in process_data.activities.items():
+                            activity_data.append({
+                                'Activity': activity,
+                                'Users': f"{data['unique_users']:,}",
+                                'Frequency': f"{data['frequency']:,}",
+                                'Avg Duration': f"{data.get('avg_duration', 0):.1f}h",
+                                'Type': data.get('activity_type', 'unknown'),
+                                'Success Rate': f"{data.get('success_rate', 0):.1f}%"
+                            })
+                        
+                        if activity_data:
+                            activity_df = pd.DataFrame(activity_data)
+                            st.dataframe(activity_df, use_container_width=True, hide_index=True)
+                    
+                    with col2:
+                        st.markdown("#### 🔄 Top Transitions")
+                        
+                        # Sort transitions by frequency
+                        sorted_transitions = sorted(
+                            process_data.transitions.items(),
+                            key=lambda x: x[1]['frequency'],
+                            reverse=True
+                        )
+                        
+                        transition_data = []
+                        for (from_act, to_act), data in sorted_transitions[:10]:  # Top 10
+                            transition_data.append({
+                                'From': from_act,
+                                'To': to_act,
+                                'Users': f"{data['unique_users']:,}",
+                                'Frequency': f"{data['frequency']:,}",
+                                'Probability': f"{data.get('probability', 0):.1f}%",
+                                'Avg Duration': f"{data.get('avg_duration', 0):.1f}h"
+                            })
+                        
+                        if transition_data:
+                            transition_df = pd.DataFrame(transition_data)
+                            st.dataframe(transition_df, use_container_width=True, hide_index=True)
+                    
+                    # Cycle Analysis
+                    if process_data.cycles:
+                        st.markdown("#### 🔄 Detected Cycles")
+                        
+                        cycle_data = []
+                        for cycle in process_data.cycles:
+                            cycle_data.append({
+                                'Cycle Path': ' → '.join(cycle['path']),
+                                'Frequency': f"{cycle['frequency']:,}",
+                                'Type': cycle.get('type', 'unknown'),
+                                'Impact': cycle.get('impact', 'neutral'),
+                                'Avg Cycle Time': f"{cycle.get('avg_cycle_time', 0):.1f}h"
+                            })
+                        
+                        if cycle_data:
+                            cycle_df = pd.DataFrame(cycle_data)
+                            st.dataframe(cycle_df, use_container_width=True, hide_index=True)
+                    
+                    # Process Variants
+                    if process_data.variants:
+                        st.markdown("#### 🛤️ Common Process Variants")
+                        
+                        variant_data = []
+                        for variant in process_data.variants[:10]:  # Top 10 variants
+                            variant_data.append({
+                                'Path': ' → '.join(variant['path']),
+                                'Users': f"{variant['frequency']:,}",
+                                'Success Rate': f"{variant.get('success_rate', 0):.1f}%",
+                                'Avg Duration': f"{variant.get('avg_duration', 0):.1f}h",
+                                'Type': variant.get('variant_type', 'standard')
+                            })
+                        
+                        if variant_data:
+                            variant_df = pd.DataFrame(variant_data)
+                            st.dataframe(variant_df, use_container_width=True, hide_index=True)
+                
+            tab_idx += 1
             
             # Performance Monitor Tab
             if 'performance_history' in st.session_state and st.session_state.performance_history:

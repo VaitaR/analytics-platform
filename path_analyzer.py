@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, defaultdict
 import logging
 from typing import Dict, List, Optional, Set, Tuple, Any, Union
 import polars as pl
@@ -611,9 +611,23 @@ class PathAnalyzer:
         Returns:
             ProcessMiningData with complete process structure
         """
-        # Convert to Polars for efficient processing
+        # Convert to Polars for efficient processing with data type handling
         if isinstance(events_df, pd.DataFrame):
-            events_pl = pl.from_pandas(events_df)
+            # Clean data before conversion to avoid type conflicts
+            events_clean = events_df.copy()
+            
+            # Ensure user_id is string
+            events_clean['user_id'] = events_clean['user_id'].astype(str)
+            
+            # Filter out rows with None event_name
+            events_clean = events_clean[events_clean['event_name'].notna()]
+            events_clean['event_name'] = events_clean['event_name'].astype(str)
+            
+            # Ensure timestamp is datetime
+            if not pd.api.types.is_datetime64_any_dtype(events_clean['timestamp']):
+                events_clean['timestamp'] = pd.to_datetime(events_clean['timestamp'])
+            
+            events_pl = pl.from_pandas(events_clean)
         else:
             events_pl = events_df
             
@@ -843,8 +857,11 @@ class PathAnalyzer:
         
         # Build variants list
         variants = []
+        total_journeys = len(user_journeys)
+        min_variant_frequency = max(1, total_journeys // 10)  # At least 10% of journeys or 1
+        
         for path, frequency in path_counts.items():
-            if frequency >= 5:  # Minimum frequency for variant
+            if frequency >= min_variant_frequency:  # Dynamic minimum frequency for variant
                 success_rate = sum(path_success[path]) / len(path_success[path]) * 100
                 avg_duration = sum(path_durations[path]) / len(path_durations[path])
                 
