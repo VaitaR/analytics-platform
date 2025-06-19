@@ -430,10 +430,34 @@ class DataSourceManager:
                         )
                         # Get all unique keys from all JSON objects
                         if not decoded.is_empty():
-                            # Extract keys from each JSON object
-                            all_keys = decoded.select(
-                                pl.col('decoded_props').struct.fields()
-                            ).to_series().explode().unique()
+                            # Extract keys from each JSON object - compatible with different Polars versions
+                            try:
+                                # Try to get schema fields (newer Polars versions)
+                                schema = decoded.schema['decoded_props']
+                                if hasattr(schema, 'fields'):
+                                    all_keys = list(schema.fields.keys())
+                                else:
+                                    # Fallback: extract keys manually from sample rows
+                                    all_keys_set = set()
+                                    for i in range(min(decoded.height, 100)):  # Sample up to 100 rows
+                                        try:
+                                            row = decoded.row(i, named=True)
+                                            if row['decoded_props'] is not None and isinstance(row['decoded_props'], dict):
+                                                all_keys_set.update(row['decoded_props'].keys())
+                                        except:
+                                            continue
+                                    all_keys = list(all_keys_set)
+                            except Exception:
+                                # Final fallback: extract keys manually
+                                all_keys_set = set()
+                                for i in range(min(decoded.height, 100)):
+                                    try:
+                                        row = decoded.row(i, named=True)
+                                        if row['decoded_props'] is not None and isinstance(row['decoded_props'], dict):
+                                            all_keys_set.update(row['decoded_props'].keys())
+                                    except:
+                                        continue
+                                all_keys = list(all_keys_set)
                             
                             # Add to properties set
                             properties['event_properties'].update(all_keys)
@@ -449,10 +473,34 @@ class DataSourceManager:
                         )
                         # Get all unique keys from all JSON objects
                         if not decoded.is_empty():
-                            # Extract keys from each JSON object
-                            all_keys = decoded.select(
-                                pl.col('decoded_props').struct.fields()
-                            ).to_series().explode().unique()
+                            # Extract keys from each JSON object - compatible with different Polars versions
+                            try:
+                                # Try to get schema fields (newer Polars versions)
+                                schema = decoded.schema['decoded_props']
+                                if hasattr(schema, 'fields'):
+                                    all_keys = list(schema.fields.keys())
+                                else:
+                                    # Fallback: extract keys manually from sample rows
+                                    all_keys_set = set()
+                                    for i in range(min(decoded.height, 100)):  # Sample up to 100 rows
+                                        try:
+                                            row = decoded.row(i, named=True)
+                                            if row['decoded_props'] is not None and isinstance(row['decoded_props'], dict):
+                                                all_keys_set.update(row['decoded_props'].keys())
+                                        except:
+                                            continue
+                                    all_keys = list(all_keys_set)
+                            except Exception:
+                                # Final fallback: extract keys manually
+                                all_keys_set = set()
+                                for i in range(min(decoded.height, 100)):
+                                    try:
+                                        row = decoded.row(i, named=True)
+                                        if row['decoded_props'] is not None and isinstance(row['decoded_props'], dict):
+                                            all_keys_set.update(row['decoded_props'].keys())
+                                    except:
+                                        continue
+                                all_keys = list(all_keys_set)
                             
                             # Add to properties set
                             properties['user_properties'].update(all_keys)
@@ -1071,30 +1119,27 @@ class FunnelCalculator:
                 
                 # Get field names from all objects - with compatibility for different Polars versions
                 try:
-                    # Modern Polars version approach
-                    all_keys = decoded.select(
-                        pl.col('decoded_props').struct.fields()
-                    ).to_series().explode()
+                    # Try to get schema fields (newer Polars versions)
+                    schema = decoded.schema['decoded_props']
+                    if hasattr(schema, 'fields'):
+                        all_keys = pl.Series(list(schema.fields.keys()))
+                    else:
+                        raise AttributeError("Schema fields not available")
                 except Exception as e:
                     self.logger.debug(f"Field names retrieval error: {str(e)}, trying alternate method")
-                    # Alternative approach for older Polars versions
-                    # Extract first row to get the keys
+                    # Alternative approach - extract keys manually
                     if not decoded.is_empty():
-                        sample_row = decoded.row(0, named=True)
-                        if 'decoded_props' in sample_row and sample_row['decoded_props'] is not None:
-                            # Get all keys from all rows 
-                            all_keys = []
-                            for i in range(min(decoded.height, 1000)):  # Sample up to 1000 rows
-                                try:
-                                    row = decoded.row(i, named=True)
-                                    if row['decoded_props'] is not None:
-                                        all_keys.extend(row['decoded_props'].keys())
-                                except:
-                                    continue
-                            # Convert to series for unique values
-                            all_keys = pl.Series(all_keys).unique()
-                        else:
-                            return df
+                        # Get all keys from all rows 
+                        all_keys_list = []
+                        for i in range(min(decoded.height, 1000)):  # Sample up to 1000 rows
+                            try:
+                                row = decoded.row(i, named=True)
+                                if row['decoded_props'] is not None and isinstance(row['decoded_props'], dict):
+                                    all_keys_list.extend(row['decoded_props'].keys())
+                            except:
+                                continue
+                        # Convert to series for unique values
+                        all_keys = pl.Series(all_keys_list).unique() if all_keys_list else pl.Series([])
                     else:
                         return df
                 
@@ -3231,23 +3276,47 @@ class FunnelCalculator:
                         
                         # Find the first occurrence of step B that's after step A within conversion window
                         try:
-                            conversion_pairs = (
+                            # Ensure proper data types and sorting for join_asof
+                            first_A_sorted = (
                                 first_A
-                                .join_asof(
-                                    step_B_events.sort('timestamp'),
-                                    left_on='step_A_time',
-                                    right_on='timestamp',
-                                    by='user_id',
-                                    strategy='forward',
-                                    tolerance=conversion_window
-                                )
-                                .filter(pl.col('timestamp').is_not_null())
                                 .with_columns([
-                                    pl.col('timestamp').alias('step_B_time'),
-                                    pl.col('step_name').alias('next_step')
+                                    pl.col('step_A_time').cast(pl.Datetime),
+                                    pl.col('user_id').cast(pl.Utf8)
                                 ])
-                                .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
+                                .sort(['user_id', 'step_A_time'])
                             )
+                            
+                            step_B_sorted = (
+                                step_B_events
+                                .with_columns([
+                                    pl.col('timestamp').cast(pl.Datetime),
+                                    pl.col('user_id').cast(pl.Utf8)
+                                ])
+                                .sort(['user_id', 'timestamp'])
+                            )
+                            
+                            # Suppress Polars sortedness warning for join_asof - this is a known issue
+                            import warnings
+                            with warnings.catch_warnings():
+                                warnings.filterwarnings("ignore", message="Sortedness of columns cannot be checked")
+                                
+                                conversion_pairs = (
+                                    first_A_sorted
+                                    .join_asof(
+                                        step_B_sorted,
+                                        left_on='step_A_time',
+                                        right_on='timestamp',
+                                        by='user_id',
+                                        strategy='forward',
+                                        tolerance=conversion_window
+                                    )
+                                    .filter(pl.col('timestamp').is_not_null())
+                                    .with_columns([
+                                        pl.col('timestamp').alias('step_B_time'),
+                                        pl.col('step_name').alias('next_step')
+                                    ])
+                                    .select(['user_id', 'step', 'next_step', 'step_A_time', 'step_B_time'])
+                                )
                         except Exception as e:
                             self.logger.warning(f"join_asof failed: {e}, using alternative approach")
                             # Fallback to a manual join
@@ -3267,28 +3336,42 @@ class FunnelCalculator:
                             
                             # Try join_asof with proper column types
                             try:
-                                # Ensure we have proper datetime types for join_asof
-                                step_A_events_clean = step_A_events_clean.with_columns([
-                                    pl.col('step_A_time').cast(pl.Datetime),
-                                    pl.col('user_id').cast(pl.Utf8)
-                                ])
-                                
-                                step_B_events_clean = step_B_events_clean.with_columns([
-                                    pl.col('timestamp').cast(pl.Datetime),
-                                    pl.col('user_id').cast(pl.Utf8)
-                                ])
-                                
-                                # Try join_asof with explicit type casting
-                                conversion_pairs = (
+                                # Ensure we have proper datetime types and sorting for join_asof
+                                step_A_events_clean = (
                                     step_A_events_clean
-                                    .join_asof(
-                                        step_B_events_clean,
-                                        left_on='step_A_time',
-                                        right_on='timestamp',
-                                        by='user_id',
-                                        strategy='forward',
-                                        tolerance=conversion_window
-                                    )
+                                    .with_columns([
+                                        pl.col('step_A_time').cast(pl.Datetime),
+                                        pl.col('user_id').cast(pl.Utf8)
+                                    ])
+                                    .sort(['user_id', 'step_A_time'])
+                                )
+                                
+                                step_B_events_clean = (
+                                    step_B_events_clean
+                                    .with_columns([
+                                        pl.col('timestamp').cast(pl.Datetime),
+                                        pl.col('user_id').cast(pl.Utf8)
+                                    ])
+                                    .sort(['user_id', 'timestamp'])
+                                )
+                                
+                                # Try join_asof with explicit type casting and proper sorting
+                                # Suppress Polars warnings for join_asof
+                                import warnings
+                                with warnings.catch_warnings():
+                                    warnings.filterwarnings("ignore", message="Sortedness of columns cannot be checked")
+                                    warnings.filterwarnings("ignore", message="could not extract number from any-value of dtype")
+                                    
+                                    conversion_pairs = (
+                                        step_A_events_clean
+                                        .join_asof(
+                                            step_B_events_clean,
+                                            left_on='step_A_time',
+                                            right_on='timestamp',
+                                            by='user_id',
+                                            strategy='forward',
+                                            tolerance=conversion_window
+                                        )
                                     .filter(pl.col('timestamp_right').is_not_null())
                                     .with_columns([
                                         pl.col('timestamp_right').alias('step_B_time'),
@@ -8771,6 +8854,8 @@ def initialize_session_state():
     if 'event_selections' not in st.session_state:
         st.session_state.event_selections = {}
 
+
+
 # Enhanced Event Selection Functions
 def filter_events(events_metadata: Dict[str, Dict[str, Any]], search_query: str, 
                   selected_categories: List[str], selected_frequencies: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -8892,10 +8977,10 @@ def get_event_statistics(events_data: pd.DataFrame) -> Dict[str, Dict[str, Any]]
     
     return event_stats
 
-def create_simple_event_selector():
+def create_enhanced_event_selector():
     """
-    Create simplified event selector with proper closure handling and improved architecture.
-    Uses callback arguments to avoid closure issues in loops.
+    Enhanced Event Browser with powerful filtering and card-based display.
+    Transforms event selection from a simple checklist into an exploratory experience.
     """
     if st.session_state.get('events_data') is None or st.session_state.events_data.empty:
         st.warning("Please load data first to see available events.")
@@ -8903,169 +8988,237 @@ def create_simple_event_selector():
 
     # --- State Management Functions (defined outside loops) ---
     
-    def toggle_event_in_funnel(event_name: str):
-        """Add or remove event from funnel steps."""
+    def add_event_to_funnel(event_name: str):
+        """Add event to funnel steps."""
+        if event_name not in st.session_state.funnel_steps:
+            st.session_state.funnel_steps.append(event_name)
+            st.session_state.analysis_results = None  # Clear results when funnel changes
+            st.toast(f"✅ Added '{event_name}' to funnel", icon="✅")
+
+    def remove_event_from_funnel(event_name: str):
+        """Remove event from funnel steps."""
         if event_name in st.session_state.funnel_steps:
             st.session_state.funnel_steps.remove(event_name)
-        else:
-            st.session_state.funnel_steps.append(event_name)
-        st.session_state.analysis_results = None  # Clear results when funnel changes
+            st.session_state.analysis_results = None  # Clear results when funnel changes
+            st.toast(f"🗑️ Removed '{event_name}' from funnel", icon="🗑️")
 
-    def move_step(index: int, direction: int):
-        """Move funnel step up or down."""
-        if 0 <= index + direction < len(st.session_state.funnel_steps):
-            # Classic swap
-            st.session_state.funnel_steps[index], st.session_state.funnel_steps[index + direction] = \
-                st.session_state.funnel_steps[index + direction], st.session_state.funnel_steps[index]
-            st.session_state.analysis_results = None
 
-    def remove_step(index: int):
-        """Remove step from funnel."""
-        if 0 <= index < len(st.session_state.funnel_steps):
-            st.session_state.funnel_steps.pop(index)
-            st.session_state.analysis_results = None
 
-    def clear_all_steps():
-        """Clear all funnel steps."""
-        st.session_state.funnel_steps = []
-        st.session_state.analysis_results = None
-        st.toast("🗑️ Funnel cleared!", icon="🗑️")
+    # --- Initialize Event Data ---
+    
+    # Get event statistics and metadata
+    if 'event_statistics' not in st.session_state:
+        st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
+    
+    if 'event_metadata' not in st.session_state:
+        st.session_state.event_metadata = st.session_state.data_source_manager.get_event_metadata(st.session_state.events_data)
 
-    def analyze_funnel():
-        """Run funnel analysis."""
-        if len(st.session_state.funnel_steps) >= 2:
-            with st.spinner("Calculating funnel metrics..."):
-                # Get polars preference from session state (default to True)
-                use_polars = st.session_state.get('use_polars', True)
-                calculator = FunnelCalculator(st.session_state.funnel_config, use_polars=use_polars)
-                
-                # Store calculator for cache management
-                st.session_state.last_calculator = calculator
-                
-                # Monitor performance
-                calculation_start = time.time()
-                st.session_state.analysis_results = calculator.calculate_funnel_metrics(
-                    st.session_state.events_data, 
-                    st.session_state.funnel_steps
-                )
-                calculation_time = time.time() - calculation_start
-                
-                # Store performance metrics in session state
-                if 'performance_history' not in st.session_state:
-                    st.session_state.performance_history = []
-                
-                engine_used = "Polars" if use_polars else "Pandas"
-                st.session_state.performance_history.append({
-                    'timestamp': datetime.now(),
-                    'events_count': len(st.session_state.events_data),
-                    'steps_count': len(st.session_state.funnel_steps),
-                    'calculation_time': calculation_time,
-                    'method': st.session_state.funnel_config.counting_method.value,
-                    'engine': engine_used
-                })
-                
-                # Keep only last 10 calculations
-                if len(st.session_state.performance_history) > 10:
-                    st.session_state.performance_history = st.session_state.performance_history[-10:]
-                
-                st.toast(f"✅ {engine_used} analysis completed in {calculation_time:.2f}s!", icon="✅")
-        else:
-            st.toast("⚠️ Please add at least 2 steps to create a funnel", icon="⚠️")
+    # --- Current Funnel Display (Simple, Read-Only) ---
+    
+    if st.session_state.funnel_steps:
+        st.markdown("### 🎯 Current Funnel")
+        
+        # Simple display without management controls (those are handled by state-aware UI)
+        for i, step in enumerate(st.session_state.funnel_steps):
+            stats = st.session_state.event_statistics.get(step, {})
+            user_count = stats.get('unique_users', 0)
+            st.markdown(f"**{i+1}.** {step} `({user_count:,} users)`")
+        
+        st.markdown("---")
 
-    # --- UI Display Section ---
+    # --- Enhanced Event Browser ---
+    
+    st.markdown("### 🔍 Event Browser")
+    st.markdown("*Explore and filter events to build your funnel*")
 
-    # Use two main columns for better organization
-    col_events, col_funnel = st.columns(2)
+    # Two-column layout: Filters (left) and Event Cards (right)
+    filter_col, events_col = st.columns([1, 2])
 
-    with col_events:
-        st.markdown("### 📋 Step 1: Select Events")
+    with filter_col:
+        st.markdown("#### 🎛️ Filters")
+        
+        # Search Bar
         search_query = st.text_input(
             "🔍 Search Events",
-            placeholder="Start typing to filter...",
-            key="event_search"
+            placeholder="Type to search event names...",
+            key="event_search_enhanced"
         )
-
-        if 'event_statistics' not in st.session_state:
-            st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
         
+        # Get unique categories and frequencies from metadata
+        all_categories = set()
+        all_frequencies = set()
+        
+        for event_name, metadata in st.session_state.event_metadata.items():
+            if 'category' in metadata:
+                all_categories.add(metadata['category'])
+            if 'frequency' in metadata:
+                all_frequencies.add(metadata['frequency'])
+        
+        # Category Filter
+        selected_categories = st.multiselect(
+            "📂 Categories",
+            options=sorted(list(all_categories)),
+            default=[],
+            help="Filter events by category"
+        )
+        
+        # Frequency Filter
+        selected_frequencies = st.multiselect(
+            "📊 Frequency",
+            options=sorted(list(all_frequencies), key=lambda x: {'high': 3, 'medium': 2, 'low': 1}.get(x, 0), reverse=True),
+            default=[],
+            help="Filter events by frequency level"
+        )
+        
+        # Statistics summary
+        st.markdown("#### 📈 Dataset Stats")
+        total_events = len(st.session_state.events_data)
+        unique_events = st.session_state.events_data['event_name'].nunique()
+        unique_users = st.session_state.events_data['user_id'].nunique()
+        
+        st.metric("Total Events", f"{total_events:,}")
+        st.metric("Unique Event Types", f"{unique_events:,}")
+        st.metric("Unique Users", f"{unique_users:,}")
+
+    with events_col:
+        st.markdown("#### 🎴 Available Events")
+        
+        # Apply filters
         available_events = sorted(st.session_state.events_data['event_name'].unique())
+        filtered_events = available_events
         
+        # Apply search filter
         if search_query:
-            filtered_events = [event for event in available_events if search_query.lower() in event.lower()]
-        else:
-            filtered_events = available_events
-
-        if not filtered_events:
-            st.info("No events match your search query.")
-        else:
-            # Use scrollable container for event list
-            with st.container(height=400):
-                for event in filtered_events:
-                    stats = st.session_state.event_statistics.get(event, {})
-                    is_selected = event in st.session_state.funnel_steps
-                    
-                    # Use columns for layout within container
-                    c1, c2 = st.columns([3, 1])
-                    with c1:
-                        # KEY FIX: Pass event name as argument to callback
-                        st.checkbox(
-                            event,
-                            value=is_selected,
-                            key=f"cb_{hash(event)}",  # Use hash for cleaner key
-                            on_change=toggle_event_in_funnel,
-                            args=(event,),  # Pass event name as argument
-                            help=f"Add/remove {event} from funnel"
-                        )
-                    with c2:
-                        if stats:
-                            st.markdown(
-                                f"""<div style="font-size: 0.75rem; text-align: right; color: #888;">
-                                {stats['unique_users']:,} users<br/>
-                                <span style="color: {stats['frequency_color']};">{stats['user_coverage']:.1f}%</span>
-                                </div>""",
-                                unsafe_allow_html=True
-                            )
-
-    with col_funnel:
-        st.markdown("### 🚀 Step 2: Configure Funnel")
+            filtered_events = [event for event in filtered_events 
+                             if search_query.lower() in event.lower()]
         
-        if not st.session_state.funnel_steps:
-            st.info("Select events from the left to build your funnel.")
+        # Apply category filter
+        if selected_categories:
+            filtered_events = [event for event in filtered_events 
+                             if st.session_state.event_metadata.get(event, {}).get('category') in selected_categories]
+        
+        # Apply frequency filter
+        if selected_frequencies:
+            filtered_events = [event for event in filtered_events 
+                             if st.session_state.event_metadata.get(event, {}).get('frequency') in selected_frequencies]
+        
+        if not filtered_events:
+            st.info("🔍 No events match your current filters. Try adjusting the search or filter criteria.")
         else:
-            # Display funnel steps with management controls
-            for i, step in enumerate(st.session_state.funnel_steps):
-                with st.container():
-                    r1, r2, r3, r4 = st.columns([0.6, 0.1, 0.1, 0.2])
-                    r1.markdown(f"**{i+1}.** {step}")
+            st.caption(f"Showing {len(filtered_events)} of {len(available_events)} events")
+            
+            # Display events as cards in a scrollable container
+            with st.container(height=500):
+                for event in filtered_events:
+                    # Get event data
+                    stats = st.session_state.event_statistics.get(event, {})
+                    metadata = st.session_state.event_metadata.get(event, {})
+                    is_in_funnel = event in st.session_state.funnel_steps
                     
-                    # Move up button
-                    if i > 0:
-                        r2.button("⬆️", key=f"up_{i}", on_click=move_step, args=(i, -1), help="Move up")
-                    
-                    # Move down button
-                    if i < len(st.session_state.funnel_steps) - 1:
-                        r3.button("⬇️", key=f"down_{i}", on_click=move_step, args=(i, 1), help="Move down")
-                    
-                    # Remove button
-                    r4.button("🗑️", key=f"del_{i}", on_click=remove_step, args=(i,), help="Remove step")
+                    # Create event card
+                    with st.container():
+                        # Card styling with border
+                        card_style = """
+                        <div style="
+                            border: 2px solid %s;
+                            border-radius: 8px;
+                            padding: 12px;
+                            margin: 8px 0;
+                            background-color: %s;
+                        ">
+                        """ % (
+                            "#3B82F6" if is_in_funnel else "#374151",
+                            "rgba(59, 130, 246, 0.1)" if is_in_funnel else "rgba(55, 65, 81, 0.1)"
+                        )
+                        
+                        st.markdown(card_style, unsafe_allow_html=True)
+                        
+                        # Card content layout
+                        card_header_col, card_button_col = st.columns([3, 1])
+                        
+                        with card_header_col:
+                            # Event name with category badge
+                            category = metadata.get('category', 'Other')
+                            frequency = metadata.get('frequency', 'unknown')
+                            
+                            # Category emoji mapping
+                            category_emojis = {
+                                'Authentication': '🔐',
+                                'Onboarding': '🚀',
+                                'E-commerce': '🛒',
+                                'Engagement': '👁️',
+                                'Social': '🤝',
+                                'Mobile': '📱',
+                                'Other': '📊'
+                            }
+                            
+                            category_emoji = category_emojis.get(category, '📊')
+                            
+                            st.markdown(f"**{category_emoji} {event}**")
+                            st.caption(f"📂 {category} • 📊 {frequency.title()} frequency")
+                            
+                            # Event description if available
+                            description = metadata.get('description', '')
+                            if description and description != f"Event: {event}":
+                                st.caption(f"💡 {description}")
+                        
+                        with card_button_col:
+                            # Add/Remove button
+                            if is_in_funnel:
+                                st.button(
+                                    "Remove",
+                                    key=f"remove_{hash(event)}",
+                                    on_click=remove_event_from_funnel,
+                                    args=(event,),
+                                    type="secondary",
+                                    use_container_width=True,
+                                    help=f"Remove {event} from funnel"
+                                )
+                            else:
+                                st.button(
+                                    "Add to Funnel",
+                                    key=f"add_{hash(event)}",
+                                    on_click=add_event_to_funnel,
+                                    args=(event,),
+                                    type="primary",
+                                    use_container_width=True,
+                                    help=f"Add {event} to funnel"
+                                )
+                        
+                        # Event statistics row
+                        if stats:
+                            stat_col1, stat_col2, stat_col3 = st.columns(3)
+                            
+                            with stat_col1:
+                                st.metric(
+                                    "👥 Users", 
+                                    f"{stats.get('unique_users', 0):,}",
+                                    help="Number of unique users who performed this event"
+                                )
+                            
+                            with stat_col2:
+                                st.metric(
+                                    "📈 Coverage", 
+                                    f"{stats.get('user_coverage', 0):.1f}%",
+                                    help="Percentage of total users who performed this event"
+                                )
+                            
+                            with stat_col3:
+                                st.metric(
+                                    "🔄 Avg/User", 
+                                    f"{stats.get('avg_per_user', 0):.1f}",
+                                    help="Average number of times per user"
+                                )
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown("---")
-            
-            # Engine selection
-            st.session_state.use_polars = st.checkbox(
-                "🚀 Use Polars Engine", 
-                value=st.session_state.get('use_polars', True), 
-                help="Use Polars for faster funnel calculations (experimental)"
-            )
-            
-            # Action buttons
-            action_col1, action_col2 = st.columns(2)
-            
-            with action_col1:
-                st.button("🚀 Analyze Funnel", type="primary", use_container_width=True, on_click=analyze_funnel)
-
-            with action_col2:
-                st.button("🗑️ Clear All", on_click=clear_all_steps, use_container_width=True)
+# Keep the old function for reference but rename it
+def create_simple_event_selector_legacy():
+    """
+    Legacy simple event selector - kept for reference.
+    Use create_enhanced_event_selector() instead.
+    """
+    pass
 
 # Commented out original complex functions - keeping for reference but not using
 def create_funnel_templates_DISABLED():
@@ -9078,66 +9231,70 @@ def main():
     
     initialize_session_state()
     
-    # Sidebar for configuration
-    with st.sidebar:
-        st.markdown("## 🔧 Configuration")
-        
-        # Data Source Selection
-        st.markdown("### 📊 Data Source")
-        data_source = st.selectbox(
-            "Select Data Source",
-            ["Sample Data", "Upload File", "ClickHouse Database"]
-        )
-        
-        # Handle data source loading
-        if data_source == "Sample Data":
-            if st.button("Load Sample Data"):
-                with st.spinner("Loading sample data..."):
-                    st.session_state.events_data = st.session_state.data_source_manager.get_sample_data()
-                    # Refresh event statistics when new data is loaded
-                    st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
-                    st.success(f"Loaded {len(st.session_state.events_data)} events")
-        
-        elif data_source == "Upload File":
-            uploaded_file = st.file_uploader(
-                "Upload Event Data",
-                type=['csv', 'parquet'],
-                help="File must contain columns: user_id, event_name, timestamp"
+    # GUARD CLAUSE: Check if data exists before rendering main UI
+    if 'events_data' not in st.session_state or st.session_state.events_data is None:
+        # Show data loading interface in sidebar
+        with st.sidebar:
+            st.markdown("## 🔧 Configuration")
+            
+            # Data Source Selection
+            st.markdown("### 📊 Data Source")
+            data_source = st.selectbox(
+                "Select Data Source",
+                ["Sample Data", "Upload File", "ClickHouse Database"]
             )
             
-            if uploaded_file is not None:
-                with st.spinner("Processing file..."):
-                    st.session_state.events_data = st.session_state.data_source_manager.load_from_file(uploaded_file)
-                    if not st.session_state.events_data.empty:
+            # Handle data source loading
+            if data_source == "Sample Data":
+                if st.button("Load Sample Data"):
+                    with st.spinner("Loading sample data..."):
+                        st.session_state.events_data = st.session_state.data_source_manager.get_sample_data()
                         # Refresh event statistics when new data is loaded
                         st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
                         st.success(f"Loaded {len(st.session_state.events_data)} events")
-        
-        elif data_source == "ClickHouse Database":
-            st.markdown("**Connection Settings**")
+                        st.rerun()
             
-            col1, col2 = st.columns(2)
-            with col1:
-                ch_host = st.text_input("Host", value="localhost")
-                ch_username = st.text_input("Username", value="default")
-            with col2:
-                ch_port = st.number_input("Port", value=8123)
-                ch_password = st.text_input("Password", type="password")
+            elif data_source == "Upload File":
+                uploaded_file = st.file_uploader(
+                    "Upload Event Data",
+                    type=['csv', 'parquet'],
+                    help="File must contain columns: user_id, event_name, timestamp"
+                )
+                
+                if uploaded_file is not None:
+                    with st.spinner("Processing file..."):
+                        st.session_state.events_data = st.session_state.data_source_manager.load_from_file(uploaded_file)
+                        if not st.session_state.events_data.empty:
+                            # Refresh event statistics when new data is loaded
+                            st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
+                            st.success(f"Loaded {len(st.session_state.events_data)} events")
+                            st.rerun()
             
-            ch_database = st.text_input("Database", value="default")
-            
-            if st.button("Test Connection"):
-                with st.spinner("Testing connection..."):
-                    success = st.session_state.data_source_manager.connect_clickhouse(
-                        ch_host, ch_port, ch_username, ch_password, ch_database
-                    )
-                    if success:
-                        st.success("Connection successful!")
-            
-            st.markdown("**Query**")
-            ch_query = st.text_area(
-                "SQL Query",
-                value="""SELECT 
+            elif data_source == "ClickHouse Database":
+                st.markdown("**Connection Settings**")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    ch_host = st.text_input("Host", value="localhost")
+                    ch_username = st.text_input("Username", value="default")
+                with col2:
+                    ch_port = st.number_input("Port", value=8123)
+                    ch_password = st.text_input("Password", type="password")
+                
+                ch_database = st.text_input("Database", value="default")
+                
+                if st.button("Test Connection"):
+                    with st.spinner("Testing connection..."):
+                        success = st.session_state.data_source_manager.connect_clickhouse(
+                            ch_host, ch_port, ch_username, ch_password, ch_database
+                        )
+                        if success:
+                            st.success("Connection successful!")
+                
+                st.markdown("**Query**")
+                ch_query = st.text_area(
+                    "SQL Query",
+                    value="""SELECT 
     user_id,
     event_name,
     timestamp,
@@ -9145,101 +9302,330 @@ def main():
 FROM events 
 WHERE timestamp >= '2024-01-01' 
 ORDER BY user_id, timestamp""",
-                height=150
-            )
-            
-            if st.button("Execute Query"):
-                with st.spinner("Executing query..."):
-                    st.session_state.events_data = st.session_state.data_source_manager.load_from_clickhouse(ch_query)
-                    if not st.session_state.events_data.empty:
-                        # Refresh event statistics when new data is loaded
-                        st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
-                        st.success(f"Loaded {len(st.session_state.events_data)} events")
+                    height=150
+                )
+                
+                if st.button("Execute Query"):
+                    with st.spinner("Executing query..."):
+                        st.session_state.events_data = st.session_state.data_source_manager.load_from_clickhouse(ch_query)
+                        if not st.session_state.events_data.empty:
+                            # Refresh event statistics when new data is loaded
+                            st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
+                            st.success(f"Loaded {len(st.session_state.events_data)} events")
+                            st.rerun()
+        
+        # Main area - show getting started guide
+        st.info("👈 Please select and load a data source from the sidebar to begin.")
+        
+        st.markdown("## 🚀 Welcome to Professional Funnel Analytics")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            ### 📊 Step 1: Load Data
+            Choose your data source in the sidebar:
+            - **Sample Data**: Quick demo with realistic data
+            - **Upload File**: CSV/Parquet with your events
+            - **ClickHouse**: Connect to your database
+            """)
+        
+        with col2:
+            st.markdown("""
+            ### ⚙️ Step 2: Configure Funnel
+            Set up your analysis parameters:
+            - **Conversion Window**: Time limit for completion
+            - **Counting Method**: How to measure conversions
+            - **Segmentation**: Compare user groups
+            """)
+        
+        with col3:
+            st.markdown("""
+            ### 🚀 Step 3: Analyze
+            Build and analyze your funnel:
+            - **Select Events**: Choose funnel steps
+            - **Apply Settings**: Click to run analysis
+            - **View Results**: Interactive charts and insights
+            """)
         
         st.markdown("---")
         
-        # Funnel Configuration
+        # Quick start with sample data
+        st.markdown("### 🎯 Quick Start")
+        if st.button("🚀 Load Sample Data & Get Started", type="primary", use_container_width=True):
+            with st.spinner("Loading sample data..."):
+                st.session_state.events_data = st.session_state.data_source_manager.get_sample_data()
+                st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
+                st.success(f"✅ Loaded {len(st.session_state.events_data)} events - ready to analyze!")
+                st.rerun()
+        
+        # Footer
+        st.markdown("---")
+        st.markdown("""
+        <div style='text-align: center; color: #6b7280; padding: 20px;'>
+            <p>Professional Funnel Analytics Platform - Enterprise-grade funnel analysis</p>
+            <p>Supports file upload, ClickHouse integration, and real-time calculations</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Stop execution here - don't render the rest of the app
+        st.stop()
+    
+    # Sidebar for configuration (data already loaded at this point)
+    with st.sidebar:
+        st.markdown("## 🔧 Configuration")
+        
+        # Data Source Status
+        st.markdown("### 📊 Data Source")
+        st.success(f"✅ Data loaded: {len(st.session_state.events_data):,} events")
+        
+        # Option to reload data
+        if st.button("🔄 Load Different Data"):
+            st.session_state.events_data = None
+            st.rerun()
+        
+        st.markdown("---")
+        
+        # Funnel Configuration - Wrapped in Form to prevent unnecessary reruns
         st.markdown("### ⚙️ Funnel Settings")
         
-        # Conversion window
-        window_unit = st.selectbox("Time Unit", ["Hours", "Days", "Weeks"])
-        window_value = st.number_input("Conversion Window", min_value=1, value=7)
+        # Show current configuration status
+        with st.expander("📋 Current Configuration", expanded=False):
+            config = st.session_state.funnel_config
+            st.markdown(f"""
+            - **Conversion Window**: {config.conversion_window_hours} hours
+            - **Counting Method**: {config.counting_method.value}
+            - **Re-entry Mode**: {config.reentry_mode.value}
+            - **Funnel Order**: {config.funnel_order.value}
+            - **Segmentation**: {config.segment_by or 'None'}
+            """)
+            if config.segment_values:
+                st.markdown(f"- **Segment Values**: {', '.join(config.segment_values)}")
         
-        if window_unit == "Hours":
-            st.session_state.funnel_config.conversion_window_hours = window_value
-        elif window_unit == "Days":
-            st.session_state.funnel_config.conversion_window_hours = window_value * 24
-        elif window_unit == "Weeks":
-            st.session_state.funnel_config.conversion_window_hours = window_value * 24 * 7
+        st.markdown("*Change settings below and click 'Apply Settings & Analyze' to update*")
         
-        # Counting method
-        counting_method = st.selectbox(
-            "Counting Method",
-            [method.value for method in CountingMethod],
-            help="How to count conversions through the funnel"
-        )
-        st.session_state.funnel_config.counting_method = CountingMethod(counting_method)
-        
-        # Reentry mode
-        reentry_mode = st.selectbox(
-            "Re-entry Mode",
-            [mode.value for mode in ReentryMode],
-            help="How to handle users who restart the funnel"
-        )
-        st.session_state.funnel_config.reentry_mode = ReentryMode(reentry_mode)
-        
-        # Funnel order
-        funnel_order = st.selectbox(
-            "Funnel Order",
-            [order.value for order in FunnelOrder],
-            help="Whether steps must be completed in order or any order within window"
-        )
-        st.session_state.funnel_config.funnel_order = FunnelOrder(funnel_order)
-        
-        st.markdown("---")
-        
-        # Segmentation
-        st.markdown("### 🎯 Segmentation")
-        
-        if st.session_state.events_data is not None and not st.session_state.events_data.empty:
-            # Update available properties
-            st.session_state.available_properties = st.session_state.data_source_manager.get_segmentation_properties(
-                st.session_state.events_data
+        with st.form(key='config_form'):
+            # Conversion window - show current values from session state
+            current_hours = st.session_state.funnel_config.conversion_window_hours
+            if current_hours % (24 * 7) == 0:
+                current_unit = "Weeks"
+                current_value = current_hours // (24 * 7)
+            elif current_hours % 24 == 0:
+                current_unit = "Days" 
+                current_value = current_hours // 24
+            else:
+                current_unit = "Hours"
+                current_value = current_hours
+                
+            window_unit = st.selectbox("Time Unit", ["Hours", "Days", "Weeks"], 
+                                     index=["Hours", "Days", "Weeks"].index(current_unit))
+            window_value = st.number_input("Conversion Window", min_value=1, value=current_value)
+            
+            # Counting method - show current value from session state
+            counting_method_options = [method.value for method in CountingMethod]
+            current_counting_method = st.session_state.funnel_config.counting_method.value
+            counting_method = st.selectbox(
+                "Counting Method",
+                counting_method_options,
+                index=counting_method_options.index(current_counting_method),
+                help="How to count conversions through the funnel"
             )
             
-            if st.session_state.available_properties:
-                # Property selection
-                prop_options = []
-                for prop_type, props in st.session_state.available_properties.items():
-                    for prop in props:
-                        prop_options.append(f"{prop_type}_{prop}")
+            # Reentry mode - show current value from session state
+            reentry_mode_options = [mode.value for mode in ReentryMode]
+            current_reentry_mode = st.session_state.funnel_config.reentry_mode.value
+            reentry_mode = st.selectbox(
+                "Re-entry Mode",
+                reentry_mode_options,
+                index=reentry_mode_options.index(current_reentry_mode),
+                help="How to handle users who restart the funnel"
+            )
+            
+            # Funnel order - show current value from session state
+            funnel_order_options = [order.value for order in FunnelOrder]
+            current_funnel_order = st.session_state.funnel_config.funnel_order.value
+            funnel_order = st.selectbox(
+                "Funnel Order",
+                funnel_order_options,
+                index=funnel_order_options.index(current_funnel_order),
+                help="Whether steps must be completed in order or any order within window"
+            )
+            
+            # Engine Selection - moved from create_simple_event_selector
+            st.markdown("#### ⚡ Engine Settings")
+            use_polars = st.checkbox(
+                "🚀 Use Polars Engine", 
+                value=st.session_state.get('use_polars', True), 
+                help="Use Polars for faster funnel calculations (experimental)"
+            )
+            
+            # Segmentation
+            st.markdown("#### 🎯 Segmentation")
+            
+            # Initialize segmentation variables with current session state values
+            current_segment_by = st.session_state.funnel_config.segment_by or "None"
+            current_segment_values = st.session_state.funnel_config.segment_values or []
+            selected_property = "None"
+            selected_values = []
+            
+            if st.session_state.events_data is not None and not st.session_state.events_data.empty:
+                # Update available properties
+                st.session_state.available_properties = st.session_state.data_source_manager.get_segmentation_properties(
+                    st.session_state.events_data
+                )
                 
-                if prop_options:
-                    selected_property = st.selectbox(
-                        "Segment By Property",
-                        ["None"] + prop_options,
-                        help="Choose a property to segment the funnel analysis"
-                    )
+                if st.session_state.available_properties:
+                    # Property selection
+                    prop_options = []
+                    for prop_type, props in st.session_state.available_properties.items():
+                        for prop in props:
+                            prop_options.append(f"{prop_type}_{prop}")
                     
-                    if selected_property != "None":
-                        prop_type, prop_name = selected_property.split("_", 1)
-                        st.session_state.funnel_config.segment_by = selected_property
-                        
-                        # Get available values for this property
-                        prop_values = st.session_state.data_source_manager.get_property_values(
-                            st.session_state.events_data, prop_name, prop_type
+                    if prop_options:
+                        # Show current selection
+                        property_options = ["None"] + prop_options
+                        current_index = 0
+                        if current_segment_by in property_options:
+                            current_index = property_options.index(current_segment_by)
+                            
+                        selected_property = st.selectbox(
+                            "Segment By Property",
+                            property_options,
+                            index=current_index,
+                            help="Choose a property to segment the funnel analysis"
                         )
                         
-                        if prop_values:
-                            selected_values = st.multiselect(
-                                f"Select {prop_name} Values",
-                                prop_values,
-                                help="Choose specific values to compare"
+                        if selected_property != "None":
+                            prop_type, prop_name = selected_property.split("_", 1)
+                            
+                            # Get available values for this property
+                            prop_values = st.session_state.data_source_manager.get_property_values(
+                                st.session_state.events_data, prop_name, prop_type
                             )
-                            st.session_state.funnel_config.segment_values = selected_values
-                    else:
-                        st.session_state.funnel_config.segment_by = None
-                        st.session_state.funnel_config.segment_values = None
+                            
+                            if prop_values:
+                                # Show current selection for values
+                                default_values = []
+                                if selected_property == current_segment_by:
+                                    default_values = [v for v in current_segment_values if v in prop_values]
+                                    
+                                selected_values = st.multiselect(
+                                    f"Select {prop_name} Values",
+                                    prop_values,
+                                    default=default_values,
+                                    help="Choose specific values to compare"
+                                )
+            
+            # Check if configuration has changed by comparing form values with session state
+            config_changed = False
+            current_config = st.session_state.funnel_config
+            
+            # Check conversion window
+            if window_unit == "Hours" and current_config.conversion_window_hours != window_value:
+                config_changed = True
+            elif window_unit == "Days" and current_config.conversion_window_hours != window_value * 24:
+                config_changed = True
+            elif window_unit == "Weeks" and current_config.conversion_window_hours != window_value * 24 * 7:
+                config_changed = True
+            
+            # Check other settings
+            if (current_config.counting_method.value != counting_method or
+                current_config.reentry_mode.value != reentry_mode or
+                current_config.funnel_order.value != funnel_order or
+                st.session_state.get('use_polars', True) != use_polars or
+                current_config.segment_by != (selected_property if selected_property != "None" else None) or
+                current_config.segment_values != (selected_values if selected_property != "None" else None)):
+                config_changed = True
+            
+            # Display warning if configuration has changed
+            if config_changed:
+                st.warning("⚙️ Settings have changed. Click 'Apply & Analyze' to update the results.")
+            
+            # Form submit button with improved styling
+            submitted = st.form_submit_button(
+                label="🚀 Apply & Analyze", 
+                type="primary", 
+                use_container_width=True,
+                help="Apply configuration changes and run funnel analysis"
+            )
+            
+            # Update session state only when form is submitted
+            if submitted:
+                # Update conversion window
+                if window_unit == "Hours":
+                    st.session_state.funnel_config.conversion_window_hours = window_value
+                elif window_unit == "Days":
+                    st.session_state.funnel_config.conversion_window_hours = window_value * 24
+                elif window_unit == "Weeks":
+                    st.session_state.funnel_config.conversion_window_hours = window_value * 24 * 7
+                
+                # Update counting method
+                st.session_state.funnel_config.counting_method = CountingMethod(counting_method)
+                
+                # Update reentry mode
+                st.session_state.funnel_config.reentry_mode = ReentryMode(reentry_mode)
+                
+                # Update funnel order
+                st.session_state.funnel_config.funnel_order = FunnelOrder(funnel_order)
+                
+                # Update engine preference
+                st.session_state.use_polars = use_polars
+                
+                # Update segmentation
+                if selected_property != "None":
+                    st.session_state.funnel_config.segment_by = selected_property
+                    st.session_state.funnel_config.segment_values = selected_values
+                else:
+                    st.session_state.funnel_config.segment_by = None
+                    st.session_state.funnel_config.segment_values = None
+                
+                st.toast("✅ Settings applied successfully!", icon="✅")
+                
+                # Automatically trigger funnel analysis if we have steps and data
+                if (len(st.session_state.funnel_steps) >= 2 and 
+                    st.session_state.events_data is not None and 
+                    not st.session_state.events_data.empty):
+                    
+                    # Run analysis with updated configuration
+                    with st.spinner("Calculating funnel metrics..."):
+                        # Use polars preference from form
+                        calculator = FunnelCalculator(st.session_state.funnel_config, use_polars=use_polars)
+                        
+                        # Store calculator for cache management
+                        st.session_state.last_calculator = calculator
+                        
+                        # Monitor performance
+                        calculation_start = time.time()
+                        st.session_state.analysis_results = calculator.calculate_funnel_metrics(
+                            st.session_state.events_data, 
+                            st.session_state.funnel_steps
+                        )
+                        calculation_time = time.time() - calculation_start
+                        
+                        # Store performance metrics in session state
+                        if 'performance_history' not in st.session_state:
+                            st.session_state.performance_history = []
+                        
+                        engine_used = "Polars" if use_polars else "Pandas"
+                        st.session_state.performance_history.append({
+                            'timestamp': datetime.now(),
+                            'events_count': len(st.session_state.events_data),
+                            'steps_count': len(st.session_state.funnel_steps),
+                            'calculation_time': calculation_time,
+                            'method': st.session_state.funnel_config.counting_method.value,
+                            'engine': engine_used
+                        })
+                        
+                        # Keep only last 10 calculations
+                        if len(st.session_state.performance_history) > 10:
+                            st.session_state.performance_history = st.session_state.performance_history[-10:]
+                        
+                        st.toast(f"🚀 {engine_used} analysis completed in {calculation_time:.2f}s!", icon="🚀")
+                        
+                elif len(st.session_state.funnel_steps) < 2:
+                    st.toast("⚠️ Please add at least 2 steps to create a funnel", icon="⚠️")
+                elif st.session_state.events_data is None or st.session_state.events_data.empty:
+                    st.toast("⚠️ Please load data first", icon="⚠️")
         
         st.markdown("---")
         
@@ -9368,30 +9754,152 @@ ORDER BY user_id, timestamp""",
                     st.markdown("- Property parsing results")
                     st.markdown("- User grouping optimizations")
     
-    # Main content area
+    # Call the main content area with state-aware UI
+    main_content_area()
+
+def display_current_funnel_steps():
+    """Display the current funnel steps with management controls for confirmation state."""
+    if not st.session_state.funnel_steps:
+        return
+    
+    # Get event statistics for display
+    if 'event_statistics' not in st.session_state:
+        st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
+    
+    st.markdown("#### 🎯 Your Funnel Steps:")
+    
+    # Display funnel steps in a clean format
+    for i, step in enumerate(st.session_state.funnel_steps):
+        with st.container():
+            # Professional column layout
+            step_name_col, up_col, down_col, del_col = st.columns([0.7, 0.1, 0.1, 0.1])
+            
+            with step_name_col:
+                # Get event stats for display
+                stats = st.session_state.event_statistics.get(step, {})
+                user_count = stats.get('unique_users', 0)
+                coverage = stats.get('user_coverage', 0)
+                st.markdown(f"**{i+1}.** {step}")
+                st.caption(f"👥 {user_count:,} users • 📈 {coverage:.1f}% coverage")
+            
+            with up_col:
+                # Move up button - only show if not first item
+                if i > 0:
+                    if st.button("⬆️", key=f"confirm_up_{i}", help="Move up"):
+                        # Classic swap
+                        st.session_state.funnel_steps[i], st.session_state.funnel_steps[i-1] = \
+                            st.session_state.funnel_steps[i-1], st.session_state.funnel_steps[i]
+                        st.session_state.analysis_results = None
+                        st.rerun()
+            
+            with down_col:
+                # Move down button - only show if not last item
+                if i < len(st.session_state.funnel_steps) - 1:
+                    if st.button("⬇️", key=f"confirm_down_{i}", help="Move down"):
+                        # Classic swap
+                        st.session_state.funnel_steps[i], st.session_state.funnel_steps[i+1] = \
+                            st.session_state.funnel_steps[i+1], st.session_state.funnel_steps[i]
+                        st.session_state.analysis_results = None
+                        st.rerun()
+            
+            with del_col:
+                # Remove button - always available
+                if st.button("🗑️", key=f"confirm_del_{i}", help="Remove step"):
+                    st.session_state.funnel_steps.pop(i)
+                    st.session_state.analysis_results = None
+                    st.rerun()
+
+def display_data_overview():
+    """Display data overview metrics."""
+    st.markdown("## 📋 Data Overview")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Events", f"{len(st.session_state.events_data):,}")
+    with col2:
+        st.metric("Unique Users", f"{st.session_state.events_data['user_id'].nunique():,}")
+    with col3:
+        st.metric("Event Types", f"{st.session_state.events_data['event_name'].nunique()}")
+    with col4:
+        date_range = st.session_state.events_data['timestamp'].max() - st.session_state.events_data['timestamp'].min()
+        st.metric("Date Range", f"{date_range.days} days")
+
+# Main content area - State-aware UI
+def main_content_area():
+    """Main content area with state-aware UI logic."""
     if st.session_state.events_data is not None and not st.session_state.events_data.empty:
         
-        # Data overview
-        st.markdown("## 📋 Data Overview")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Total Events", f"{len(st.session_state.events_data):,}")
-        with col2:
-            st.metric("Unique Users", f"{st.session_state.events_data['user_id'].nunique():,}")
-        with col3:
-            st.metric("Event Types", f"{st.session_state.events_data['event_name'].nunique()}")
-        with col4:
-            date_range = st.session_state.events_data['timestamp'].max() - st.session_state.events_data['timestamp'].min()
-            st.metric("Date Range", f"{date_range.days} days")
-        
-        # Simplified event selection - replace complex functionality with simple checkbox list
-        create_simple_event_selector()
-        
-        # Display results
-        if st.session_state.analysis_results:
-            st.markdown("## 📈 Analysis Results")
+        # State 1: Build Funnel (Less than 2 events selected)
+        if len(st.session_state.funnel_steps) < 2:
+            st.markdown("### 🔨 Build Your Funnel: Select Events")
+            st.info("Select at least 2 events from the browser below to construct your funnel.")
             
+            # Show data overview
+            display_data_overview()
+            
+            # Show Event Browser
+            create_enhanced_event_selector()
+        
+        # State 2: Confirm Funnel (Funnel built but not analyzed)
+        elif not st.session_state.analysis_results:
+            st.markdown("### ✅ Your Funnel is Ready")
+            
+            # Show data overview
+            display_data_overview()
+            
+            # Display current funnel steps
+            display_current_funnel_steps()
+            
+            # Clear all button
+            if st.button("🗑️ Clear All Steps", use_container_width=True):
+                st.session_state.funnel_steps = []
+                st.session_state.analysis_results = None
+                st.toast("🗑️ Funnel cleared!", icon="🗑️")
+                st.rerun()
+            
+            # Prominent call-to-action
+            st.success("🚀 Your funnel is ready! Configure your settings in the sidebar and click '🚀 Apply & Analyze' to see the results.")
+            
+            # Optional: Still show event browser for adding more steps
+            st.markdown("---")
+            st.markdown("### 🔍 Add More Events (Optional)")
+            st.markdown("*You can add more events to your funnel or proceed with analysis*")
+            create_enhanced_event_selector()
+        
+        # State 3: Results Available (Show analysis results)
+        else:
+            st.markdown("### 📊 Funnel Analysis Results")
+            
+            # Show current funnel configuration at the top for context
+            st.markdown("#### 🎯 Analyzed Funnel:")
+            funnel_display_cols = st.columns(len(st.session_state.funnel_steps))
+            for i, step in enumerate(st.session_state.funnel_steps):
+                with funnel_display_cols[i]:
+                    stats = st.session_state.event_statistics.get(step, {})
+                    user_count = stats.get('unique_users', 0)
+                    st.markdown(f"**{i+1}.** {step}")
+                    st.caption(f"👥 {user_count:,} users")
+                    if i < len(st.session_state.funnel_steps) - 1:
+                        st.markdown("⬇️")
+            
+            # Performance indicator
+            if 'performance_history' in st.session_state and st.session_state.performance_history:
+                last_analysis = st.session_state.performance_history[-1]
+                st.success(f"""
+                ✅ **Analysis Complete** - Last run: {last_analysis['timestamp'].strftime('%H:%M:%S')} 
+                ({last_analysis['calculation_time']:.2f}s, {last_analysis['engine']})
+                """)
+            else:
+                st.success("✅ **Analysis Complete** - Results displayed below")
+            
+            # Button to modify funnel
+            if st.button("🔧 Modify Funnel", help="Go back to event selection"):
+                st.session_state.analysis_results = None
+                st.rerun()
+            
+            st.markdown("---")
+            
+            # Display results
             results = st.session_state.analysis_results
             
             # Key metrics
@@ -10568,9 +11076,6 @@ ORDER BY user_id, timestamp""",
                             st.metric("Latest Improvement", f"{recent_improvement:+.1f}%")
                 
                 tab_idx += 1
-    
-    else:
-        st.info("👈 Please select and load a data source from the sidebar to begin funnel analysis")
     
     # Test visualizations button
     if "analysis_results" in st.session_state and st.session_state.analysis_results:

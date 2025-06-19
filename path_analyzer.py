@@ -330,24 +330,45 @@ class PathAnalyzer:
             elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
                 # Use join_asof for optimal performance with ORDERED + OPTIMIZED_REENTRY
                 try:
-                    # Sort both DataFrames by timestamp
-                    step_A_df = step_A_df.sort(['user_id', 'step_A_time'])
-                    step_B_df = step_B_df.sort(['user_id', 'step_B_time'])
+                    # Sort both DataFrames by timestamp and ensure proper data types
+                    step_A_df_sorted = (
+                        step_A_df
+                        .with_columns([
+                            pl.col('step_A_time').cast(pl.Datetime),
+                            pl.col('user_id').cast(pl.Utf8)
+                        ])
+                        .sort(['user_id', 'step_A_time'])
+                    )
+                    
+                    step_B_df_sorted = (
+                        step_B_df
+                        .with_columns([
+                            pl.col('step_B_time').cast(pl.Datetime),
+                            pl.col('user_id').cast(pl.Utf8)
+                        ])
+                        .sort(['user_id', 'step_B_time'])
+                    )
                     
                     # Use join_asof to find the next B event after each A event within window
                     # This avoids the "join explosion" problem
-                    conversion_pairs = pl.join_asof(
-                        step_A_df.select(['user_id', 'step', 'step_A_time']),
-                        step_B_df.select(['user_id', 'step_name', 'step_B_time']).rename({'step_name': 'next_step'}),
-                        left_on='step_A_time',
-                        right_on='step_B_time',
-                        by='user_id',
-                        strategy='forward'
-                    ).filter(
-                        # Keep only pairs within conversion window
-                        (pl.col('step_B_time') > pl.col('step_A_time')) &
-                        (pl.col('step_B_time') <= pl.col('step_A_time') + conversion_window)
-                    )
+                    # Suppress Polars warnings for join_asof
+                    import warnings
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", message="Sortedness of columns cannot be checked")
+                        warnings.filterwarnings("ignore", message="could not extract number from any-value of dtype")
+                        
+                        conversion_pairs = pl.join_asof(
+                            step_A_df_sorted.select(['user_id', 'step', 'step_A_time']),
+                            step_B_df_sorted.select(['user_id', 'step_name', 'step_B_time']).rename({'step_name': 'next_step'}),
+                            left_on='step_A_time',
+                            right_on='step_B_time',
+                            by='user_id',
+                            strategy='forward'
+                        ).filter(
+                            # Keep only pairs within conversion window
+                            (pl.col('step_B_time') > pl.col('step_A_time')) &
+                            (pl.col('step_B_time') <= pl.col('step_A_time') + conversion_window)
+                        )
                     
                 except Exception as e:
                     self.logger.warning(f"join_asof failed: {str(e)}, falling back to optimal_step_pairs")
