@@ -1,0 +1,21 @@
+# =====================================================================
+# Development Dependencies - Code Quality & Linting Pipeline
+# =====================================================================
+
+# Modern Python Linting & Formatting Stack
+ruff>=0.1.0              # Ultra-fast linter and import sorter
+black>=23.0.0            # Uncompromising code formatter
+mypy>=1.7.0              # Static type checker
+
+# Type Stubs for Static Analysis
+pandas-stubs>=2.0.0      # Type hints for pandas
+types-requests>=2.28.0   # Type hints for requests (if used)
+types-setuptools>=68.0.0 # Type hints for setuptools
+
+# Additional Quality Tools
+pre-commit>=3.0.0        # Git hooks for automated quality checks
+
+# Development Testing (already in main requirements.txt but good to have)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-xdist>=3.3.0

@@ -17,7 +17,7 @@
 ### Пример Проблемы
 ```
 Данные:
-- User_A: Signup 01.01 23:30 → Purchase 02.01 01:30 
+- User_A: Signup 01.01 23:30 → Purchase 02.01 01:30
 - User_B: Signup 02.01 10:00 → Purchase 02.01 11:00
 
 Неправильный результат:
@@ -62,12 +62,12 @@ cohorts_df = cohort_starters.with_columns([
 for period_date in unique_periods:
     # Шаг 1: Найти пользователей этой когорты
     period_starters = cohorts_df.filter(pl.col('period_date') == period_date)
-    
+
     # Шаг 2: Для каждого пользователя рассчитать дедлайн конверсии
     starters_with_deadline = starter_times.with_columns([
         (pl.col('start_time') + pl.duration(hours=conversion_window_hours)).alias('deadline')
     ])
-    
+
     # Шаг 3: Проверить, какие пользователи достигли каждого шага в пределах СВОЕГО окна
     step_matches = (
         starters_with_deadline
@@ -143,7 +143,7 @@ test_standalone_cohort_issue()
 - **Ключевые изменения**: Когортная группировка + индивидуальные окна конверсии
 - **Производительность**: Векторизованные операции Polars
 
-#### `_calculate_timeseries_metrics_pandas`  
+#### `_calculate_timeseries_metrics_pandas`
 - **Расположение**: `app.py:2304-2460`
 - **Ключевые изменения**: Цикличная обработка когорт с индивидуальными проверками
 - **Совместимость**: Полная совместимость с Polars результатами
@@ -192,6 +192,6 @@ self.logger.info(f"Calculated TRUE cohort timeseries metrics (polars) for {len(r
 
 ---
 
-*Исправление реализовано: 2025-06-18*  
-*Статус: ✅ Протестировано и развернуто*  
+*Исправление реализовано: 2025-06-18*
+*Статус: ✅ Протестировано и развернуто*
 *Тесты: 5/5 проходят*

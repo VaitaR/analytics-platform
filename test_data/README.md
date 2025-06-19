@@ -43,7 +43,7 @@ user_id,event_name,timestamp,event_properties,user_properties
 
 For programmatic test data generation, use the fixtures in `tests/conftest.py`:
 - `small_linear_funnel_data` - Small dataset (100 users)
-- `medium_linear_funnel_data` - Medium dataset (1000 users) 
+- `medium_linear_funnel_data` - Medium dataset (1000 users)
 - `large_dataset` - Large dataset (10000+ users)
 
 ## 📏 **Performance Benchmarks**

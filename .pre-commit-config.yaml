@@ -1,0 +1,101 @@
+# =====================================================================
+# Pre-commit Configuration - Automated Code Quality Gates
+# =====================================================================
+#
+# This file configures pre-commit hooks to automatically run code quality
+# checks before each git commit, ensuring consistent code standards.
+#
+# Setup:
+#   1. Install: pip install pre-commit
+#   2. Install hooks: pre-commit install
+#   3. Run on all files: pre-commit run --all-files
+# =====================================================================
+
+repos:
+  # ===================================================================
+  # Built-in Pre-commit Hooks (Basic File Hygiene)
+  # ===================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        description: "Remove trailing whitespace"
+      - id: end-of-file-fixer
+        description: "Ensure files end with newline"
+      - id: check-yaml
+        description: "Validate YAML files"
+      - id: check-toml
+        description: "Validate TOML files"
+      - id: check-json
+        description: "Validate JSON files"
+      - id: check-merge-conflict
+        description: "Check for merge conflict markers"
+      - id: check-added-large-files
+        description: "Prevent large files from being committed"
+        args: ['--maxkb=1000']  # 1MB limit
+      - id: debug-statements
+        description: "Check for debugger imports and breakpoints"
+
+  # ===================================================================
+  # Ruff - Ultra-fast Python Linting and Import Sorting
+  # ===================================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.8
+    hooks:
+      - id: ruff
+        description: "Run ruff linter with auto-fixes"
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        description: "Run ruff formatter"
+
+  # ===================================================================
+  # Black - Uncompromising Code Formatter
+  # ===================================================================
+  - repo: https://github.com/psf/black
+    rev: 23.12.0
+    hooks:
+      - id: black
+        description: "Format Python code with Black"
+        language_version: python3
+
+  # ===================================================================
+  # MyPy - Static Type Checking
+  # ===================================================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.7.1
+    hooks:
+      - id: mypy
+        description: "Run mypy static type checker"
+        additional_dependencies: [
+          "pandas-stubs",
+          "types-requests",
+          "types-setuptools"
+        ]
+        # Run only on modified files for speed
+        args: [--ignore-missing-imports, --check-untyped-defs]
+        exclude: ^tests/
+
+# ===================================================================
+# Pre-commit Configuration
+# ===================================================================
+default_language_version:
+  python: python3.9
+
+# Performance optimization - only run on changed files
+default_stages: [pre-commit]
+
+# Fail fast - stop on first error
+fail_fast: false
+
+# CI configuration
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false

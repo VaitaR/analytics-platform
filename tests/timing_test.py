@@ -1,19 +1,20 @@
+import os
+import sys
+import time
+
+import numpy as np
 import pandas as pd
 import polars as pl
-import time
-import sys
-import numpy as np
-import os
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import FunnelCalculator, FunnelConfig, CountingMethod, ReentryMode, FunnelOrder
+from app import CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder, ReentryMode
 
 # Load test dataset
 print("Loading test dataset...")
-events_df = pd.read_csv('test_data/test_50k.csv')
-events_df['timestamp'] = pd.to_datetime(events_df['timestamp'])
+events_df = pd.read_csv("test_data/test_50k.csv")
+events_df["timestamp"] = pd.to_datetime(events_df["timestamp"])
 print(f"Loaded {len(events_df)} events, {events_df['user_id'].nunique()} unique users")
 
 # Convert to polars once
@@ -25,12 +26,16 @@ config = FunnelConfig(
     counting_method=CountingMethod.UNIQUE_USERS,
     reentry_mode=ReentryMode.FIRST_ONLY,
     funnel_order=FunnelOrder.ORDERED,
-    conversion_window_hours=168
+    conversion_window_hours=168,
 )
 
 funnel_steps = [
-    'User Sign-Up', 'Verify Email', 'First Login', 
-    'Profile Setup', 'Tutorial Completed', 'First Purchase'
+    "User Sign-Up",
+    "Verify Email",
+    "First Login",
+    "Profile Setup",
+    "Tutorial Completed",
+    "First Purchase",
 ]
 
 print("\nRunning performance test...")
@@ -60,7 +65,9 @@ print("Testing Pandas _calculate_unique_users_funnel_optimized...")
 pandas_times = []
 for i in range(NUM_RUNS):
     start_time = time.time()
-    users_funnel = calculator_pandas._calculate_unique_users_funnel_optimized(events_df, funnel_steps)
+    users_funnel = calculator_pandas._calculate_unique_users_funnel_optimized(
+        events_df, funnel_steps
+    )
     pandas_time = time.time() - start_time
     pandas_times.append(pandas_time)
     print(f"  Run {i+1}: {pandas_time:.6f} seconds")
@@ -74,7 +81,9 @@ print("Testing Polars _calculate_unique_users_funnel_polars (with pre-converted 
 polars_times = []
 for i in range(NUM_RUNS):
     start_time = time.time()
-    users_funnel = calculator_polars._calculate_unique_users_funnel_polars(events_df_polars, funnel_steps)
+    users_funnel = calculator_polars._calculate_unique_users_funnel_polars(
+        events_df_polars, funnel_steps
+    )
     polars_time = time.time() - start_time
     polars_times.append(polars_time)
     print(f"  Run {i+1}: {polars_time:.6f} seconds")
@@ -111,40 +120,48 @@ for i in range(NUM_RUNS):
 
 avg_complete_time = sum(complete_polars_times) / len(complete_polars_times)
 complete_std = np.std(complete_polars_times)
-print(f"Average complete pipeline time: {avg_complete_time:.6f} seconds (std: {complete_std:.6f})\n")
+print(
+    f"Average complete pipeline time: {avg_complete_time:.6f} seconds (std: {complete_std:.6f})\n"
+)
 
 print("\nSummary of Results:")
 print("=" * 65)
-print(f"Function execution only (without conversion overhead):")
+print("Function execution only (without conversion overhead):")
 print(f"  Pandas: {avg_pandas_time:.6f} ± {pandas_std:.6f} seconds")
 print(f"  Polars: {avg_polars_time:.6f} ± {polars_std:.6f} seconds")
 
-speedup = avg_pandas_time / avg_polars_time if avg_polars_time > 0 else float('inf')
+speedup = avg_pandas_time / avg_polars_time if avg_polars_time > 0 else float("inf")
 improvement = (avg_pandas_time - avg_polars_time) / avg_pandas_time * 100
 print(f"  Speedup factor: {speedup:.2f}x")
 print(f"  Performance improvement: {improvement:.1f}%")
 
-print(f"\nPandas-to-Polars conversion overhead: {avg_conversion_time:.6f} ± {conversion_std:.6f} seconds")
+print(
+    f"\nPandas-to-Polars conversion overhead: {avg_conversion_time:.6f} ± {conversion_std:.6f} seconds"
+)
 
-print(f"\nComplete pipeline (with conversion):")
+print("\nComplete pipeline (with conversion):")
 print(f"  Pandas: {avg_pandas_time:.6f} seconds")
 print(f"  Polars: {avg_complete_time:.6f} seconds")
 
-complete_speedup = avg_pandas_time / avg_complete_time if avg_complete_time > 0 else float('inf')
+complete_speedup = avg_pandas_time / avg_complete_time if avg_complete_time > 0 else float("inf")
 complete_improvement = (avg_pandas_time - avg_complete_time) / avg_pandas_time * 100
 print(f"  Speedup factor: {complete_speedup:.2f}x")
 print(f"  Performance: {complete_improvement:.1f}%")
 
-print(f"\nConversion overhead as % of Polars execution: {avg_conversion_time/avg_polars_time*100:.1f}%")
+print(
+    f"\nConversion overhead as % of Polars execution: {avg_conversion_time/avg_polars_time*100:.1f}%"
+)
 
 print("\nConclusion:")
 print("-" * 65)
 if speedup > 1:
     print(f"The optimized Polars implementation is {speedup:.2f}x faster than Pandas")
-    print(f"when measuring actual function execution time without conversion overhead.")
+    print("when measuring actual function execution time without conversion overhead.")
     print("\nHowever, the pandas-to-polars conversion overhead is significant,")
-    print(f"taking {avg_conversion_time/avg_polars_time:.1f}x longer than the function execution itself.")
-    
+    print(
+        f"taking {avg_conversion_time/avg_polars_time:.1f}x longer than the function execution itself."
+    )
+
     if complete_speedup < 1:
         print("\nWhen including conversion overhead in a complete pipeline,")
         print(f"Pandas is actually {1/complete_speedup:.2f}x faster overall.")
@@ -153,4 +170,4 @@ if speedup > 1:
     else:
         print("\nEven with conversion overhead, Polars is still faster overall.")
 else:
-    print("The Pandas implementation is faster than Polars, even without conversion overhead.") 
+    print("The Pandas implementation is faster than Polars, even without conversion overhead.")
