@@ -168,118 +168,128 @@ class TestDataFactory:
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         return df.sort_values(["user_id", "timestamp"]).reset_index(drop=True)
 
-    @staticmethod
-    def _generate_noise_events(spec: TestDataSpec, max_users: int, ratio: float) -> list[dict]:
-        """Generate noise events that shouldn't affect funnel calculations."""
-        noise_events = []
-        noise_event_names = ["Page View", "Click", "Scroll", "Hover", "Session Start"]
-        num_noise_events = int(max_users * ratio * len(noise_event_names))
 
-        for i in range(num_noise_events):
-            user_idx = np.random.randint(0, max_users)
-            event_time = spec.base_timestamp + timedelta(
-                hours=np.random.randint(0, spec.time_spread_hours),
-                minutes=np.random.randint(0, 60),
-            )
+@pytest.fixture
+def skipped_steps_data_conftest(base_timestamp):
+    """Test data with users skipping steps in the funnel."""
+    events = []
 
-            noise_events.append(
-                {
-                    "user_id": f"user_{user_idx:05d}",
-                    "event_name": np.random.choice(noise_event_names),
-                    "timestamp": event_time,
-                    "event_properties": json.dumps({"noise": True}),
-                    "user_properties": json.dumps({"user_type": "test_user"}),
-                }
-            )
+    # User 1: Complete all steps in order
+    events.extend(
+        [
+            {
+                "user_id": "user_001",
+                "event_name": "Page View",
+                "timestamp": base_timestamp + timedelta(minutes=1),
+                "event_properties": json.dumps({"source": "organic"}),
+                "user_properties": json.dumps({"user_type": "complete"}),
+            },
+            {
+                "user_id": "user_001",
+                "event_name": "Sign Up",
+                "timestamp": base_timestamp + timedelta(minutes=5),
+                "event_properties": json.dumps({"source": "organic"}),
+                "user_properties": json.dumps({"user_type": "complete"}),
+            },
+            {
+                "user_id": "user_001",
+                "event_name": "Add to Cart",
+                "timestamp": base_timestamp + timedelta(minutes=10),
+                "event_properties": json.dumps({"source": "organic"}),
+                "user_properties": json.dumps({"user_type": "complete"}),
+            },
+            {
+                "user_id": "user_001",
+                "event_name": "Purchase",
+                "timestamp": base_timestamp + timedelta(minutes=15),
+                "event_properties": json.dumps({"source": "organic"}),
+                "user_properties": json.dumps({"user_type": "complete"}),
+            },
+        ]
+    )
 
-        return noise_events
+    # User 2: Skip "Add to Cart" step
+    events.extend(
+        [
+            {
+                "user_id": "user_002",
+                "event_name": "Page View",
+                "timestamp": base_timestamp + timedelta(minutes=2),
+                "event_properties": json.dumps({"source": "paid"}),
+                "user_properties": json.dumps({"user_type": "skipper"}),
+            },
+            {
+                "user_id": "user_002",
+                "event_name": "Sign Up",
+                "timestamp": base_timestamp + timedelta(minutes=6),
+                "event_properties": json.dumps({"source": "paid"}),
+                "user_properties": json.dumps({"user_type": "skipper"}),
+            },
+            # Skip "Add to Cart"
+            {
+                "user_id": "user_002",
+                "event_name": "Purchase",
+                "timestamp": base_timestamp + timedelta(minutes=16),
+                "event_properties": json.dumps({"source": "paid"}),
+                "user_properties": json.dumps({"user_type": "skipper"}),
+            },
+        ]
+    )
 
-    @staticmethod
-    def create_edge_case_data(case_type: str) -> pd.DataFrame:
-        """Create specific edge case datasets for testing boundary conditions."""
-        base_time = datetime(2024, 1, 1, 10, 0, 0)
+    # User 3: Only first step
+    events.append(
+        {
+            "user_id": "user_003",
+            "event_name": "Page View",
+            "timestamp": base_timestamp + timedelta(minutes=3),
+            "event_properties": json.dumps({"source": "referral"}),
+            "user_properties": json.dumps({"user_type": "early_dropout"}),
+        }
+    )
 
-        if case_type == "empty":
-            return pd.DataFrame(
-                columns=[
-                    "user_id",
-                    "event_name",
-                    "timestamp",
-                    "event_properties",
-                    "user_properties",
-                ]
-            )
+    # User 4: Complete all steps (to match test expectation of 4 users)
+    events.extend(
+        [
+            {
+                "user_id": "user_004",
+                "event_name": "Page View",
+                "timestamp": base_timestamp + timedelta(minutes=4),
+                "event_properties": json.dumps({"source": "social"}),
+                "user_properties": json.dumps({"user_type": "complete"}),
+            },
+            {
+                "user_id": "user_004",
+                "event_name": "Sign Up",
+                "timestamp": base_timestamp + timedelta(minutes=8),
+                "event_properties": json.dumps({"source": "social"}),
+                "user_properties": json.dumps({"user_type": "complete"}),
+            },
+            {
+                "user_id": "user_004",
+                "event_name": "Add to Cart",
+                "timestamp": base_timestamp + timedelta(minutes=12),
+                "event_properties": json.dumps({"source": "social"}),
+                "user_properties": json.dumps({"user_type": "complete"}),
+            },
+            {
+                "user_id": "user_004",
+                "event_name": "Purchase",
+                "timestamp": base_timestamp + timedelta(minutes=18),
+                "event_properties": json.dumps({"source": "social"}),
+                "user_properties": json.dumps({"user_type": "complete"}),
+            },
+        ]
+    )
 
-        if case_type == "single_user":
-            return pd.DataFrame(
-                [
-                    {
-                        "user_id": "single_user",
-                        "event_name": "Single Event",
-                        "timestamp": base_time,
-                        "event_properties": "{}",
-                        "user_properties": "{}",
-                    }
-                ]
-            )
+    df = pd.DataFrame(events)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    return df.sort_values(["user_id", "timestamp"]).reset_index(drop=True)
 
-        if case_type == "duplicate_events":
-            # Same user, same event, same timestamp
-            event = {
-                "user_id": "dup_user",
-                "event_name": "Duplicate Event",
-                "timestamp": base_time,
-                "event_properties": "{}",
-                "user_properties": "{}",
-            }
-            return pd.DataFrame([event, event, event])
 
-        if case_type == "out_of_order":
-            # Events with timestamps in wrong order
-            events = []
-            for i, (event, offset) in enumerate(
-                [
-                    ("Step 3", 0),  # Should be last
-                    ("Step 1", 1),  # Should be first
-                    ("Step 2", 2),  # Should be middle
-                ]
-            ):
-                events.append(
-                    {
-                        "user_id": "order_user",
-                        "event_name": event,
-                        "timestamp": base_time + timedelta(hours=offset),
-                        "event_properties": "{}",
-                        "user_properties": "{}",
-                    }
-                )
-            return pd.DataFrame(events)
-
-        if case_type == "missing_columns":
-            return pd.DataFrame(
-                [
-                    {
-                        "user_id": "incomplete_user",
-                        "event_name": "Incomplete Event",
-                        # Missing timestamp, properties
-                    }
-                ]
-            )
-
-        if case_type == "invalid_json":
-            return pd.DataFrame(
-                [
-                    {
-                        "user_id": "json_user",
-                        "event_name": "JSON Event",
-                        "timestamp": base_time,
-                        "event_properties": "invalid json string",
-                        "user_properties": '{"valid": "json"}',
-                    }
-                ]
-            )
-
-        raise ValueError(f"Unknown edge case type: {case_type}")
+@pytest.fixture
+def skipped_steps_funnel():
+    """Funnel steps for skipped step testing."""
+    return ["Page View", "Sign Up", "Add to Cart", "Purchase"]
 
 
 # =============================================================================
@@ -715,3 +725,185 @@ def pytest_collection_modifyitems(config, items):
         # Mark large data tests as slow
         if "large" in item.name.lower():
             item.add_marker(pytest.mark.slow)
+
+
+# =============================================================================
+# MISSING FIXTURES - FIXING FIXTURE ERRORS
+# =============================================================================
+
+
+@pytest.fixture
+def empty_data():
+    """Empty dataset for edge case testing."""
+    return pd.DataFrame(
+        columns=["user_id", "event_name", "timestamp", "event_properties", "user_properties"]
+    )
+
+
+@pytest.fixture
+def large_dataset(standard_funnel_steps):
+    """Large dataset for performance testing."""
+    spec = TestDataSpec(
+        total_users=10000,
+        conversion_rates=[1.0, 0.7, 0.5, 0.3],
+        time_spread_hours=168,  # 1 week
+        include_properties=True,
+        segment_distribution={"premium": 0.2, "basic": 0.5, "trial": 0.3},
+    )
+    return TestDataFactory.create_funnel_data(spec, standard_funnel_steps)
+
+
+@pytest.fixture
+def segmentation_test_data(base_timestamp):
+    """Test data specifically designed for segmentation testing."""
+    events = []
+
+    # Mobile users: 3 users complete all steps
+    mobile_users = ["mobile_user_001", "mobile_user_002", "mobile_user_003"]
+    for user_id in mobile_users:
+        # Sign Up
+        events.append(
+            {
+                "user_id": user_id,
+                "event_name": "Sign Up",
+                "timestamp": base_timestamp + timedelta(minutes=1),
+                "event_properties": json.dumps({"platform": "mobile"}),
+                "user_properties": json.dumps({"subscription": "free"}),
+            }
+        )
+        # Email Verification
+        events.append(
+            {
+                "user_id": user_id,
+                "event_name": "Email Verification",
+                "timestamp": base_timestamp + timedelta(minutes=5),
+                "event_properties": json.dumps({"platform": "mobile"}),
+                "user_properties": json.dumps({"subscription": "free"}),
+            }
+        )
+        # First Login
+        events.append(
+            {
+                "user_id": user_id,
+                "event_name": "First Login",
+                "timestamp": base_timestamp + timedelta(minutes=10),
+                "event_properties": json.dumps({"platform": "mobile"}),
+                "user_properties": json.dumps({"subscription": "free"}),
+            }
+        )
+
+    # Desktop users: 2 users complete only first 2 steps
+    desktop_users = ["desktop_user_001", "desktop_user_002"]
+    for user_id in desktop_users:
+        # Sign Up
+        events.append(
+            {
+                "user_id": user_id,
+                "event_name": "Sign Up",
+                "timestamp": base_timestamp + timedelta(minutes=2),
+                "event_properties": json.dumps({"platform": "desktop"}),
+                "user_properties": json.dumps({"subscription": "premium"}),
+            }
+        )
+        # Email Verification
+        events.append(
+            {
+                "user_id": user_id,
+                "event_name": "Email Verification",
+                "timestamp": base_timestamp + timedelta(minutes=6),
+                "event_properties": json.dumps({"platform": "desktop"}),
+                "user_properties": json.dumps({"subscription": "premium"}),
+            }
+        )
+        # Note: No First Login for desktop users
+
+    df = pd.DataFrame(events)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    return df.sort_values(["user_id", "timestamp"]).reset_index(drop=True)
+
+
+@pytest.fixture
+def long_window_calculator():
+    """Calculator with long conversion window for time series testing."""
+    config = FunnelConfig(
+        conversion_window_hours=168,  # 1 week
+        reentry_mode=ReentryMode.OPTIMIZED_REENTRY,
+        counting_method=CountingMethod.UNIQUE_USERS,
+        funnel_order=FunnelOrder.ORDERED,
+    )
+    return FunnelCalculator(config)
+
+
+@pytest.fixture
+def funnel_steps_3():
+    """3-step funnel for specific tests."""
+    return ["Page View", "Sign Up", "Purchase"]
+
+
+@pytest.fixture
+def funnel_steps_4():
+    """4-step funnel for specific tests."""
+    return ["Page View", "Sign Up", "Add to Cart", "Purchase"]
+
+
+@pytest.fixture
+def performance_calculator():
+    """High-performance calculator configuration."""
+    config = FunnelConfig(
+        conversion_window_hours=24,
+        reentry_mode=ReentryMode.OPTIMIZED_REENTRY,
+        counting_method=CountingMethod.UNIQUE_USERS,
+        funnel_order=FunnelOrder.UNORDERED,
+    )
+    return FunnelCalculator(config)
+
+
+@pytest.fixture
+def multi_week_month_data(base_timestamp):
+    """Multi-week and month data for time series testing."""
+    events = []
+
+    # Generate data over multiple weeks and months
+    for week in range(8):  # 8 weeks = 2 months
+        for user_idx in range(50):  # 50 users per week
+            user_id = f"user_w{week}_{user_idx:03d}"
+            week_start = base_timestamp + timedelta(weeks=week)
+
+            # Page View
+            events.append(
+                {
+                    "user_id": user_id,
+                    "event_name": "Page View",
+                    "timestamp": week_start + timedelta(hours=user_idx % 24),
+                    "event_properties": json.dumps({"source": "organic"}),
+                    "user_properties": json.dumps({"cohort": f"week_{week}"}),
+                }
+            )
+
+            # 80% continue to Sign Up
+            if user_idx < 40:
+                events.append(
+                    {
+                        "user_id": user_id,
+                        "event_name": "Sign Up",
+                        "timestamp": week_start + timedelta(hours=user_idx % 24 + 1),
+                        "event_properties": json.dumps({"source": "organic"}),
+                        "user_properties": json.dumps({"cohort": f"week_{week}"}),
+                    }
+                )
+
+                # 60% continue to Purchase
+                if user_idx < 30:
+                    events.append(
+                        {
+                            "user_id": user_id,
+                            "event_name": "Purchase",
+                            "timestamp": week_start + timedelta(hours=user_idx % 24 + 2),
+                            "event_properties": json.dumps({"source": "organic"}),
+                            "user_properties": json.dumps({"cohort": f"week_{week}"}),
+                        }
+                    )
+
+    df = pd.DataFrame(events)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    return df.sort_values(["user_id", "timestamp"]).reset_index(drop=True)

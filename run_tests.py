@@ -428,6 +428,12 @@ def generate_test_report() -> TestResult:
         f"   📊 Parsed results: {passed} passed, {failed} failed, {errors} errors, {skipped} skipped"
     )
 
+    # Initialize variables that will be used later
+    has_passed_tests = passed > 0
+    has_fixture_errors = (
+        "fixture" in (stdout + stderr).lower() and "not found" in (stdout + stderr).lower()
+    )
+
     # If no results were parsed, there might be an issue - but don't fail completely
     if passed == 0 and failed == 0 and errors == 0 and skipped == 0:
         print("   ⚠️  Warning: No test results parsed from output")
@@ -446,10 +452,6 @@ def generate_test_report() -> TestResult:
         # Normal parsing logic
         # Determine if this should be considered a success
         # If we have passed tests and the only failures are fixture errors, consider it success
-        has_passed_tests = passed > 0
-        has_fixture_errors = (
-            "fixture" in (stdout + stderr).lower() and "not found" in (stdout + stderr).lower()
-        )
 
         # Check if all errors are fixture-related by looking for fixture error patterns
         all_errors_are_fixtures = False
