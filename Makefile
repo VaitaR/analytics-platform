@@ -103,17 +103,17 @@ generate-test-data:
 
 test: generate-test-data
 	@echo "🧪 Running full test suite with coverage..."
-	python run_tests.py --coverage
+	python -m pytest tests/ --cov=app --cov-report=html:htmlcov --cov-report=term-missing --cov-report=xml:coverage.xml --junit-xml=test-results.xml -v
 	@echo "✅ All tests completed!"
 
 test-fast: generate-test-data
 	@echo "⚡ Running basic tests (quick validation)..."
-	python run_tests.py --basic-all
+	python -m pytest tests/ -v --tb=short -x
 	@echo "✅ Basic tests completed!"
 
 test-coverage: generate-test-data
 	@echo "📊 Generating HTML coverage report..."
-	python run_tests.py --coverage
+	python -m pytest tests/ --cov=app --cov-report=html:htmlcov --cov-report=term-missing -v
 	@echo "📋 Coverage report generated in htmlcov/index.html"
 	@echo "💡 Open htmlcov/index.html in your browser to view detailed coverage"
 
@@ -136,19 +136,19 @@ docs:
 # Performance testing
 test-performance:
 	@echo "⚡ Running performance tests..."
-	python run_tests.py --benchmarks
+	python -m pytest tests/ -k "performance or benchmark" -v
 	@echo "✅ Performance tests completed!"
 
 # Polars-specific testing
 test-polars:
 	@echo "🚀 Running Polars optimization tests..."
-	python run_tests.py --polars-all
+	python -m pytest tests/ -k "polars" -v
 	@echo "✅ Polars tests completed!"
 
 # Integration testing
 test-integration:
 	@echo "🔗 Running integration tests..."
-	python run_tests.py --advanced-all
+	python -m pytest tests/ -k "integration" -v
 	@echo "✅ Integration tests completed!"
 
 # CI/CD workflow simulation
@@ -177,7 +177,7 @@ validate-sync:
 	@echo "🔧 Testing key commands:"
 	@make check > /dev/null 2>&1 && echo "  ✅ make check: works" || echo "  ❌ make check: failed"
 	@ruff check . --output-format=github > /dev/null 2>&1 && echo "  ✅ GitHub format: works" || echo "  ❌ GitHub format: failed"
-	@python run_tests.py --validate > /dev/null 2>&1 && echo "  ✅ test validation: works" || echo "  ❌ test validation: failed"
+	@python -m pytest tests/ --collect-only > /dev/null 2>&1 && echo "  ✅ test validation: works" || echo "  ❌ test validation: failed"
 	@echo ""
 	@echo "📊 Dependency consistency:"
 	@echo "  requirements.txt: $$(wc -l < requirements.txt | tr -d ' ') packages"
