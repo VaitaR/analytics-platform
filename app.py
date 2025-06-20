@@ -11,6 +11,7 @@ from functools import wraps
 from typing import Any, Callable, Optional
 
 import clickhouse_connect
+import networkx as nx
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -486,16 +487,37 @@ class DataSourceManager:
                         )
                         # Get all unique keys from all JSON objects
                         if not decoded.is_empty():
-                            # Extract keys from each JSON object
-                            all_keys = (
-                                decoded.select(pl.col("decoded_props").struct.fields())
-                                .to_series()
-                                .explode()
-                                .unique()
-                            )
+                            try:
+                                # Try modern Polars API first
+                                self.logger.debug("Trying modern Polars struct.fields() API for event_properties")
+                                all_keys = (
+                                    decoded.select(pl.col("decoded_props").struct.fields())
+                                    .to_series()
+                                    .explode()
+                                    .unique()
+                                )
+                                self.logger.debug(f"Successfully extracted {len(all_keys)} event property keys using modern API")
+                            except Exception as e:
+                                self.logger.debug(f"Modern Polars API failed for event_properties: {str(e)}, trying fallback")
+                                try:
+                                    # Fallback: Get schema from first non-null struct
+                                    sample_struct = decoded.filter(pl.col("decoded_props").is_not_null()).limit(1)
+                                    if not sample_struct.is_empty():
+                                        first_row = sample_struct.row(0, named=True)
+                                        if first_row["decoded_props"] is not None:
+                                            all_keys = pl.Series(list(first_row["decoded_props"].keys()))
+                                            self.logger.debug(f"Successfully extracted {len(all_keys)} event property keys using fallback API")
+                                        else:
+                                            all_keys = pl.Series([])
+                                    else:
+                                        all_keys = pl.Series([])
+                                except Exception as e2:
+                                    self.logger.warning(f"Both Polars methods failed for event_properties: {str(e2)}")
+                                    all_keys = pl.Series([])
 
                             # Add to properties set
-                            properties["event_properties"].update(all_keys)
+                            if len(all_keys) > 0:
+                                properties["event_properties"].update(all_keys.to_list())
 
                 # Extract user properties
                 if "user_properties" in pl_df.columns:
@@ -510,16 +532,37 @@ class DataSourceManager:
                         )
                         # Get all unique keys from all JSON objects
                         if not decoded.is_empty():
-                            # Extract keys from each JSON object
-                            all_keys = (
-                                decoded.select(pl.col("decoded_props").struct.fields())
-                                .to_series()
-                                .explode()
-                                .unique()
-                            )
+                            try:
+                                # Try modern Polars API first
+                                self.logger.debug("Trying modern Polars struct.fields() API for user_properties")
+                                all_keys = (
+                                    decoded.select(pl.col("decoded_props").struct.fields())
+                                    .to_series()
+                                    .explode()
+                                    .unique()
+                                )
+                                self.logger.debug(f"Successfully extracted {len(all_keys)} user property keys using modern API")
+                            except Exception as e:
+                                self.logger.debug(f"Modern Polars API failed for user_properties: {str(e)}, trying fallback")
+                                try:
+                                    # Fallback: Get schema from first non-null struct
+                                    sample_struct = decoded.filter(pl.col("decoded_props").is_not_null()).limit(1)
+                                    if not sample_struct.is_empty():
+                                        first_row = sample_struct.row(0, named=True)
+                                        if first_row["decoded_props"] is not None:
+                                            all_keys = pl.Series(list(first_row["decoded_props"].keys()))
+                                            self.logger.debug(f"Successfully extracted {len(all_keys)} user property keys using fallback API")
+                                        else:
+                                            all_keys = pl.Series([])
+                                    else:
+                                        all_keys = pl.Series([])
+                                except Exception as e2:
+                                    self.logger.warning(f"Both Polars methods failed for user_properties: {str(e2)}")
+                                    all_keys = pl.Series([])
 
                             # Add to properties set
-                            properties["user_properties"].update(all_keys)
+                            if len(all_keys) > 0:
+                                properties["user_properties"].update(all_keys.to_list())
 
             except Exception as e:
                 error_msg = str(e).lower()
@@ -710,7 +753,7 @@ class DataSourceManager:
                 metadata[row["name"]] = base_metadata
 
             # Then, add any events from current data that aren't in demo file
-            for event_name, stats in event_stats.items():
+            for event_name, event_stats_data in event_stats.items():
                 if event_name not in metadata:
                     # Categorize unknown events
                     event_lower = event_name.lower()
@@ -737,7 +780,7 @@ class DataSourceManager:
                         category = "Other"
 
                     # Estimate frequency based on statistics
-                    event_percentage = stats.get("event_percentage", 0)
+                    event_percentage = event_stats_data.get("event_percentage", 0)
                     if event_percentage > 10:
                         frequency = "high"
                     elif event_percentage > 5:
@@ -750,7 +793,7 @@ class DataSourceManager:
                         "description": f"Event: {event_name}",
                         "frequency": frequency,
                     }
-                    base_metadata.update(stats)
+                    base_metadata.update(event_stats_data)
                     metadata[event_name] = base_metadata
 
             return metadata
@@ -863,6 +906,69 @@ class FunnelCalculator:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
+
+    def _safe_json_decode(self, column_expr: pl.Expr) -> pl.Expr:
+        """
+        Safely decode JSON strings to structs with error handling for schema mismatches.
+
+        Args:
+            column_expr: Polars column expression containing JSON strings
+
+        Returns:
+            Polars expression for decoded JSON struct or original column if decoding fails
+        """
+        try:
+            # Try with larger schema inference window to handle varying fields
+            return column_expr.str.json_decode(infer_schema_length=50000)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if (
+                "extra field" in error_msg
+                or "consider increasing infer_schema_length" in error_msg
+            ):
+                self.logger.debug(
+                    f"JSON schema mismatch detected (extra fields), trying relaxed approach: {str(e)}"
+                )
+                try:
+                    # Try with null inference (no schema validation)
+                    return column_expr.str.json_decode(infer_schema_length=None)
+                except Exception as e2:
+                    self.logger.debug(f"Extended schema inference failed: {str(e2)}")
+                    try:
+                        # Final attempt: Use very basic schema inference
+                        return column_expr.str.json_decode(infer_schema_length=1)
+                    except Exception as e3:
+                        self.logger.debug(f"All JSON decode attempts failed: {str(e3)}")
+                        # Return original column as string - will be handled by pandas fallback
+                        return column_expr
+            else:
+                self.logger.debug(f"JSON decode failed: {str(e)}")
+                try:
+                    # Second attempt: Use null schema inference
+                    return column_expr.str.json_decode(infer_schema_length=None)
+                except Exception as e2:
+                    self.logger.debug(f"Fallback JSON decode failed: {str(e2)}")
+                    # Final fallback: Return original column as string
+                    return column_expr
+
+    def _safe_json_field_access(self, column_expr: pl.Expr, field_name: str) -> pl.Expr:
+        """
+        Safely access a field from a JSON struct with error handling.
+
+        Args:
+            column_expr: Polars column expression containing JSON strings
+            field_name: Name of the field to extract
+
+        Returns:
+            Polars expression for the field value or null if field doesn't exist
+        """
+        try:
+            # Attempt to decode JSON and access field
+            return self._safe_json_decode(column_expr).struct.field(field_name)
+        except Exception as e:
+            self.logger.debug(f"JSON field access failed for field '{field_name}': {str(e)}")
+            # Return null expression as fallback
+            return pl.lit(None)
 
     def _to_polars(self, df: pd.DataFrame) -> pl.DataFrame:
         """Convert pandas DataFrame to polars DataFrame with proper schema handling"""
@@ -1204,37 +1310,52 @@ class FunnelCalculator:
                 # Get field names from all objects - with compatibility for different Polars versions
                 try:
                     # Modern Polars version approach
+                    self.logger.debug(f"Trying modern Polars struct.fields() API for JSON expansion in column: {column}")
                     all_keys = (
                         decoded.select(pl.col("decoded_props").struct.fields())
                         .to_series()
                         .explode()
                     )
+                    self.logger.debug(f"Successfully extracted {len(all_keys)} field names using modern API")
                 except Exception as e:
                     self.logger.debug(
-                        f"Field names retrieval error: {str(e)}, trying alternate method"
+                        f"Modern Polars API failed for JSON expansion in {column}: {str(e)}, trying alternate method"
                     )
-                    # Alternative approach for older Polars versions
-                    # Extract first row to get the keys
+                    # Alternative approach for newer Polars versions that changed the API
                     if not decoded.is_empty():
-                        sample_row = decoded.row(0, named=True)
-                        if (
-                            "decoded_props" in sample_row
-                            and sample_row["decoded_props"] is not None
-                        ):
-                            # Get all keys from all rows
-                            all_keys = []
-                            for i in range(min(decoded.height, 1000)):  # Sample up to 1000 rows
-                                try:
-                                    row = decoded.row(i, named=True)
-                                    if row["decoded_props"] is not None:
-                                        all_keys.extend(row["decoded_props"].keys())
-                                except:
-                                    continue
-                            # Convert to series for unique values
-                            all_keys = pl.Series(all_keys).unique()
-                        else:
+                        try:
+                            # Try to get schema from the first non-null struct
+                            sample_struct = decoded.filter(pl.col("decoded_props").is_not_null()).limit(1)
+                            if not sample_struct.is_empty():
+                                first_row = sample_struct.row(0, named=True)
+                                if (
+                                    "decoded_props" in first_row
+                                    and first_row["decoded_props"] is not None
+                                ):
+                                    # Get all keys from sample rows to ensure we capture all possible fields
+                                    all_keys_set = set()
+                                    sample_size = min(decoded.height, 100)  # Sample up to 100 rows for performance
+                                    for i in range(sample_size):
+                                        try:
+                                            row = decoded.row(i, named=True)
+                                            if row["decoded_props"] is not None:
+                                                all_keys_set.update(row["decoded_props"].keys())
+                                        except:
+                                            continue
+                                    # Convert to series for unique values
+                                    all_keys = pl.Series(list(all_keys_set))
+                                    self.logger.debug(f"Successfully extracted {len(all_keys)} field names using fallback method")
+                                else:
+                                    self.logger.debug("No valid decoded props found in sample")
+                                    return df
+                            else:
+                                self.logger.debug("No non-null decoded props found")
+                                return df
+                        except Exception as e2:
+                            self.logger.warning(f"Both Polars methods failed for JSON expansion: {str(e2)}")
                             return df
                     else:
+                        self.logger.debug("Decoded dataframe is empty")
                         return df
 
                 # Count occurrences of each key
@@ -3162,19 +3283,28 @@ class FunnelCalculator:
 
         # Print debug information about the incoming data to help diagnose issues
         try:
+            # Handle both Polars and Pandas DataFrames
+            segment_columns = getattr(segment_funnel_events_df, "columns", [])
+            history_columns = getattr(full_history_for_segment_users, "columns", [])
+
             self.logger.info(
-                f"Path analysis input data info - segment_df columns: {segment_funnel_events_df.columns}"
+                f"Path analysis input data info - segment_df columns: {segment_columns}"
             )
             self.logger.info(
-                f"Path analysis input data info - full_history_df columns: {full_history_for_segment_users.columns}"
+                f"Path analysis input data info - full_history_df columns: {history_columns}"
             )
-            if "properties" in segment_funnel_events_df.columns:
+            if hasattr(segment_funnel_events_df, "columns") and "properties" in getattr(
+                segment_funnel_events_df, "columns", []
+            ):
                 try:
-                    sample = (
-                        segment_funnel_events_df["properties"][0]
-                        if len(segment_funnel_events_df) > 0
-                        else None
-                    )
+                    # Safely access the properties column with proper error handling
+                    sample = None
+                    try:
+                        if hasattr(segment_funnel_events_df, "__len__") and len(segment_funnel_events_df) > 0:  # type: ignore
+                            sample = segment_funnel_events_df["properties"][0]  # type: ignore
+                    except (KeyError, IndexError, TypeError):
+                        sample = None
+
                     self.logger.info(
                         f"Properties column sample value: {sample}, type: {type(sample)}"
                     )
@@ -3187,17 +3317,20 @@ class FunnelCalculator:
         # This is a more aggressive approach to avoid the "nested object types" error
         try:
             # Create new DataFrames with converted columns to avoid modifying originals
-            segment_df_fixed = segment_funnel_events_df.clone()
-            history_df_fixed = full_history_for_segment_users.clone()
+            # Cast to pl.DataFrame for type checking
+            segment_df_fixed = segment_funnel_events_df.clone() if hasattr(segment_funnel_events_df, "clone") else segment_funnel_events_df  # type: ignore
+            history_df_fixed = full_history_for_segment_users.clone() if hasattr(full_history_for_segment_users, "clone") else full_history_for_segment_users  # type: ignore
 
             # First, ensure all object columns in both DataFrames are converted to strings
             for df_name, df in [
                 ("segment_df", segment_df_fixed),
                 ("history_df", history_df_fixed),
             ]:
-                for col in df.columns:
+                # Skip type checking for dynamic DataFrame operations
+                df_columns = getattr(df, "columns", [])  # type: ignore
+                for col in df_columns:  # type: ignore
                     try:
-                        col_dtype = df[col].dtype
+                        col_dtype = df[col].dtype if hasattr(df, "__getitem__") else None  # type: ignore
                         self.logger.info(f"Column {col} in {df_name} has dtype: {col_dtype}")
 
                         # Handle nested object types by converting to string
@@ -6825,7 +6958,10 @@ class TypographySystem:
 
     @staticmethod
     def get_font_config(
-        size: str = "base", weight: str = "normal", line_height: str = "normal", color: str = None
+        size: str = "base",
+        weight: str = "normal",
+        line_height: str = "normal",
+        color: Optional[str] = None,
     ) -> dict[str, Any]:
         """Get complete font configuration"""
         config = {
@@ -6888,7 +7024,7 @@ class LayoutConfig:
         # Apply all constraints
         final_height = max(min_height, min(dynamic_height, max_height))
 
-        return final_height
+        return int(final_height)
 
     @staticmethod
     def get_margins(size: str = "md") -> dict[str, int]:
@@ -6913,7 +7049,7 @@ class InteractionPatterns:
 
     @staticmethod
     def get_hover_template(
-        title: str, value_formatter: str = "%{y}", extra_info: str = None
+        title: str, value_formatter: str = "%{y}", extra_info: Optional[str] = None
     ) -> str:
         """Generate consistent hover templates"""
         template = f"<b>{title}</b><br>"
@@ -7048,9 +7184,7 @@ class FunnelVisualizer:
             "level": (
                 "Simple"
                 if complexity_score < 30
-                else "Moderate"
-                if complexity_score < 60
-                else "Complex"
+                else "Moderate" if complexity_score < 60 else "Complex"
             ),
             "recommendations": self._get_complexity_recommendations(complexity_score),
         }
@@ -9576,9 +9710,9 @@ def get_comprehensive_performance_analysis() -> dict[str, Any]:
     if hasattr(st.session_state, "last_calculator") and hasattr(
         st.session_state.last_calculator, "_performance_metrics"
     ):
-        analysis[
-            "funnel_calculator_metrics"
-        ] = st.session_state.last_calculator._performance_metrics
+        analysis["funnel_calculator_metrics"] = (
+            st.session_state.last_calculator._performance_metrics
+        )
 
         # Get bottleneck analysis from calculator
         bottleneck_analysis = st.session_state.last_calculator.get_bottleneck_analysis()
@@ -10388,12 +10522,16 @@ ORDER BY user_id, timestamp""",
                             "📈 Conv. Rate", width="small"
                         ),
                         "Drop-offs": st.column_config.TextColumn("🚪 Drop-offs", width="small"),
-                        "Drop-off Rate": st.column_config.TextColumn("📉 Drop Rate", width="small"),
+                        "Drop-off Rate": st.column_config.TextColumn(
+                            "📉 Drop Rate", width="small"
+                        ),
                         "Avg Views/User": st.column_config.TextColumn(
                             "👁️ Avg Views", width="small"
                         ),
                         "Avg Time": st.column_config.TextColumn("⏱️ Avg Time", width="small"),
-                        "Median Time": st.column_config.TextColumn("📊 Median Time", width="small"),
+                        "Median Time": st.column_config.TextColumn(
+                            "📊 Median Time", width="small"
+                        ),
                         "Engagement Score": st.column_config.TextColumn(
                             "🎯 Engagement", width="small"
                         ),
@@ -10992,9 +11130,7 @@ ORDER BY user_id, timestamp""",
                                         "Performance": (
                                             "🏆 High"
                                             if final_rate > 50
-                                            else "📈 Medium"
-                                            if final_rate > 20
-                                            else "📉 Low"
+                                            else "📈 Medium" if final_rate > 20 else "📉 Low"
                                         ),
                                     }
                                 )
@@ -11097,9 +11233,7 @@ ORDER BY user_id, timestamp""",
                                                 "Impact": (
                                                     "🔥 High"
                                                     if count > 100
-                                                    else "⚡ Medium"
-                                                    if count > 10
-                                                    else "💡 Low"
+                                                    else "⚡ Medium" if count > 10 else "💡 Low"
                                                 ),
                                             }
                                         )
@@ -11672,7 +11806,9 @@ ORDER BY user_id, timestamp""",
                 tab_idx += 1
 
     else:
-        st.info("👈 Please select and load a data source from the sidebar to begin funnel analysis")
+        st.info(
+            "👈 Please select and load a data source from the sidebar to begin funnel analysis"
+        )
 
     # Test visualizations button
     if "analysis_results" in st.session_state and st.session_state.analysis_results:
