@@ -140,7 +140,7 @@ def test_comprehensive_ui_improvements():
         total_daily_users += row["daily_active_users"]
         total_daily_events += row["daily_events_total"]
 
-        print(f"📅 {date} (Sample Day {i+1}):")
+        print(f"📅 {date} (Sample Day {i + 1}):")
         print(
             f"   🎯 COHORT: {row['started_funnel_users']} started → {row['completed_funnel_users']} completed → {row['conversion_rate']:.1f}% rate"
         )

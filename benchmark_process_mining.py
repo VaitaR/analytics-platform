@@ -99,9 +99,9 @@ def benchmark_process_mining():
     results = []
 
     for num_users, events_per_user in test_sizes:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Testing with {num_users} users, ~{events_per_user} events per user")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Generate test data
         print("Generating test data...")
@@ -127,7 +127,7 @@ def benchmark_process_mining():
         print(f"  Activities: {len(result_no_cycles.activities)}")
         print(f"  Transitions: {len(result_no_cycles.transitions)}")
         print(f"  Variants: {len(result_no_cycles.variants)}")
-        print(f"  Events/sec: {total_events/time_no_cycles:,.0f}")
+        print(f"  Events/sec: {total_events / time_no_cycles:,.0f}")
 
         # Test with cycles enabled (bottleneck)
         print("\nTesting process mining discovery (cycles enabled)...")
@@ -142,7 +142,7 @@ def benchmark_process_mining():
         print(f"  Transitions: {len(result_with_cycles.transitions)}")
         print(f"  Variants: {len(result_with_cycles.variants)}")
         print(f"  Cycles: {len(result_with_cycles.cycles)}")
-        print(f"  Events/sec: {total_events/time_with_cycles:,.0f}")
+        print(f"  Events/sec: {total_events / time_with_cycles:,.0f}")
 
         # Calculate cycle detection overhead
         cycle_overhead = time_with_cycles - time_no_cycles
@@ -163,11 +163,11 @@ def benchmark_process_mining():
         )
 
     # Summary
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("PERFORMANCE SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"{'Size':<10} {'Events':<8} {'No Cycles':<12} {'With Cycles':<12} {'Overhead':<10}")
-    print(f"{'-'*60}")
+    print(f"{'-' * 60}")
 
     for r in results:
         size_label = f"{r['users']}u"
@@ -181,9 +181,9 @@ def benchmark_process_mining():
         )
 
     # Performance targets
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("PERFORMANCE ANALYSIS")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Check if we meet performance targets
     target_events_per_sec = 10000  # Target: process 10K events per second

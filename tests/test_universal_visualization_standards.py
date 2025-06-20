@@ -234,7 +234,7 @@ class TestUniversalVisualizationStandards:
         """Test charts scale appropriately with different data sizes"""
         if chart_type == "funnel":
             # Create funnel data
-            steps = [f"Step {i+1}" for i in range(data_size)]
+            steps = [f"Step {i + 1}" for i in range(data_size)]
             users_count = [1000 * (0.8**i) for i in range(data_size)]
             conversion_rates = [100.0] + [80.0] * (data_size - 1)
 

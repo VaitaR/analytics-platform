@@ -126,7 +126,7 @@ def main():
     if report["failure_points"]:
         print("\n🔍 Failure Analysis:")
         for i, failure in enumerate(report["failure_points"]):
-            print(f"   Failure {i+1}:")
+            print(f"   Failure {i + 1}:")
             print(f"     Function: {failure['function']}")
             print(f"     Error: {failure['exception_type']}: {failure['exception_message']}")
             print(f"     Suggestions: {len(failure['suggested_fixes'])} recommendations")

@@ -400,7 +400,7 @@ class TestCompleteIntegrationFlow:
             events.append(
                 {
                     "user_id": "user_001",
-                    "event_name": f"Step_{i+1}",
+                    "event_name": f"Step_{i + 1}",
                     "timestamp": base_timestamp + timedelta(minutes=minutes),
                     "event_properties": json.dumps({}),
                     "user_properties": json.dumps({}),
@@ -413,7 +413,7 @@ class TestCompleteIntegrationFlow:
             events.append(
                 {
                     "user_id": "user_002",
-                    "event_name": f"Step_{i+1}",
+                    "event_name": f"Step_{i + 1}",
                     "timestamp": base_timestamp + timedelta(minutes=minutes),
                     "event_properties": json.dumps({}),
                     "user_properties": json.dumps({}),

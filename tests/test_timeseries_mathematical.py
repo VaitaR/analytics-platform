@@ -768,7 +768,7 @@ class TestTimeSeriesMathematicalPrecision:
             for j in range(1, len(step_counts)):
                 assert (
                     step_counts[j] <= step_counts[j - 1]
-                ), f"Day {i}: Step {j} ({step_counts[j]}) > Step {j-1} ({step_counts[j-1]}) - violates funnel monotonicity"
+                ), f"Day {i}: Step {j} ({step_counts[j]}) > Step {j - 1} ({step_counts[j - 1]}) - violates funnel monotonicity"
 
             # Property 4: All rates should be in [0, 100]
             assert (
@@ -895,7 +895,7 @@ class TestTimeSeriesPerformance:
 
         print(f"✅ Large dataset performance test passed in {calculation_time:.2f} seconds")
         print(f"   Processed {len(large_df)} events, {large_df['user_id'].nunique()} users")
-        print(f"   Performance: {len(large_df)/calculation_time:.0f} events/second")
+        print(f"   Performance: {len(large_df) / calculation_time:.0f} events/second")
 
     def test_weekly_and_monthly_aggregation(
         self, long_window_calculator, multi_week_month_data, funnel_steps_4
@@ -1310,4 +1310,4 @@ class TestTimeSeriesPerformance:
 
         print(f"✅ Large weekly dataset performance test passed in {calculation_time:.2f} seconds")
         print(f"   26 weeks processed: {total_starters} starters, {total_completers} completers")
-        print(f"   Performance: {len(large_df)/calculation_time:.0f} events/second")
+        print(f"   Performance: {len(large_df) / calculation_time:.0f} events/second")

@@ -2705,8 +2705,8 @@ class FunnelCalculator:
             if len(result_df) > 0:
                 for i in range(len(funnel_steps) - 1):
                     step_from_col = f"{funnel_steps[i]}_users"
-                    step_to_col = f"{funnel_steps[i+1]}_users"
-                    col_name = f"{funnel_steps[i]}_to_{funnel_steps[i+1]}_rate"
+                    step_to_col = f"{funnel_steps[i + 1]}_users"
+                    col_name = f"{funnel_steps[i]}_to_{funnel_steps[i + 1]}_rate"
 
                     result_df[col_name] = result_df.apply(
                         lambda row: (
@@ -2900,16 +2900,16 @@ class FunnelCalculator:
                 # Calculate step-by-step conversion rates (capped at 100% to prevent unrealistic values)
                 for i in range(len(funnel_steps) - 1):
                     step_from_users = metrics[f"{funnel_steps[i]}_users"]
-                    step_to_users = metrics[f"{funnel_steps[i+1]}_users"]
+                    step_to_users = metrics[f"{funnel_steps[i + 1]}_users"]
 
                     if step_from_users > 0:
                         raw_rate = (step_to_users / step_from_users) * 100
                         # Cap at 100% to handle cases where users complete steps in different periods
-                        metrics[f"{funnel_steps[i]}_to_{funnel_steps[i+1]}_rate"] = min(
+                        metrics[f"{funnel_steps[i]}_to_{funnel_steps[i + 1]}_rate"] = min(
                             raw_rate, 100.0
                         )
                     else:
-                        metrics[f"{funnel_steps[i]}_to_{funnel_steps[i+1]}_rate"] = 0.0
+                        metrics[f"{funnel_steps[i]}_to_{funnel_steps[i + 1]}_rate"] = 0.0
 
                 results.append(metrics)
 
@@ -7279,60 +7279,60 @@ class FunnelVisualizer:
 ## Color System
 
 ### Semantic Colors (WCAG 2.1 AA Compliant)
-- **Success**: {self.color_palette.SEMANTIC['success']} - Conversions, positive metrics
-- **Warning**: {self.color_palette.SEMANTIC['warning']} - Drop-offs, attention needed
-- **Error**: {self.color_palette.SEMANTIC['error']} - Critical issues, failures
-- **Info**: {self.color_palette.SEMANTIC['info']} - General information, primary actions
-- **Neutral**: {self.color_palette.SEMANTIC['neutral']} - Secondary information
+- **Success**: {self.color_palette.SEMANTIC["success"]} - Conversions, positive metrics
+- **Warning**: {self.color_palette.SEMANTIC["warning"]} - Drop-offs, attention needed
+- **Error**: {self.color_palette.SEMANTIC["error"]} - Critical issues, failures
+- **Info**: {self.color_palette.SEMANTIC["info"]} - General information, primary actions
+- **Neutral**: {self.color_palette.SEMANTIC["neutral"]} - Secondary information
 
 ### Dark Mode Palette
-- **Background**: {self.color_palette.DARK_MODE['background']} - Primary background
-- **Surface**: {self.color_palette.DARK_MODE['surface']} - Card/container backgrounds
-- **Text Primary**: {self.color_palette.DARK_MODE['text_primary']} - Main text
-- **Text Secondary**: {self.color_palette.DARK_MODE['text_secondary']} - Subtitles, captions
+- **Background**: {self.color_palette.DARK_MODE["background"]} - Primary background
+- **Surface**: {self.color_palette.DARK_MODE["surface"]} - Card/container backgrounds
+- **Text Primary**: {self.color_palette.DARK_MODE["text_primary"]} - Main text
+- **Text Secondary**: {self.color_palette.DARK_MODE["text_secondary"]} - Subtitles, captions
 
 ## Typography Scale
 
 ### Font Sizes
-- **Extra Small**: {self.typography.SCALE['xs']}px - Fine print, metadata
-- **Small**: {self.typography.SCALE['sm']}px - Labels, annotations
-- **Base**: {self.typography.SCALE['base']}px - Body text, data points
-- **Large**: {self.typography.SCALE['lg']}px - Section headings
-- **Extra Large**: {self.typography.SCALE['xl']}px - Chart titles
-- **2X Large**: {self.typography.SCALE['2xl']}px - Page titles
+- **Extra Small**: {self.typography.SCALE["xs"]}px - Fine print, metadata
+- **Small**: {self.typography.SCALE["sm"]}px - Labels, annotations
+- **Base**: {self.typography.SCALE["base"]}px - Body text, data points
+- **Large**: {self.typography.SCALE["lg"]}px - Section headings
+- **Extra Large**: {self.typography.SCALE["xl"]}px - Chart titles
+- **2X Large**: {self.typography.SCALE["2xl"]}px - Page titles
 
 ### Font Weights
-- **Normal**: {self.typography.WEIGHTS['normal']} - Body text
-- **Medium**: {self.typography.WEIGHTS['medium']} - Emphasis
-- **Semibold**: {self.typography.WEIGHTS['semibold']} - Headings
-- **Bold**: {self.typography.WEIGHTS['bold']} - Titles
+- **Normal**: {self.typography.WEIGHTS["normal"]} - Body text
+- **Medium**: {self.typography.WEIGHTS["medium"]} - Emphasis
+- **Semibold**: {self.typography.WEIGHTS["semibold"]} - Headings
+- **Bold**: {self.typography.WEIGHTS["bold"]} - Titles
 
 ## Layout System
 
 ### Spacing (8px Grid)
-- **XS**: {self.layout.SPACING['xs']}px - Tight spacing
-- **SM**: {self.layout.SPACING['sm']}px - Default spacing
-- **MD**: {self.layout.SPACING['md']}px - Section spacing
-- **LG**: {self.layout.SPACING['lg']}px - Page margins
-- **XL**: {self.layout.SPACING['xl']}px - Large separations
+- **XS**: {self.layout.SPACING["xs"]}px - Tight spacing
+- **SM**: {self.layout.SPACING["sm"]}px - Default spacing
+- **MD**: {self.layout.SPACING["md"]}px - Section spacing
+- **LG**: {self.layout.SPACING["lg"]}px - Page margins
+- **XL**: {self.layout.SPACING["xl"]}px - Large separations
 
 ### Chart Dimensions
-- **Small**: {self.layout.CHART_DIMENSIONS['small']['width']}×{self.layout.CHART_DIMENSIONS['small']['height']}px
-- **Medium**: {self.layout.CHART_DIMENSIONS['medium']['width']}×{self.layout.CHART_DIMENSIONS['medium']['height']}px
-- **Large**: {self.layout.CHART_DIMENSIONS['large']['width']}×{self.layout.CHART_DIMENSIONS['large']['height']}px
-- **Wide**: {self.layout.CHART_DIMENSIONS['wide']['width']}×{self.layout.CHART_DIMENSIONS['wide']['height']}px
+- **Small**: {self.layout.CHART_DIMENSIONS["small"]["width"]}×{self.layout.CHART_DIMENSIONS["small"]["height"]}px
+- **Medium**: {self.layout.CHART_DIMENSIONS["medium"]["width"]}×{self.layout.CHART_DIMENSIONS["medium"]["height"]}px
+- **Large**: {self.layout.CHART_DIMENSIONS["large"]["width"]}×{self.layout.CHART_DIMENSIONS["large"]["height"]}px
+- **Wide**: {self.layout.CHART_DIMENSIONS["wide"]["width"]}×{self.layout.CHART_DIMENSIONS["wide"]["height"]}px
 
 ## Interaction Patterns
 
 ### Animation Timing
-- **Fast**: {self.interactions.TRANSITIONS['fast']}ms - Quick state changes
-- **Normal**: {self.interactions.TRANSITIONS['normal']}ms - Standard transitions
-- **Slow**: {self.interactions.TRANSITIONS['slow']}ms - Complex animations
+- **Fast**: {self.interactions.TRANSITIONS["fast"]}ms - Quick state changes
+- **Normal**: {self.interactions.TRANSITIONS["normal"]}ms - Standard transitions
+- **Slow**: {self.interactions.TRANSITIONS["slow"]}ms - Complex animations
 
 ### Hover Effects
-- **Scale**: {self.interactions.HOVER_EFFECTS['scale']}× - Gentle scale on hover
-- **Opacity**: {self.interactions.HOVER_EFFECTS['opacity_change']} - Focus dimming
-- **Border**: {self.interactions.HOVER_EFFECTS['border_width']}px - Selection indication
+- **Scale**: {self.interactions.HOVER_EFFECTS["scale"]}× - Gentle scale on hover
+- **Opacity**: {self.interactions.HOVER_EFFECTS["opacity_change"]} - Focus dimming
+- **Border**: {self.interactions.HOVER_EFFECTS["border_width"]}px - Selection indication
 
 ## Accessibility Features
 
@@ -7715,7 +7715,7 @@ class FunnelVisualizer:
         fig = go.Figure(
             data=go.Heatmap(
                 z=z_data,
-                x=[f"Step {i+1}" for i in range(len(z_data[0])) if z_data and z_data[0]],
+                x=[f"Step {i + 1}" for i in range(len(z_data[0])) if z_data and z_data[0]],
                 y=y_labels,
                 colorscale="Viridis",  # Accessible colorscale
                 text=[[f"{val:.1f}%" for val in row] for row in z_data],
@@ -8547,7 +8547,7 @@ class FunnelVisualizer:
         fig = go.Figure(
             data=go.Heatmap(
                 z=z_data,
-                x=[f"Step {i+1}" for i in range(len(z_data[0])) if z_data and z_data[0]],
+                x=[f"Step {i + 1}" for i in range(len(z_data[0])) if z_data and z_data[0]],
                 y=y_labels,
                 colorscale="Viridis",  # Better colorscale for dark mode
                 text=[[f"{val:.1f}%" for val in row] for row in z_data],
@@ -9223,7 +9223,7 @@ class FunnelVisualizer:
 
             # Hover text
             hover_text = (
-                f"<b>Step {i+1}: {activity}</b><br>"
+                f"<b>Step {i + 1}: {activity}</b><br>"
                 f"👥 Users: {user_count:,}<br>"
                 f"📊 Events: {frequency:,}<br>"
                 f"🏷️ Type: {activity_type}<br>"
@@ -9253,7 +9253,7 @@ class FunnelVisualizer:
                     line=dict(width=2, color="white"),
                     symbol="circle",
                 ),
-                text=[f"<b>{i+1}</b>" for i in range(len(main_path))],
+                text=[f"<b>{i + 1}</b>" for i in range(len(main_path))],
                 textfont=dict(size=14, color="white"),
                 hovertemplate=hover_texts,
                 showlegend=False,
@@ -9479,7 +9479,7 @@ class FunnelVisualizer:
 
                 # Format frequency for display
                 if data["frequency"] >= 1000:
-                    freq_text = f"{data['frequency']/1000:.1f}K"
+                    freq_text = f"{data['frequency'] / 1000:.1f}K"
                 else:
                     freq_text = str(data["frequency"])
 
@@ -9670,8 +9670,8 @@ class FunnelVisualizer:
                     "P-value": f"{test.p_value:.4f}",
                     "Significant": "✅ Yes" if test.is_significant else "❌ No",
                     "Z-score": f"{test.z_score:.2f}",
-                    "95% CI Lower": f"{test.confidence_interval[0]*100:.1f}pp",
-                    "95% CI Upper": f"{test.confidence_interval[1]*100:.1f}pp",
+                    "95% CI Lower": f"{test.confidence_interval[0] * 100:.1f}pp",
+                    "95% CI Upper": f"{test.confidence_interval[1] * 100:.1f}pp",
                 }
             )
 
@@ -9983,8 +9983,8 @@ def create_simple_event_selector():
                         if stats:
                             st.markdown(
                                 f"""<div style="font-size: 0.75rem; text-align: right; color: #888;">
-                                {stats['unique_users']:,} users<br/>
-                                <span style="color: {stats['frequency_color']};">{stats['user_coverage']:.1f}%</span>
+                                {stats["unique_users"]:,} users<br/>
+                                <span style="color: {stats["frequency_color"]};">{stats["user_coverage"]:.1f}%</span>
                                 </div>""",
                                 unsafe_allow_html=True,
                             )
@@ -9999,7 +9999,7 @@ def create_simple_event_selector():
             for i, step in enumerate(st.session_state.funnel_steps):
                 with st.container():
                     r1, r2, r3, r4 = st.columns([0.6, 0.1, 0.1, 0.2])
-                    r1.markdown(f"**{i+1}.** {step}")
+                    r1.markdown(f"**{i + 1}.** {step}")
 
                     # Move up button
                     if i > 0:
@@ -10316,7 +10316,7 @@ ORDER BY user_id, timestamp""",
                 <div style="text-align: center;">
                     <span style="font-size: 1.5rem;">{status_emoji}</span><br/>
                     <strong>{status_text}</strong><br/>
-                    <small>Last: {latest_calc['calculation_time']:.2f}s</small>
+                    <small>Last: {latest_calc["calculation_time"]:.2f}s</small>
                 </div>
             </div>
             """,
@@ -11719,7 +11719,7 @@ ORDER BY user_id, timestamp""",
                                         "Min Time (s)": f"{func_data['min_time']:.4f}",
                                         "Max Time (s)": f"{func_data['max_time']:.4f}",
                                         "Consistency": (
-                                            f"{1/func_data['time_per_call_consistency']:.1f}x"
+                                            f"{1 / func_data['time_per_call_consistency']:.1f}x"
                                             if func_data["time_per_call_consistency"] > 0
                                             else "Perfect"
                                         ),

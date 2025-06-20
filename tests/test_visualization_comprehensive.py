@@ -21,7 +21,6 @@ Professional Testing Standards:
 - Type safety and API consistency testing
 """
 
-
 import numpy as np
 import plotly.graph_objects as go
 import pytest
@@ -543,7 +542,7 @@ class TestFunnelVisualizerPerformance:
 
         # Large segment data
         results.segment_data = {
-            f"Segment {chr(65+i)}": [5000 - i * 200 - j * 150 for j in range(20)]
+            f"Segment {chr(65 + i)}": [5000 - i * 200 - j * 150 for j in range(20)]
             for i in range(10)  # 10 segments
         }
         return results
@@ -556,8 +555,8 @@ class TestFunnelVisualizerPerformance:
             # Large number of conversion times
             conversion_times = np.random.exponential(24, 10000).tolist()
             stat = TimeToConvertStats(
-                step_from=f"Step {i+1}",
-                step_to=f"Step {i+2}",
+                step_from=f"Step {i + 1}",
+                step_to=f"Step {i + 2}",
                 conversion_times=conversion_times,
                 median_hours=np.median(conversion_times),
                 mean_hours=np.mean(conversion_times),

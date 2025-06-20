@@ -594,11 +594,11 @@ class TestTimeSeriesCalculationComprehensive:
             # Test step sequence consistency
             for i in range(len(funnel_steps) - 1):
                 current_step_users = row[f"{funnel_steps[i]}_users"]
-                next_step_users = row[f"{funnel_steps[i+1]}_users"]
+                next_step_users = row[f"{funnel_steps[i + 1]}_users"]
 
                 assert (
                     next_step_users <= current_step_users
-                ), f"Step {i+1} users ({next_step_users}) should not exceed step {i} users ({current_step_users})"
+                ), f"Step {i + 1} users ({next_step_users}) should not exceed step {i} users ({current_step_users})"
 
             # Test conversion rate calculation
             if row["started_funnel_users"] > 0:
@@ -611,9 +611,9 @@ class TestTimeSeriesCalculationComprehensive:
 
             # Test step-to-step conversion rates
             for i in range(len(funnel_steps) - 1):
-                rate_col = f"{funnel_steps[i]}_to_{funnel_steps[i+1]}_rate"
+                rate_col = f"{funnel_steps[i]}_to_{funnel_steps[i + 1]}_rate"
                 from_users = row[f"{funnel_steps[i]}_users"]
-                to_users = row[f"{funnel_steps[i+1]}_users"]
+                to_users = row[f"{funnel_steps[i + 1]}_users"]
 
                 if from_users > 0:
                     expected_rate = (to_users / from_users) * 100

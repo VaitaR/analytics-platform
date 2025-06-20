@@ -68,7 +68,7 @@ class TestConversionRateLogicBug:
         overall_conversion = overall_results.conversion_rates[1]
 
         print(
-            f"   Manual verification: {overall_completed}/{overall_started} = {(overall_completed/overall_started*100):.2f}%"
+            f"   Manual verification: {overall_completed}/{overall_started} = {(overall_completed / overall_started * 100):.2f}%"
         )
 
         # 2. Calculate daily timeseries metrics
@@ -88,7 +88,7 @@ class TestConversionRateLogicBug:
             print("\n   TIMESERIES AGGREGATION:")
             print(f"   Total started (sum): {total_ts_started}")
             print(f"   Total completed (sum): {total_ts_completed}")
-            print(f"   Aggregate conversion: {(total_ts_completed/total_ts_started*100):.2f}%")
+            print(f"   Aggregate conversion: {(total_ts_completed / total_ts_started * 100):.2f}%")
             print(f"   Average conversion rate: {weighted_avg_conversion:.2f}%")
 
             # Show daily breakdown
@@ -141,7 +141,7 @@ class TestConversionRateLogicBug:
         print(f"  Users who did step1: {len(step1_users)}")
         print(f"  Users who did step2: {len(step2_users)}")
         print(f"  Users who did both: {len(step2_who_did_step1)}")
-        print(f"  Manual conversion: {len(step2_who_did_step1)/len(step1_users)*100:.2f}%")
+        print(f"  Manual conversion: {len(step2_who_did_step1) / len(step1_users) * 100:.2f}%")
 
         # Check timeseries cohort logic
         print("\nCOHORT LOGIC INVESTIGATION:")
@@ -181,7 +181,7 @@ class TestConversionRateLogicBug:
 
             print(
                 f"  {date}: {len(day_starters)} started, {len(day_completers)} completed, "
-                f"{len(day_completers)/len(day_starters)*100 if day_starters else 0:.2f}%"
+                f"{len(day_completers) / len(day_starters) * 100 if day_starters else 0:.2f}%"
             )
 
         # Sum cohort totals
@@ -192,7 +192,7 @@ class TestConversionRateLogicBug:
         print(f"  Total cohort started: {total_cohort_started}")
         print(f"  Total cohort completed: {total_cohort_completed}")
         print(
-            f"  Cohort aggregate conversion: {total_cohort_completed/total_cohort_started*100:.2f}%"
+            f"  Cohort aggregate conversion: {total_cohort_completed / total_cohort_started * 100:.2f}%"
         )
 
         # The key insight: cohort logic might double-count or miss users!

@@ -373,7 +373,7 @@ class TestPolarsFallbackDetection:
                 if error_contexts:
                     print("\nFull error contexts:")
                     for i, context in enumerate(error_contexts):
-                        print(f"\nError {i+1}:\n{context}\n{'-'*60}")
+                        print(f"\nError {i + 1}:\n{context}\n{'-' * 60}")
 
                 # Make the test fail if this critical error is found to ensure it's addressed
                 assert False, "Polars expression ambiguity errors detected - fix required"
@@ -451,7 +451,7 @@ class TestPolarsFallbackDetection:
         if error_contexts:
             print("\nFull error contexts:")
             for i, context in enumerate(error_contexts):
-                print(f"\nError {i+1}:\n{context}\n{'-'*60}")
+                print(f"\nError {i + 1}:\n{context}\n{'-' * 60}")
 
         # Test should pass if:
         # 1. We have dtype errors but are properly falling back to handle them
@@ -566,7 +566,7 @@ class TestPolarsFallbackDetection:
                 if all_error_contexts[config_key]:
                     print(f"\nDetailed error contexts for {config_key}:")
                     for i, context in enumerate(all_error_contexts[config_key]):
-                        print(f"\nError {i+1}:\n{context}\n{'-'*60}")
+                        print(f"\nError {i + 1}:\n{context}\n{'-' * 60}")
             else:
                 print(f"\nConfig {config_key}: No errors detected ✅")
 

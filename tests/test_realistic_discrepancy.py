@@ -138,7 +138,7 @@ class TestRealWorldDiscrepancy:
         ].nunique()
         print(f"- Users who did step1: {step1_users}")
         print(f"- Users who did step2: {step2_users}")
-        print(f"- Raw step2/step1 ratio: {(step2_users/step1_users*100):.2f}%")
+        print(f"- Raw step2/step1 ratio: {(step2_users / step1_users * 100):.2f}%")
 
         # 1. Calculate overall funnel metrics
         overall_results = calculator.calculate_funnel_metrics(problematic_data, steps)

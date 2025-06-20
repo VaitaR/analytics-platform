@@ -66,7 +66,7 @@ def quick_benchmark():
     journey_df = analyzer._build_user_journeys_optimized(pl.from_pandas(df))
     journey_time = time.time() - start_time
     print(
-        f"   ✅ Journey building: {journey_time:.3f}s ({total_events/journey_time:,.0f} events/sec)"
+        f"   ✅ Journey building: {journey_time:.3f}s ({total_events / journey_time:,.0f} events/sec)"
     )
 
     # Test activity discovery (optimized)
@@ -146,7 +146,7 @@ def quick_benchmark():
     )
     time_no_cycles = time.time() - start_time
     print(
-        f"   ✅ No cycles: {time_no_cycles:.3f}s ({total_events/time_no_cycles:,.0f} events/sec)"
+        f"   ✅ No cycles: {time_no_cycles:.3f}s ({total_events / time_no_cycles:,.0f} events/sec)"
     )
 
     print("   With cycles:")
@@ -156,7 +156,7 @@ def quick_benchmark():
     )
     time_with_cycles = time.time() - start_time
     print(
-        f"   ⚠️  With cycles: {time_with_cycles:.3f}s ({total_events/time_with_cycles:,.0f} events/sec)"
+        f"   ⚠️  With cycles: {time_with_cycles:.3f}s ({total_events / time_with_cycles:,.0f} events/sec)"
     )
 
     # Performance analysis
@@ -169,20 +169,20 @@ def quick_benchmark():
     target_events_per_sec = 10000
     if total_events / time_no_cycles >= target_events_per_sec:
         print(
-            f"   ✅ Performance target met (no cycles): {total_events/time_no_cycles:,.0f} >= {target_events_per_sec:,} events/sec"
+            f"   ✅ Performance target met (no cycles): {total_events / time_no_cycles:,.0f} >= {target_events_per_sec:,} events/sec"
         )
     else:
         print(
-            f"   ❌ Performance target missed (no cycles): {total_events/time_no_cycles:,.0f} < {target_events_per_sec:,} events/sec"
+            f"   ❌ Performance target missed (no cycles): {total_events / time_no_cycles:,.0f} < {target_events_per_sec:,} events/sec"
         )
 
     if total_events / time_with_cycles >= target_events_per_sec:
         print(
-            f"   ✅ Performance target met (with cycles): {total_events/time_with_cycles:,.0f} >= {target_events_per_sec:,} events/sec"
+            f"   ✅ Performance target met (with cycles): {total_events / time_with_cycles:,.0f} >= {target_events_per_sec:,} events/sec"
         )
     else:
         print(
-            f"   ❌ Performance target missed (with cycles): {total_events/time_with_cycles:,.0f} < {target_events_per_sec:,} events/sec"
+            f"   ❌ Performance target missed (with cycles): {total_events / time_with_cycles:,.0f} < {target_events_per_sec:,} events/sec"
         )
 
     # Recommendations

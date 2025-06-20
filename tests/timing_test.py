@@ -70,7 +70,7 @@ for i in range(NUM_RUNS):
     )
     pandas_time = time.time() - start_time
     pandas_times.append(pandas_time)
-    print(f"  Run {i+1}: {pandas_time:.6f} seconds")
+    print(f"  Run {i + 1}: {pandas_time:.6f} seconds")
 
 avg_pandas_time = sum(pandas_times) / len(pandas_times)
 pandas_std = np.std(pandas_times)
@@ -86,7 +86,7 @@ for i in range(NUM_RUNS):
     )
     polars_time = time.time() - start_time
     polars_times.append(polars_time)
-    print(f"  Run {i+1}: {polars_time:.6f} seconds")
+    print(f"  Run {i + 1}: {polars_time:.6f} seconds")
 
 avg_polars_time = sum(polars_times) / len(polars_times)
 polars_std = np.std(polars_times)
@@ -100,7 +100,7 @@ for i in range(NUM_RUNS):
     _ = pl.from_pandas(events_df)
     conversion_time = time.time() - start_time
     conversion_times.append(conversion_time)
-    print(f"  Run {i+1}: {conversion_time:.6f} seconds")
+    print(f"  Run {i + 1}: {conversion_time:.6f} seconds")
 
 avg_conversion_time = sum(conversion_times) / len(conversion_times)
 conversion_std = np.std(conversion_times)
@@ -116,7 +116,7 @@ for i in range(NUM_RUNS):
     result = calculator_polars._calculate_unique_users_funnel_polars(temp_polars_df, funnel_steps)
     total_time = time.time() - start_time
     complete_polars_times.append(total_time)
-    print(f"  Run {i+1}: {total_time:.6f} seconds")
+    print(f"  Run {i + 1}: {total_time:.6f} seconds")
 
 avg_complete_time = sum(complete_polars_times) / len(complete_polars_times)
 complete_std = np.std(complete_polars_times)
@@ -149,7 +149,7 @@ print(f"  Speedup factor: {complete_speedup:.2f}x")
 print(f"  Performance: {complete_improvement:.1f}%")
 
 print(
-    f"\nConversion overhead as % of Polars execution: {avg_conversion_time/avg_polars_time*100:.1f}%"
+    f"\nConversion overhead as % of Polars execution: {avg_conversion_time / avg_polars_time * 100:.1f}%"
 )
 
 print("\nConclusion:")
@@ -159,12 +159,12 @@ if speedup > 1:
     print("when measuring actual function execution time without conversion overhead.")
     print("\nHowever, the pandas-to-polars conversion overhead is significant,")
     print(
-        f"taking {avg_conversion_time/avg_polars_time:.1f}x longer than the function execution itself."
+        f"taking {avg_conversion_time / avg_polars_time:.1f}x longer than the function execution itself."
     )
 
     if complete_speedup < 1:
         print("\nWhen including conversion overhead in a complete pipeline,")
-        print(f"Pandas is actually {1/complete_speedup:.2f}x faster overall.")
+        print(f"Pandas is actually {1 / complete_speedup:.2f}x faster overall.")
         print("\nRecommendation: Use Polars only when data is already in Polars format")
         print("or when the calculation time dominates the conversion overhead.")
     else:

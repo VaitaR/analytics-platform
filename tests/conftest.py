@@ -659,7 +659,7 @@ def assert_funnel_results_valid(results: FunnelResults, expected_steps: list[str
     for i in range(1, len(results.users_count)):
         assert (
             results.users_count[i] <= results.users_count[i - 1]
-        ), f"User count increased from step {i-1} to {i}: {results.users_count[i-1]} -> {results.users_count[i]}"
+        ), f"User count increased from step {i - 1} to {i}: {results.users_count[i - 1]} -> {results.users_count[i]}"
 
 
 def assert_results_approximately_equal(
@@ -685,7 +685,7 @@ def log_test_performance(test_name: str, duration: float, data_size: int):
     """Log performance metrics for test analysis."""
     logger.info(
         f"PERFORMANCE: {test_name} took {duration:.3f}s for {data_size} events "
-        f"({data_size/duration:.0f} events/sec)"
+        f"({data_size / duration:.0f} events/sec)"
     )
 
 
