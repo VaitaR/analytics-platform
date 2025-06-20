@@ -10187,7 +10187,7 @@ def create_simple_event_selector():
                         st.checkbox(
                             event,
                             value=is_selected,
-                            key=f"cb_{hash(event)}",  # Use hash for cleaner key
+                            key=f"event_cb_{event.replace(' ', '_').replace('-', '_')}",  # UI testing compatible key
                             on_change=toggle_event_in_funnel,
                             args=(event,),  # Pass event name as argument
                             help=f"Add/remove {event} from funnel",
@@ -10258,13 +10258,19 @@ def create_simple_event_selector():
             with action_col1:
                 st.button(
                     "🚀 Analyze Funnel",
+                    key="analyze_funnel_button",
                     type="primary",
                     use_container_width=True,
                     on_click=analyze_funnel,
                 )
 
             with action_col2:
-                st.button("🗑️ Clear All", on_click=clear_all_steps, use_container_width=True)
+                st.button(
+                    "🗑️ Clear All",
+                    key="clear_all_button",
+                    on_click=clear_all_steps,
+                    use_container_width=True,
+                )
 
 
 # Commented out original complex functions - keeping for reference but not using
@@ -10293,7 +10299,7 @@ def main():
 
         # Handle data source loading
         if data_source == "Sample Data":
-            if st.button("Load Sample Data"):
+            if st.button("Load Sample Data", key="load_sample_data_button"):
                 with st.spinner("Loading sample data..."):
                     st.session_state.events_data = (
                         st.session_state.data_source_manager.get_sample_data()
@@ -10434,6 +10440,7 @@ ORDER BY user_id, timestamp""",
                     selected_property = st.selectbox(
                         "Segment By Property",
                         ["None"] + prop_options,
+                        key="segment_property_select",
                         help="Choose a property to segment the funnel analysis",
                     )
 
@@ -10450,6 +10457,7 @@ ORDER BY user_id, timestamp""",
                             selected_values = st.multiselect(
                                 f"Select {prop_name} Values",
                                 prop_values,
+                                key="segment_value_multiselect",
                                 help="Choose specific values to compare",
                             )
                             st.session_state.funnel_config.segment_values = selected_values

@@ -935,7 +935,26 @@ PROCESS_MINING_TESTS.add_test(
     "Running comprehensive process mining tests",
 )
 
-# Update the TEST_CATEGORIES to include process mining
+# Create UI tests category
+UI_TESTS = TestCategory(
+    "ui", "UI testing with Streamlit testing framework following resilient testing principles"
+)
+
+# Add UI test
+UI_TESTS.add_test(
+    "app_ui_comprehensive",
+    ["tests/test_app_ui.py"],
+    "Running comprehensive UI tests with Page Object Model pattern",
+)
+
+# Add advanced UI test to UI tests category
+UI_TESTS.add_test(
+    "app_ui_advanced",
+    ["tests/test_app_ui_advanced.py"],
+    "Running advanced UI tests for Streamlit best practices and architecture patterns",
+)
+
+# Update the TEST_CATEGORIES to include process mining and UI tests
 TEST_CATEGORIES = {
     "basic": BASIC_TESTS,
     "advanced": ADVANCED_TESTS,
@@ -945,6 +964,7 @@ TEST_CATEGORIES = {
     "benchmark": BENCHMARK_TESTS,
     "utility": UTILITY_TESTS,
     "process_mining": PROCESS_MINING_TESTS,
+    "ui": UI_TESTS,
 }
 
 
@@ -1191,6 +1211,7 @@ Categories:
     - Fallback detection tests: Tests that detect silent fallbacks to slower implementations
     - Benchmarks: Performance tests and comparisons between implementations
     - Process mining tests: Process mining visualization and analysis
+    - UI tests: Streamlit UI testing with resilient Page Object Model patterns
 
 Examples:
   python run_tests.py                     # Run all tests
@@ -1202,6 +1223,7 @@ Examples:
   python run_tests.py --fallback-all      # Run all fallback detection tests
   python run_tests.py --benchmarks        # Run all benchmarks
   python run_tests.py --process-mining-all # Run all process mining tests
+  python run_tests.py --ui-all            # Run all UI tests
   python run_tests.py --data-integrity    # Run data integrity tests
   python run_tests.py --coverage          # Run all tests with coverage
   python run_tests.py --parallel          # Run tests in parallel
@@ -1228,6 +1250,7 @@ Examples:
     parser.add_argument(
         "--process-mining-all", action="store_true", help="Run all process mining tests"
     )
+    parser.add_argument("--ui-all", action="store_true", help="Run all UI tests")
 
     # Category specific test options
     parser.add_argument(
@@ -1260,6 +1283,11 @@ Examples:
         "--process-mining",
         metavar="TEST",
         help="Run specific process mining test: process_mining_comprehensive",
+    )
+    parser.add_argument(
+        "--ui",
+        metavar="TEST",
+        help="Run specific UI test: app_ui_comprehensive",
     )
 
     # Specific named tests for backward compatibility
@@ -1366,6 +1394,11 @@ Examples:
         test_results.append(result)
         actions_performed = True
 
+    if args.ui_all:
+        result = run_tests_by_category("ui", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
+        actions_performed = True
+
     # Run specific tests from categories
     if args.basic:
         result = run_specific_test("basic", args.basic, args.parallel, args.coverage, args.marker)
@@ -1415,6 +1448,17 @@ Examples:
         result = run_specific_test(
             "process_mining",
             args.process_mining,
+            args.parallel,
+            args.coverage,
+            args.marker,
+        )
+        test_results.append(result)
+        actions_performed = True
+
+    if args.ui:
+        result = run_specific_test(
+            "ui",
+            args.ui,
             args.parallel,
             args.coverage,
             args.marker,

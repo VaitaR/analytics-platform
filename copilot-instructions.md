@@ -15,6 +15,7 @@
 - `error debugging fallback` → Section 11 (Troubleshooting)
 - `code quality linting pre-commit` → Section 0.2 (Code Quality)
 - `agent discoveries new patterns` → Section "AGENT DISCOVERIES"
+- `ui testing resilient streamlit` → Section 4.2 + `test_app_ui.py` + UI Testing Principles
 
 **📋 Code Pattern Quick Access:**
 
@@ -316,6 +317,7 @@ mypy .                          # Type checking
 - `test_timeseries_analysis.py` - Time-based aggregation with @pytest.mark.performance
 - `test_polars_engine.py` - Polars-specific functionality
 - `test_polars_path_analysis.py` - Path analysis algorithms
+- `test_app_ui.py` - ✅ **NEW** Comprehensive UI testing with streamlit-playwright following resilient testing principles
 
 ### 4.3. Running Tests (Professional Commands)
 
@@ -377,6 +379,46 @@ performance_monitor.time_operation("funnel_calculation",
 - **Reliability**: <1% flaky test rate, deterministic results ✅ **ACHIEVED: All tests stable**
 - **Standards**: All tests follow unified patterns from `conftest.py` ✅ **ACHIEVED: Single source**
 - **Architecture**: ✅ **COMPLETED: Unified testing architecture with single conftest.py and run_tests.py**
+- **UI Testing**: ✅ **NEW: Resilient UI testing following 5 guiding principles**
+
+### 4.6. UI Testing Principles & Architecture
+
+**Status:** ✅ **COMPLETED: Professional UI Testing Implementation** - Resilient to code refactoring, 4 tests passing
+
+**Five Guiding Principles for Resilient UI Testing:**
+
+1. **Principle of Stable Selectors** - Test by key, not by label or text
+   - ✅ Use `at.button(key="my_button_key")` instead of `at.button(text="Click Me")`
+   - ✅ All critical widgets have unique key attributes for stable identification
+
+2. **Principle of State-Driven Assertion** - Assert on `st.session_state`, not just UI
+   - ✅ Test application logic through state verification
+   - ✅ Immune to cosmetic UI changes, focuses on business logic
+
+3. **Principle of Abstraction** - Use Page Object Model (POM) pattern
+   - ✅ Encapsulate common user flows into helper functions
+   - ✅ Maintainable tests that read like high-level user stories
+
+4. **Principle of Data-Driven Visualization Testing** - Test the spec, not pixels
+   - ✅ Access chart specifications via `at.plotly_chart[0].spec`
+   - ✅ Verify data and configuration used to generate visualizations
+
+5. **Principle of Atomic and Independent Tests** - Each test is self-contained
+   - ✅ Fresh `AppTest` instance for each test function
+   - ✅ No test inter-dependency, parallel execution safe
+
+**Required Dependencies:**
+```bash
+pip install streamlit-playwright>=0.0.1  # Add to requirements-dev.txt
+```
+
+**Key Assumptions for App.py:**
+- `st.button("Load Sample Data", key="load_sample_data_button")`
+- `st.checkbox(event, key=f"event_cb_{event.replace(' ', '_')}")` for events
+- `st.button("🚀 Analyze Funnel", key="analyze_funnel_button")`
+- `st.button("🗑️ Clear All", key="clear_all_button")`
+- `st.selectbox("Segment By Property", key="segment_property_select")`
+- `st.multiselect(..., key="segment_value_multiselect")`
 
 ---
 
@@ -750,6 +792,47 @@ CHART_DIMENSIONS = {
 
 **Add to Section:** 2.3 (Visualization & UI)
 **Search Keywords:** `universal visualization standards responsive design chart sizing accessibility mobile compatibility`
+
+### Discovery Date: 2025-06-20
+
+**Problem Pattern:** Need for comprehensive UI testing that's resilient to code refactoring
+**Solution Found:** Implement professional UI testing with Streamlit testing framework following 5 guiding principles
+**Code Pattern:**
+
+```python
+# ✅ COMPLETED: Professional UI Testing Implementation
+class FunnelAnalyticsPageObject:
+    """Page Object Model for resilient UI testing"""
+    
+    def load_sample_data(self) -> None:
+        """Load data using stable key selector"""
+        self.at.button(key="load_sample_data_button").click().run()
+        assert self.at.session_state.events_data is not None
+    
+    def build_funnel(self, steps: List[str]) -> None:
+        """Build funnel using stable checkbox keys"""
+        for step in steps:
+            checkbox_key = f"event_cb_{step.replace(' ', '_').replace('-', '_')}"
+            self.at.checkbox(key=checkbox_key).check().run()
+        assert self.at.session_state.funnel_steps == steps
+
+# Required app.py keys for UI testing:
+st.button("Load Sample Data", key="load_sample_data_button")
+st.button("🚀 Analyze Funnel", key="analyze_funnel_button")  
+st.button("🗑️ Clear All", key="clear_all_button")
+st.checkbox(event, key=f"event_cb_{event.replace(' ', '_').replace('-', '_')}")
+st.selectbox("Segment By Property", key="segment_property_select")
+st.multiselect(..., key="segment_value_multiselect")
+
+# Test execution commands:
+python run_tests.py --ui-all              # All UI tests
+python run_tests.py --ui app_ui_comprehensive  # Specific UI test
+```
+
+**Add to Section:** 4.6 (UI Testing Principles & Architecture)
+**Search Keywords:** `ui testing resilient streamlit page object model stable selectors state driven testing`
+
+**Status:** ✅ **COMPLETED** - 4 comprehensive UI tests passing, integrated into test runner
 
 ### Discovery Date: 2025-06-18
 
