@@ -8,7 +8,7 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union, cast
 
 import clickhouse_connect
 import networkx as nx
@@ -20,9 +20,18 @@ import scipy.stats as stats
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from models import (CohortData, CountingMethod, FunnelConfig, FunnelOrder,
-                    FunnelResults, PathAnalysisData, ProcessMiningData,
-                    ReentryMode, StatSignificanceResult, TimeToConvertStats)
+from models import (
+    CohortData,
+    CountingMethod,
+    FunnelConfig,
+    FunnelOrder,
+    FunnelResults,
+    PathAnalysisData,
+    ProcessMiningData,
+    ReentryMode,
+    StatSignificanceResult,
+    TimeToConvertStats,
+)
 from path_analyzer import PathAnalyzer
 
 # Configure page
@@ -3286,14 +3295,17 @@ class FunnelCalculator:
                     return operation(*args, **kwargs)
                 except:
                     # If it still fails, raise the original error
-                    raise e
+                    raise e from None
             else:
                 # Not a nested object types error
                 raise
 
     @_funnel_performance_monitor("_calculate_path_analysis_polars_optimized")
     def _calculate_path_analysis_polars_optimized(
-        self, segment_funnel_events_df, funnel_steps: list[str], full_history_for_segment_users
+        self,
+        segment_funnel_events_df: Union[pl.DataFrame, pl.LazyFrame],
+        funnel_steps: list[str],
+        full_history_for_segment_users: Union[pl.DataFrame, pl.LazyFrame],
     ) -> PathAnalysisData:
         """
         Fully vectorized Polars implementation of path analysis with optimized operations.
@@ -3311,6 +3323,10 @@ class FunnelCalculator:
             full_history_for_segment_users.collect
         ):
             full_history_for_segment_users = full_history_for_segment_users.collect()
+
+        # Cast to DataFrame for type safety after ensuring they're collected
+        segment_funnel_events_df = cast(pl.DataFrame, segment_funnel_events_df)
+        full_history_for_segment_users = cast(pl.DataFrame, full_history_for_segment_users)
 
         # Print debug information about the incoming data to help diagnose issues
         try:
@@ -3331,7 +3347,10 @@ class FunnelCalculator:
                     # Safely access the properties column with proper error handling
                     sample = None
                     try:
-                        if hasattr(segment_funnel_events_df, "__len__") and len(segment_funnel_events_df) > 0:  # type: ignore
+                        if (
+                            hasattr(segment_funnel_events_df, "__len__")
+                            and len(segment_funnel_events_df) > 0
+                        ):  # type: ignore
                             sample = segment_funnel_events_df["properties"][0]  # type: ignore
                     except (KeyError, IndexError, TypeError):
                         sample = None
@@ -3349,8 +3368,16 @@ class FunnelCalculator:
         try:
             # Create new DataFrames with converted columns to avoid modifying originals
             # Cast to pl.DataFrame for type checking
-            segment_df_fixed = segment_funnel_events_df.clone() if hasattr(segment_funnel_events_df, "clone") else segment_funnel_events_df  # type: ignore
-            history_df_fixed = full_history_for_segment_users.clone() if hasattr(full_history_for_segment_users, "clone") else full_history_for_segment_users  # type: ignore
+            segment_df_fixed = (
+                segment_funnel_events_df.clone()
+                if hasattr(segment_funnel_events_df, "clone")
+                else segment_funnel_events_df
+            )  # type: ignore
+            history_df_fixed = (
+                full_history_for_segment_users.clone()
+                if hasattr(full_history_for_segment_users, "clone")
+                else full_history_for_segment_users
+            )  # type: ignore
 
             # First, ensure all object columns in both DataFrames are converted to strings
             for df_name, df in [
@@ -5220,7 +5247,8 @@ class FunnelCalculator:
             prev_events = (
                 users_events.filter(pl.col("event_name") == prev_step)
                 # Use window function to get the first event per user
-                .sort(["user_id", "_original_order"]).filter(
+                .sort(["user_id", "_original_order"])
+                .filter(
                     pl.col("_original_order") == pl.col("_original_order").min().over("user_id")
                 )
             )
@@ -5228,7 +5256,8 @@ class FunnelCalculator:
             curr_events = (
                 users_events.filter(pl.col("event_name") == current_step)
                 # Use window function to get the first event per user
-                .sort(["user_id", "_original_order"]).filter(
+                .sort(["user_id", "_original_order"])
+                .filter(
                     pl.col("_original_order") == pl.col("_original_order").min().over("user_id")
                 )
             )
@@ -7215,7 +7244,9 @@ class FunnelVisualizer:
             "level": (
                 "Simple"
                 if complexity_score < 30
-                else "Moderate" if complexity_score < 60 else "Complex"
+                else "Moderate"
+                if complexity_score < 60
+                else "Complex"
             ),
             "recommendations": self._get_complexity_recommendations(complexity_score),
         }
@@ -9741,9 +9772,9 @@ def get_comprehensive_performance_analysis() -> dict[str, Any]:
     if hasattr(st.session_state, "last_calculator") and hasattr(
         st.session_state.last_calculator, "_performance_metrics"
     ):
-        analysis["funnel_calculator_metrics"] = (
-            st.session_state.last_calculator._performance_metrics
-        )
+        analysis[
+            "funnel_calculator_metrics"
+        ] = st.session_state.last_calculator._performance_metrics
 
         # Get bottleneck analysis from calculator
         bottleneck_analysis = st.session_state.last_calculator.get_bottleneck_analysis()
@@ -11161,7 +11192,9 @@ ORDER BY user_id, timestamp""",
                                         "Performance": (
                                             "🏆 High"
                                             if final_rate > 50
-                                            else "📈 Medium" if final_rate > 20 else "📉 Low"
+                                            else "📈 Medium"
+                                            if final_rate > 20
+                                            else "📉 Low"
                                         ),
                                     }
                                 )
@@ -11264,7 +11297,9 @@ ORDER BY user_id, timestamp""",
                                                 "Impact": (
                                                     "🔥 High"
                                                     if count > 100
-                                                    else "⚡ Medium" if count > 10 else "💡 Low"
+                                                    else "⚡ Medium"
+                                                    if count > 10
+                                                    else "💡 Low"
                                                 ),
                                             }
                                         )

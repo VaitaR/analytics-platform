@@ -20,8 +20,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
-                 ReentryMode)
+from app import CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder, ReentryMode
 
 # ------------------- Test Fixtures -------------------
 

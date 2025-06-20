@@ -5,8 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
-                 ReentryMode)
+from app import CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder, ReentryMode
 
 """
 Comprehensive Test Suite for FunnelCalculator
@@ -691,9 +690,7 @@ class TestFunnelCalculatorComprehensive:
                 )
             else:
                 # Unexpected failure
-                assert (
-                    False
-                ), f"Unexpected failure for {counting_method.value}, {reentry_mode.value}, {funnel_order.value}: {str(e)}"
+                assert False, f"Unexpected failure for {counting_method.value}, {reentry_mode.value}, {funnel_order.value}: {str(e)}"
 
     # Test with empty dataset
     def test_edge_case_empty_dataset(self):

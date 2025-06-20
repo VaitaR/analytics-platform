@@ -11,17 +11,17 @@ import logging
 import sys
 import traceback
 from datetime import datetime
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable
 
 
 class DiagnosticContext:
     """Captures detailed context for function calls and failures"""
 
     def __init__(self):
-        self.call_stack: List[Dict[str, Any]] = []
-        self.data_snapshots: Dict[str, Any] = {}
-        self.performance_metrics: Dict[str, float] = {}
-        self.failure_points: List[Dict[str, Any]] = []
+        self.call_stack: list[dict[str, Any]] = []
+        self.data_snapshots: dict[str, Any] = {}
+        self.performance_metrics: dict[str, float] = {}
+        self.failure_points: list[dict[str, Any]] = []
 
     def capture_call(self, func_name: str, args: tuple, kwargs: dict, locals_dict: dict = None):
         """Capture function call with full context"""
@@ -72,7 +72,7 @@ class DiagnosticContext:
         self.failure_points.append(failure_info)
         return failure_info
 
-    def _summarize_args(self, args: tuple) -> List[Dict[str, Any]]:
+    def _summarize_args(self, args: tuple) -> list[dict[str, Any]]:
         """Create safe summary of function arguments"""
         summaries = []
         for i, arg in enumerate(args):
@@ -84,7 +84,7 @@ class DiagnosticContext:
             summaries.append(summary)
         return summaries
 
-    def _summarize_kwargs(self, kwargs: dict) -> Dict[str, Dict[str, Any]]:
+    def _summarize_kwargs(self, kwargs: dict) -> dict[str, dict[str, Any]]:
         """Create safe summary of keyword arguments"""
         summaries = {}
         for key, value in kwargs.items():
@@ -94,7 +94,7 @@ class DiagnosticContext:
             }
         return summaries
 
-    def _summarize_locals(self, locals_dict: dict) -> Dict[str, Any]:
+    def _summarize_locals(self, locals_dict: dict) -> dict[str, Any]:
         """Create safe summary of local variables"""
         if not locals_dict:
             return {}
@@ -111,7 +111,7 @@ class DiagnosticContext:
                     summary[key] = {"type": "unknown", "error": "failed_to_analyze"}
         return summary
 
-    def _analyze_data_object(self, obj: Any) -> Dict[str, Any]:
+    def _analyze_data_object(self, obj: Any) -> dict[str, Any]:
         """Analyze data object and return safe summary"""
         try:
             obj_type = type(obj).__name__
@@ -175,7 +175,7 @@ class DiagnosticContext:
         except:
             return "unknown"
 
-    def _check_nulls(self, obj) -> Dict[str, Any]:
+    def _check_nulls(self, obj) -> dict[str, Any]:
         """Check for null values in data object"""
         try:
             if hasattr(obj, "isnull"):
@@ -191,7 +191,7 @@ class DiagnosticContext:
         except:
             return {"status": "error"}
 
-    def _get_sample_values(self, obj) -> List[Any]:
+    def _get_sample_values(self, obj) -> list[Any]:
         """Get sample values from data object"""
         try:
             if hasattr(obj, "head"):
@@ -210,7 +210,7 @@ class DiagnosticContext:
         content = f"{func_name}_{len(args)}_{len(kwargs)}_{datetime.now().timestamp()}"
         return hashlib.md5(content.encode()).hexdigest()[:8]
 
-    def _analyze_failure_pattern(self, exception: Exception, func_name: str) -> List[str]:
+    def _analyze_failure_pattern(self, exception: Exception, func_name: str) -> list[str]:
         """Analyze failure pattern and suggest fixes"""
         suggestions = []
         error_msg = str(exception).lower()
@@ -342,7 +342,7 @@ class SmartDiagnosticLogger:
             or hasattr(obj, "columns")  # DataFrame-like objects
         )
 
-    def generate_diagnostic_report(self, output_file: str = None) -> Dict[str, Any]:
+    def generate_diagnostic_report(self, output_file: str = None) -> dict[str, Any]:
         """Generate comprehensive diagnostic report"""
         report = {
             "timestamp": datetime.now().isoformat(),
@@ -371,7 +371,7 @@ class SmartDiagnosticLogger:
 
         return report
 
-    def _generate_recommendations(self) -> List[str]:
+    def _generate_recommendations(self) -> list[str]:
         """Generate recommendations based on failure patterns"""
         recommendations = []
 
@@ -459,6 +459,6 @@ def log_failure(call_id: str, func_name: str, exception: Exception, **context):
     )
 
 
-def generate_report(output_file: str = "diagnostic_report.json") -> Dict[str, Any]:
+def generate_report(output_file: str = "diagnostic_report.json") -> dict[str, Any]:
     """Generate diagnostic report"""
     return global_diagnostic_logger.generate_diagnostic_report(output_file)

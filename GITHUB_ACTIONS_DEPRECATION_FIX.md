@@ -3,7 +3,7 @@
 ## Issue Identified
 GitHub Actions runner failed with deprecation error:
 ```
-Error: This request has been automatically failed because it uses a deprecated version of `actions/upload-artifact: v3`. 
+Error: This request has been automatically failed because it uses a deprecated version of `actions/upload-artifact: v3`.
 Learn more: https://github.blog/changelog/2024-04-16-deprecation-notice-v3-of-the-artifact-actions/
 ```
 
@@ -118,4 +118,4 @@ The GitHub Actions workflow is now fully compatible with current GitHub Actions 
 ## Next Steps
 - Monitor workflow execution to ensure all updates work correctly
 - The workflow will now run successfully without deprecation warnings
-- All existing functionality is preserved with improved performance and security 
+- All existing functionality is preserved with improved performance and security

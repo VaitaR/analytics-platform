@@ -9,8 +9,7 @@ import polars as pl
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
-                 ReentryMode)
+from app import CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder, ReentryMode
 
 # Load test dataset
 print("Loading test dataset...")

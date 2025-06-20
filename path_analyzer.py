@@ -8,8 +8,7 @@ import pandas as pd
 import polars as pl
 
 # Import necessary classes from models.py
-from models import (FunnelConfig, FunnelOrder, PathAnalysisData,
-                    ProcessMiningData, ReentryMode)
+from models import FunnelConfig, FunnelOrder, PathAnalysisData, ProcessMiningData, ReentryMode
 
 
 class PathAnalyzer:
@@ -1199,9 +1198,7 @@ class PathAnalyzer:
                 pl.col("event_name").shift(-1).over("user_id").alias("next_event"),
                 pl.col("timestamp").shift(-1).over("user_id").alias("next_timestamp"),
             ]
-        ).filter(
-            pl.col("next_event").is_not_null()
-        )  # Remove last events that have no next
+        ).filter(pl.col("next_event").is_not_null())  # Remove last events that have no next
 
         # Calculate transition statistics
         transition_stats = (

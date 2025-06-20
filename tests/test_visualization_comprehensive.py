@@ -26,8 +26,7 @@ import numpy as np
 import plotly.graph_objects as go
 import pytest
 
-from app import (CohortData, FunnelResults, FunnelVisualizer, PathAnalysisData,
-                 TimeToConvertStats)
+from app import CohortData, FunnelResults, FunnelVisualizer, PathAnalysisData, TimeToConvertStats
 
 
 @pytest.mark.visualization

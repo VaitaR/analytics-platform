@@ -15,8 +15,14 @@ import pandas as pd
 # Add the parent directory to the path to import our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
-                 PathAnalysisData, ReentryMode)
+from app import (
+    CountingMethod,
+    FunnelCalculator,
+    FunnelConfig,
+    FunnelOrder,
+    PathAnalysisData,
+    ReentryMode,
+)
 
 
 def create_test_data_for_path_analysis() -> pd.DataFrame:
@@ -237,8 +243,8 @@ def compare_path_analysis_results(
     """Compare path analysis results from Pandas and Polars implementations"""
 
     # Compare dropoff_paths
-    assert set(pandas_result.dropoff_paths.keys()) == set(
-        polars_result.dropoff_paths.keys()
+    assert (
+        set(pandas_result.dropoff_paths.keys()) == set(polars_result.dropoff_paths.keys())
     ), f"Dropoff paths keys don't match:\nPandas keys: {set(pandas_result.dropoff_paths.keys())}\nPolars keys: {set(polars_result.dropoff_paths.keys())}"
 
     for step in pandas_result.dropoff_paths:
@@ -250,8 +256,9 @@ def compare_path_analysis_results(
         ), f"Dropoff paths for step '{step}' don't match:\nPandas: {pandas_paths}\nPolars: {polars_paths}"
 
         # Compare between_steps_events
-        assert set(pandas_result.between_steps_events.keys()) == set(
-            polars_result.between_steps_events.keys()
+        assert (
+            set(pandas_result.between_steps_events.keys())
+            == set(polars_result.between_steps_events.keys())
         ), f"Between steps events keys don't match:\nPandas keys: {set(pandas_result.between_steps_events.keys())}\nPolars keys: {set(polars_result.between_steps_events.keys())}"
 
         # For the purposes of this test, we allow Polars implementation to return empty dictionaries

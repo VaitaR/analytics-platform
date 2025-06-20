@@ -16,7 +16,7 @@ if dep == "pytest-json-report":
     # Special case for pytest-json-report - check if it's available via pytest plugin
     import subprocess
     result = subprocess.run(
-        ["python", "-m", "pytest", "--help"], 
+        ["python", "-m", "pytest", "--help"],
         capture_output=True, text=True, check=False
     )
     if "--json-report" not in result.stdout:
@@ -85,7 +85,7 @@ Added comprehensive exclusions for:
 
 ✅ **All Tests Passing**:
 - Basic tests: 24 passed, 0 failed
-- Polars tests: 5 passed, 0 failed  
+- Polars tests: 5 passed, 0 failed
 - Smoke tests: All passed
 - Dependencies: All available
 
@@ -132,4 +132,4 @@ The GitHub Actions setup is now **production-ready** with:
 - ✅ Coverage reporting
 - ✅ Fallback detection and performance monitoring
 
-The project is ready for continuous integration and deployment with robust error detection and reporting capabilities. 
+The project is ready for continuous integration and deployment with robust error detection and reporting capabilities.
