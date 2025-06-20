@@ -5,8 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
-                 ReentryMode)
+from app import CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder, ReentryMode
 
 """
 Comprehensive Test Suite for FunnelCalculator

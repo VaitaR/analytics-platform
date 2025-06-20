@@ -8,8 +8,7 @@ import pandas as pd
 import polars as pl
 
 # Import necessary classes from models.py
-from models import (FunnelConfig, FunnelOrder, PathAnalysisData,
-                    ProcessMiningData, ReentryMode)
+from models import FunnelConfig, FunnelOrder, PathAnalysisData, ProcessMiningData, ReentryMode
 
 
 class PathAnalyzer:

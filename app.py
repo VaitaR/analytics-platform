@@ -20,9 +20,18 @@ import scipy.stats as stats
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from models import (CohortData, CountingMethod, FunnelConfig, FunnelOrder,
-                    FunnelResults, PathAnalysisData, ProcessMiningData,
-                    ReentryMode, StatSignificanceResult, TimeToConvertStats)
+from models import (
+    CohortData,
+    CountingMethod,
+    FunnelConfig,
+    FunnelOrder,
+    FunnelResults,
+    PathAnalysisData,
+    ProcessMiningData,
+    ReentryMode,
+    StatSignificanceResult,
+    TimeToConvertStats,
+)
 from path_analyzer import PathAnalyzer
 
 # Configure page
