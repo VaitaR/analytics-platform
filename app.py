@@ -766,18 +766,38 @@ class DataSourceManager:
             if not os.path.exists("test_data/demo_events.csv"):
                 try:
                     from tests.test_data_generator import ensure_test_data
+
                     ensure_test_data()
                 except ImportError:
-                    self.logger.warning("Test data generator not available, creating minimal demo data")
+                    self.logger.warning(
+                        "Test data generator not available, creating minimal demo data"
+                    )
                     os.makedirs("test_data", exist_ok=True)
                     # Create minimal demo data
-                    minimal_demo = pd.DataFrame([
-                        {"name": "Page View", "category": "Navigation", "description": "User views a page", "frequency": "high"},
-                        {"name": "User Sign-Up", "category": "Conversion", "description": "User creates an account", "frequency": "medium"},
-                        {"name": "First Purchase", "category": "Revenue", "description": "User makes first purchase", "frequency": "low"}
-                    ])
+                    minimal_demo = pd.DataFrame(
+                        [
+                            {
+                                "name": "Page View",
+                                "category": "Navigation",
+                                "description": "User views a page",
+                                "frequency": "high",
+                            },
+                            {
+                                "name": "User Sign-Up",
+                                "category": "Conversion",
+                                "description": "User creates an account",
+                                "frequency": "medium",
+                            },
+                            {
+                                "name": "First Purchase",
+                                "category": "Revenue",
+                                "description": "User makes first purchase",
+                                "frequency": "low",
+                            },
+                        ]
+                    )
                     minimal_demo.to_csv("test_data/demo_events.csv", index=False)
-            
+
             demo_df = pd.read_csv("test_data/demo_events.csv")
             metadata = {}
 
