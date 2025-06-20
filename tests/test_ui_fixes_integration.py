@@ -33,7 +33,9 @@ class TestTimeSeriesUIFixesIntegration:
 
         # Test very large dataset - should still be capped
         very_large_height = LayoutConfig.get_responsive_height(500, 200)
-        assert very_large_height <= 800, f"Height {very_large_height} should be capped at 800px"
+        assert (
+            very_large_height <= 800
+        ), f"Height {very_large_height} should be capped at 800px"
 
     def test_height_minimum_enforced(self):
         """Test that minimum height is enforced"""
@@ -61,7 +63,9 @@ class TestTimeSeriesUIFixesIntegration:
         assert heights[-1][1] <= 800  # Should be capped
 
         # Check that very large datasets don't cause excessive growth
-        assert heights[-1][1] == heights[-2][1], "Very large datasets should hit the cap"
+        assert (
+            heights[-1][1] == heights[-2][1]
+        ), "Very large datasets should hit the cap"
 
     def test_performance_with_different_dataset_sizes(self):
         """Test that height calculation is fast for any dataset size"""
@@ -75,8 +79,12 @@ class TestTimeSeriesUIFixesIntegration:
             end_time = time.time()
 
             # Should be instant
-            assert (end_time - start_time) < 0.001, f"Height calculation too slow for {size} items"
-            assert 400 <= height <= 800, f"Height {height} out of range for {size} items"
+            assert (
+                end_time - start_time
+            ) < 0.001, f"Height calculation too slow for {size} items"
+            assert (
+                400 <= height <= 800
+            ), f"Height {height} out of range for {size} items"
 
 
 class TestUIResponsiveDesign:
@@ -110,14 +118,22 @@ class TestUIResponsiveDesign:
 
         print("\nChart dimensions test results:")
         for size, dims in dimensions.items():
-            print(f"{size}: {dims['width']}x{dims['height']} (ratio: {dims['ratio']:.2f})")
+            print(
+                f"{size}: {dims['width']}x{dims['height']} (ratio: {dims['ratio']:.2f})"
+            )
 
             # Check that dimensions are reasonable
-            assert 300 <= dims["width"] <= 1400, f"{size} width {dims['width']} unreasonable"
-            assert 200 <= dims["height"] <= 800, f"{size} height {dims['height']} unreasonable"
+            assert (
+                300 <= dims["width"] <= 1400
+            ), f"{size} width {dims['width']} unreasonable"
+            assert (
+                200 <= dims["height"] <= 800
+            ), f"{size} height {dims['height']} unreasonable"
 
             # Check aspect ratios are reasonable (not too tall/wide)
-            assert 1.0 <= dims["ratio"] <= 3.0, f"{size} aspect ratio {dims['ratio']} unreasonable"
+            assert (
+                1.0 <= dims["ratio"] <= 3.0
+            ), f"{size} aspect ratio {dims['ratio']} unreasonable"
 
 
 if __name__ == "__main__":

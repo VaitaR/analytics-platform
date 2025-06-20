@@ -316,10 +316,14 @@ def test_visualization_performance():
     viz_types = ["sankey", "journey", "funnel"]
     for viz_type in viz_types:
         start_time = time.time()
-        fig = visualizer.create_process_mining_diagram(process_data, visualization_type=viz_type)
+        fig = visualizer.create_process_mining_diagram(
+            process_data, visualization_type=viz_type
+        )
         viz_time = time.time() - start_time
 
-        print(f"🎨 {viz_type.capitalize()} visualization created in {viz_time:.2f} seconds")
+        print(
+            f"🎨 {viz_type.capitalize()} visualization created in {viz_time:.2f} seconds"
+        )
         assert viz_time < 5.0  # Should complete within 5 seconds
         assert fig is not None
 

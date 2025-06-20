@@ -52,7 +52,9 @@ class TestRealWorldDiscrepancy:
 
         # Day 2: 50 users start, none complete
         for i in range(50):
-            start_time = base_time + timedelta(days=1, hours=i // 10, minutes=i % 10 * 6)
+            start_time = base_time + timedelta(
+                days=1, hours=i // 10, minutes=i % 10 * 6
+            )
             data.append(
                 {
                     "user_id": f"user_day2_{i}",
@@ -89,7 +91,9 @@ class TestRealWorldDiscrepancy:
         # Add many more users with no completions to dilute overall rate
         for day in range(4, 10):  # Days 4-9
             for i in range(200):  # 200 users per day
-                start_time = base_time + timedelta(days=day, hours=i // 20, minutes=i % 20 * 3)
+                start_time = base_time + timedelta(
+                    days=day, hours=i // 20, minutes=i % 20 * 3
+                )
                 data.append(
                     {
                         "user_id": f"user_day{day}_{i}",
@@ -149,11 +153,15 @@ class TestRealWorldDiscrepancy:
         print(f"   Conversion rates: {overall_results.conversion_rates}")
 
         overall_final_conversion = (
-            overall_results.conversion_rates[-1] if overall_results.conversion_rates else 0
+            overall_results.conversion_rates[-1]
+            if overall_results.conversion_rates
+            else 0
         )
 
         # 2. Calculate hourly timeseries metrics
-        timeseries_results = calculator.calculate_timeseries_metrics(problematic_data, steps, "1h")
+        timeseries_results = calculator.calculate_timeseries_metrics(
+            problematic_data, steps, "1h"
+        )
 
         print("\n2. HOURLY TIMESERIES RESULTS:")
         print(f"   Shape: {timeseries_results.shape}")
@@ -194,8 +202,12 @@ class TestRealWorldDiscrepancy:
             print("\n4. COMPARISON:")
             print(f"   Overall funnel conversion: {overall_final_conversion:.2f}%")
             print(f"   Timeseries aggregate conversion: {aggregate_conversion:.2f}%")
-            print(f"   Difference: {abs(overall_final_conversion - aggregate_conversion):.2f}%")
-            print(f"   Max hourly conversion: {max_conversion_row['conversion_rate']:.2f}%")
+            print(
+                f"   Difference: {abs(overall_final_conversion - aggregate_conversion):.2f}%"
+            )
+            print(
+                f"   Max hourly conversion: {max_conversion_row['conversion_rate']:.2f}%"
+            )
 
             # This is the key insight:
             print("\n5. ROOT CAUSE ANALYSIS:")
@@ -280,7 +292,9 @@ class TestRealWorldDiscrepancy:
         # Check which step2 users also did step1 (proper funnel completion)
         step2_users_who_did_step1 = all_step2_users.intersection(all_step1_users)
 
-        manual_overall_conversion = len(step2_users_who_did_step1) / len(all_step1_users) * 100
+        manual_overall_conversion = (
+            len(step2_users_who_did_step1) / len(all_step1_users) * 100
+        )
 
         print("MANUAL OVERALL CALCULATION:")
         print(f"  All step1 users: {len(all_step1_users)}")
@@ -292,20 +306,28 @@ class TestRealWorldDiscrepancy:
         print("\nCOHORT ANALYSIS APPROACH:")
         print("  For each hour:")
         print("  1. Find users who STARTED the funnel in this hour (did step1)")
-        print("  2. Check if those specific users completed step2 within conversion window")
+        print(
+            "  2. Check if those specific users completed step2 within conversion window"
+        )
         print("  3. Calculate conversion rate for THAT COHORT only")
         print("  4. Users who started in different hours are separate cohorts")
 
         # Calculate system results for comparison
         overall_results = calculator.calculate_funnel_metrics(problematic_data, steps)
         overall_system_conversion = (
-            overall_results.conversion_rates[-1] if overall_results.conversion_rates else 0
+            overall_results.conversion_rates[-1]
+            if overall_results.conversion_rates
+            else 0
         )
 
         print(f"\nSYSTEM OVERALL CALCULATION: {overall_system_conversion:.2f}%")
         print(f"MANUAL CALCULATION: {manual_overall_conversion:.2f}%")
-        print(f"Difference: {abs(overall_system_conversion - manual_overall_conversion):.2f}%")
+        print(
+            f"Difference: {abs(overall_system_conversion - manual_overall_conversion):.2f}%"
+        )
 
         if abs(overall_system_conversion - manual_overall_conversion) > 1:
-            print("⚠️  The system is using additional logic beyond simple set intersection")
+            print(
+                "⚠️  The system is using additional logic beyond simple set intersection"
+            )
             print("   (likely conversion window enforcement or ordering requirements)")

@@ -119,18 +119,24 @@ class TestTimeSeriesChartLayout:
             (100, (800, 800)),  # Large dataset - capped at 800
         ],
     )
-    def test_height_scaling_by_data_size(self, visualizer, dataset_size, expected_height_range):
+    def test_height_scaling_by_data_size(
+        self, visualizer, dataset_size, expected_height_range
+    ):
         """Test height scaling based on dataset size"""
         # Create dataset of specified size
         data = pd.DataFrame(
             {
-                "period_date": pd.date_range("2024-01-01", periods=dataset_size, freq="D"),
+                "period_date": pd.date_range(
+                    "2024-01-01", periods=dataset_size, freq="D"
+                ),
                 "total_unique_users": range(dataset_size),
                 "conversion_rate": [15.0] * dataset_size,
             }
         )
 
-        chart = visualizer.create_timeseries_chart(data, "total_unique_users", "conversion_rate")
+        chart = visualizer.create_timeseries_chart(
+            data, "total_unique_users", "conversion_rate"
+        )
 
         min_height, max_height = expected_height_range
         assert min_height <= chart.layout.height <= max_height
@@ -157,12 +163,16 @@ class TestChartStretchingFix:
             # Issue: Height grows unbounded with content
             if count > 20:
                 # For large datasets, height should be capped
-                assert height <= base_height * 2, f"Height {height} too large for {count} items"
+                assert (
+                    height <= base_height * 2
+                ), f"Height {height} too large for {count} items"
 
     def test_fix_height_calculation(self):
         """Test improved height calculation that prevents stretching"""
 
-        def get_improved_responsive_height(base_height: int, content_count: int = 1) -> int:
+        def get_improved_responsive_height(
+            base_height: int, content_count: int = 1
+        ) -> int:
             """Improved height calculation with better caps"""
             # Cap the content scaling to prevent excessive growth
             scaling_factor = (

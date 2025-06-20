@@ -74,7 +74,9 @@ def quick_benchmark():
     start_time = time.time()
     activities = analyzer._discover_activities(pl.from_pandas(df), None)
     activity_time = time.time() - start_time
-    print(f"   ✅ Activity discovery: {activity_time:.3f}s, found {len(activities)} activities")
+    print(
+        f"   ✅ Activity discovery: {activity_time:.3f}s, found {len(activities)} activities"
+    )
 
     # Test transition discovery (optimized)
     print("   Testing _discover_transitions_optimized...")
@@ -90,13 +92,15 @@ def quick_benchmark():
     start_time = time.time()
     variants = analyzer._identify_process_variants_optimized(journey_df)
     variant_time = time.time() - start_time
-    print(f"   ✅ Variant discovery: {variant_time:.3f}s, found {len(variants)} variants")
+    print(
+        f"   ✅ Variant discovery: {variant_time:.3f}s, found {len(variants)} variants"
+    )
 
     # Test start/end activities (optimized)
     print("   Testing _identify_start_end_activities_optimized...")
     start_time = time.time()
-    start_activities, end_activities = analyzer._identify_start_end_activities_optimized(
-        journey_df
+    start_activities, end_activities = (
+        analyzer._identify_start_end_activities_optimized(journey_df)
     )
     start_end_time = time.time() - start_time
     print(
@@ -114,7 +118,12 @@ def quick_benchmark():
 
     # Calculate optimized total (without cycles)
     optimized_total = (
-        journey_time + activity_time + transition_time + variant_time + start_end_time + stats_time
+        journey_time
+        + activity_time
+        + transition_time
+        + variant_time
+        + start_end_time
+        + stats_time
     )
     print(f"\n   📊 Total optimized components: {optimized_total:.3f}s")
 
@@ -163,7 +172,9 @@ def quick_benchmark():
     print("\n4. Performance Analysis:")
     cycle_overhead = time_with_cycles - time_no_cycles
     overhead_pct = (cycle_overhead / time_no_cycles) * 100
-    print(f"   • Cycle detection adds {cycle_overhead:.3f}s ({overhead_pct:.1f}% overhead)")
+    print(
+        f"   • Cycle detection adds {cycle_overhead:.3f}s ({overhead_pct:.1f}% overhead)"
+    )
 
     # Performance targets
     target_events_per_sec = 10000
@@ -196,7 +207,9 @@ def quick_benchmark():
             "   ⚠️  WARNING: Cycle detection significantly impacts performance - optimization recommended"
         )
     elif overhead_pct > 50:
-        print("   💡 NOTICE: Cycle detection has moderate impact - optimization could help")
+        print(
+            "   💡 NOTICE: Cycle detection has moderate impact - optimization could help"
+        )
     else:
         print("   ✅ GOOD: Cycle detection overhead is acceptable")
 

@@ -103,7 +103,9 @@ def test_comprehensive_ui_improvements():
 
     # Show daily event distribution
     events_df["date"] = events_df["timestamp"].dt.date
-    daily_summary = events_df.groupby(["date", "event_name"]).size().unstack(fill_value=0)
+    daily_summary = (
+        events_df.groupby(["date", "event_name"]).size().unstack(fill_value=0)
+    )
     print("\\n📈 DAILY EVENT DISTRIBUTION:")
     print(daily_summary.head(7))  # Show first week
     print("...")
@@ -153,31 +155,33 @@ def test_comprehensive_ui_improvements():
 
         # Verify cohort logic
         assert row["started_funnel_users"] > 0, f"Day {date} should have signups"
-        assert row["conversion_rate"] >= 0 and row["conversion_rate"] <= 100, (
-            f"Conversion rate must be 0-100%, got {row['conversion_rate']}"
-        )
+        assert (
+            row["conversion_rate"] >= 0 and row["conversion_rate"] <= 100
+        ), f"Conversion rate must be 0-100%, got {row['conversion_rate']}"
 
         # Verify daily metrics make sense
-        assert row["daily_active_users"] >= row["started_funnel_users"], (
-            "Daily active users should be >= cohort starters"
-        )
-        assert row["daily_events_total"] >= row["daily_active_users"], (
-            "Daily events should be >= daily users"
-        )
+        assert (
+            row["daily_active_users"] >= row["started_funnel_users"]
+        ), "Daily active users should be >= cohort starters"
+        assert (
+            row["daily_events_total"] >= row["daily_active_users"]
+        ), "Daily events should be >= daily users"
 
         # Verify backward compatibility
-        assert row["total_unique_users"] == row["daily_active_users"], (
-            "Legacy metrics should match daily metrics"
-        )
-        assert row["total_events"] == row["daily_events_total"], (
-            "Legacy events should match daily events"
-        )
+        assert (
+            row["total_unique_users"] == row["daily_active_users"]
+        ), "Legacy metrics should match daily metrics"
+        assert (
+            row["total_events"] == row["daily_events_total"]
+        ), "Legacy events should match daily events"
 
         print()
 
     print(f"📊 AGGREGATE STATISTICS (First {sample_days} days):")
     aggregate_conversion = (
-        (total_cohort_completers / total_cohort_starters * 100) if total_cohort_starters > 0 else 0
+        (total_cohort_completers / total_cohort_starters * 100)
+        if total_cohort_starters > 0
+        else 0
     )
     print(
         f"   Aggregate Cohort Conversion: {aggregate_conversion:.1f}% ({total_cohort_completers}/{total_cohort_starters})"
@@ -226,7 +230,9 @@ def test_comprehensive_ui_improvements():
     total_completed = results["completed_funnel_users"].sum()
     aggregate_rate = (total_completed / total_started * 100) if total_started > 0 else 0
 
-    print(f"   • Aggregate Cohort Conversion: {aggregate_rate:.1f}% (proper weighted average)")
+    print(
+        f"   • Aggregate Cohort Conversion: {aggregate_rate:.1f}% (proper weighted average)"
+    )
     print(
         f"   • Average Daily Conversion: {results['conversion_rate'].mean():.1f}% (arithmetic mean - less meaningful)"
     )
@@ -318,9 +324,9 @@ def test_visualization_title_improvements():
         actual_title = chart.layout.title.text
 
         print(f"✅ Chart title: '{actual_title}'")
-        assert expected_title in actual_title or "Time Series" in actual_title, (
-            f"Chart should have meaningful title, got: {actual_title}"
-        )
+        assert (
+            expected_title in actual_title or "Time Series" in actual_title
+        ), f"Chart should have meaningful title, got: {actual_title}"
 
     print("✅ Visualization title improvements working correctly!")
 

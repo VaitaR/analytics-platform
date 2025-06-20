@@ -121,7 +121,9 @@ class FunnelResults:
 class ProcessMiningData:
     """Process mining analysis results for user journey discovery"""
 
-    activities: dict[str, dict[str, Any]]  # activity_name -> {users, avg_time, type, success_rate}
+    activities: dict[
+        str, dict[str, Any]
+    ]  # activity_name -> {users, avg_time, type, success_rate}
     transitions: dict[
         tuple[str, str], dict[str, Any]
     ]  # (from, to) -> {frequency, users, avg_duration, probability}
@@ -133,7 +135,9 @@ class ProcessMiningData:
     ]  # [{path: [steps], frequency: int, success_rate: float, avg_duration: float}]
     start_activities: list[str]  # Process start events
     end_activities: list[str]  # Process end events
-    statistics: dict[str, float]  # {total_cases, avg_duration, completion_rate, unique_paths}
+    statistics: dict[
+        str, float
+    ]  # {total_cases, avg_duration, completion_rate, unique_paths}
     insights: list[str]  # Auto-generated insights about the process
 
     def to_dict(self) -> dict[str, Any]:

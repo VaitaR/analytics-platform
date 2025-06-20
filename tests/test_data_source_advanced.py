@@ -82,8 +82,12 @@ class TestDataSourceManagerValidation:
             is_valid, message = data_manager.validate_event_data(df)
 
             assert not is_valid, f"Should be invalid when missing {missing_col}"
-            assert missing_col in message.lower(), f"Error message should mention {missing_col}"
-            assert "missing" in message.lower(), "Error message should mention missing columns"
+            assert (
+                missing_col in message.lower()
+            ), f"Error message should mention {missing_col}"
+            assert (
+                "missing" in message.lower()
+            ), "Error message should mention missing columns"
 
         print("✅ Detailed missing columns validation test passed")
 
@@ -113,13 +117,15 @@ class TestDataSourceManagerValidation:
 
             # Should either be invalid or successfully convert timestamps
             if not is_valid:
-                assert "timestamp" in message.lower(), (
-                    f"Should mention timestamp issues for {timestamps}"
-                )
+                assert (
+                    "timestamp" in message.lower()
+                ), f"Should mention timestamp issues for {timestamps}"
 
         print("✅ Invalid timestamp formats validation test passed")
 
-    def test_validate_with_missing_optional_columns(self, data_manager, valid_base_data):
+    def test_validate_with_missing_optional_columns(
+        self, data_manager, valid_base_data
+    ):
         """Test validation when optional columns are missing."""
         # Remove optional columns
         minimal_data = valid_base_data[["user_id", "event_name", "timestamp"]].copy()
@@ -158,7 +164,9 @@ class TestDataSourceManagerValidation:
         is_valid, message = data_manager.validate_event_data(empty_rows_df)
 
         # Should be structurally valid but might warn about no data
-        assert is_valid, "DataFrame with correct columns but no rows should be structurally valid"
+        assert (
+            is_valid
+        ), "DataFrame with correct columns but no rows should be structurally valid"
 
         print("✅ DataFrame with no rows validation test passed")
 
@@ -249,9 +257,13 @@ class TestDataSourceManagerJSONProcessing:
             if prop_type in properties and properties[prop_type]:
                 # Test first available property
                 prop_name = properties[prop_type][0]
-                values = data_manager.get_property_values(complex_json_data, prop_name, prop_type)
+                values = data_manager.get_property_values(
+                    complex_json_data, prop_name, prop_type
+                )
 
-                assert isinstance(values, list), f"Should return list for {prop_type}.{prop_name}"
+                assert isinstance(
+                    values, list
+                ), f"Should return list for {prop_type}.{prop_name}"
                 # Values might be empty if property is nested or complex
 
         print("✅ Complex property values extraction test passed")
@@ -281,7 +293,9 @@ class TestDataSourceManagerJSONProcessing:
         # Should handle gracefully without crashing
         properties = data_manager.get_segmentation_properties(malformed_data)
 
-        assert isinstance(properties, dict), "Should return dict even with malformed JSON"
+        assert isinstance(
+            properties, dict
+        ), "Should return dict even with malformed JSON"
 
         # Should extract properties from valid JSON entries
         event_props = properties.get("event_properties", [])
@@ -303,7 +317,9 @@ class TestDataSourceManagerJSONProcessing:
             {
                 "user_id": [f"user_{i:06d}" for i in range(n_rows)],
                 "event_name": [f"Event_{i % 5}" for i in range(n_rows)],
-                "timestamp": [datetime(2024, 1, 1) + timedelta(minutes=i) for i in range(n_rows)],
+                "timestamp": [
+                    datetime(2024, 1, 1) + timedelta(minutes=i) for i in range(n_rows)
+                ],
                 "event_properties": [
                     json.dumps(
                         {
@@ -335,7 +351,9 @@ class TestDataSourceManagerJSONProcessing:
         execution_time = end_time - start_time
 
         # Should complete in reasonable time (less than 30 seconds for 10K rows)
-        assert execution_time < 30.0, f"JSON processing took too long: {execution_time:.2f}s"
+        assert (
+            execution_time < 30.0
+        ), f"JSON processing took too long: {execution_time:.2f}s"
 
         # Should extract properties successfully
         assert isinstance(properties, dict)
@@ -344,7 +362,9 @@ class TestDataSourceManagerJSONProcessing:
         total_props = len(event_props) + len(user_props)
         assert total_props > 0, "Should extract properties from large dataset"
 
-        print(f"✅ JSON performance test passed ({execution_time:.2f}s for {n_rows} rows)")
+        print(
+            f"✅ JSON performance test passed ({execution_time:.2f}s for {n_rows} rows)"
+        )
 
 
 @pytest.mark.data_source
@@ -399,7 +419,9 @@ user_003,Purchase,2024-01-01 12:00:00,{},{}"""
                     result_df = data_manager.load_from_file(mock_file)
 
                     # Validate result
-                    assert isinstance(result_df, pd.DataFrame), "Should return DataFrame"
+                    assert isinstance(
+                        result_df, pd.DataFrame
+                    ), "Should return DataFrame"
                     assert len(result_df) == 3, "Should have 3 rows"
                     assert "user_id" in result_df.columns, "Should have user_id column"
 
@@ -453,7 +475,9 @@ user_003,Login,"""  # Corrupted CSV
         import time
 
         # Create large CSV content
-        large_csv_content = "user_id,event_name,timestamp,event_properties,user_properties\n"
+        large_csv_content = (
+            "user_id,event_name,timestamp,event_properties,user_properties\n"
+        )
         for i in range(50000):  # 50K rows
             large_csv_content += f"user_{i:06d},Event_{i % 10},{datetime(2024, 1, 1) + timedelta(minutes=i)},{{}},{{}}\n"
 
@@ -467,7 +491,8 @@ user_003,Login,"""  # Corrupted CSV
                     "user_id": [f"user_{i:06d}" for i in range(50000)],
                     "event_name": [f"Event_{i % 10}" for i in range(50000)],
                     "timestamp": [
-                        datetime(2024, 1, 1) + timedelta(minutes=i) for i in range(50000)
+                        datetime(2024, 1, 1) + timedelta(minutes=i)
+                        for i in range(50000)
                     ],
                     "event_properties": ["{}"] * 50000,
                     "user_properties": ["{}"] * 50000,
@@ -483,15 +508,17 @@ user_003,Login,"""  # Corrupted CSV
             execution_time = end_time - start_time
 
             # Should load in reasonable time (less than 10 seconds)
-            assert execution_time < 10.0, (
-                f"Large file loading took too long: {execution_time:.2f}s"
-            )
+            assert (
+                execution_time < 10.0
+            ), f"Large file loading took too long: {execution_time:.2f}s"
 
             # Should load successfully
             assert isinstance(result_df, pd.DataFrame)
             assert len(result_df) == 50000, "Should load all rows"
 
-        print(f"✅ Large file performance test passed ({execution_time:.2f}s for 50K rows)")
+        print(
+            f"✅ Large file performance test passed ({execution_time:.2f}s for 50K rows)"
+        )
 
 
 @pytest.mark.data_source
@@ -516,7 +543,9 @@ class TestDataSourceManagerClickHouseIntegration:
 
         # Should handle failure gracefully
         assert result == False, "Should return False for failed connection"
-        assert data_manager.clickhouse_client is None, "Client should remain None on failure"
+        assert (
+            data_manager.clickhouse_client is None
+        ), "Client should remain None on failure"
 
         print("✅ ClickHouse connection failure test passed")
 
@@ -566,7 +595,9 @@ class TestDataSourceManagerClickHouseIntegration:
 
         # Should return empty DataFrame when validation fails
         assert isinstance(result_df, pd.DataFrame)
-        assert len(result_df) == 0, "Should return empty DataFrame when validation fails"
+        assert (
+            len(result_df) == 0
+        ), "Should return empty DataFrame when validation fails"
 
         print("✅ ClickHouse query validation failure test passed")
 
@@ -591,9 +622,12 @@ class TestDataSourceManagerPerformanceEdgeCases:
             {
                 "user_id": [f"user_{i:06d}" for i in range(n_rows)],
                 "event_name": [f"Event_{i % 20}" for i in range(n_rows)],
-                "timestamp": [datetime(2024, 1, 1) + timedelta(minutes=i) for i in range(n_rows)],
+                "timestamp": [
+                    datetime(2024, 1, 1) + timedelta(minutes=i) for i in range(n_rows)
+                ],
                 "event_properties": [
-                    json.dumps({"category": f"cat_{i % 10}", "value": i}) for i in range(n_rows)
+                    json.dumps({"category": f"cat_{i % 10}", "value": i})
+                    for i in range(n_rows)
                 ],
                 "user_properties": [
                     json.dumps({"segment": f"seg_{i % 5}", "score": i % 100})
@@ -635,7 +669,9 @@ class TestDataSourceManagerPerformanceEdgeCases:
             {
                 "user_id": [f"user_{i}" for i in range(1000)],
                 "event_name": [f"Event_{i % 5}" for i in range(1000)],
-                "timestamp": [datetime.now() + timedelta(minutes=i) for i in range(1000)],
+                "timestamp": [
+                    datetime.now() + timedelta(minutes=i) for i in range(1000)
+                ],
                 "event_properties": ["{}"] * 1000,
                 "user_properties": ["{}"] * 1000,
             }
@@ -687,10 +723,12 @@ class TestDataSourceManagerPerformanceEdgeCases:
 
         # All operations should succeed
         for result in results:
-            assert result["valid"], f"Operation {result['operation_id']} should be valid"
-            assert result["duration"] < 10.0, (
-                f"Operation {result['operation_id']} took too long: {result['duration']:.2f}s"
-            )
+            assert result[
+                "valid"
+            ], f"Operation {result['operation_id']} should be valid"
+            assert (
+                result["duration"] < 10.0
+            ), f"Operation {result['operation_id']} took too long: {result['duration']:.2f}s"
 
         print("✅ Concurrent operations simulation test passed")
 
@@ -704,7 +742,9 @@ class TestDataSourceManagerPerformanceEdgeCases:
             {
                 "user_id": [f"user_{i:05d}" for i in range(n_rows)],
                 "event_name": [f"Event_{i % 10}" for i in range(n_rows)],
-                "timestamp": [datetime(2024, 1, 1) + timedelta(minutes=i) for i in range(n_rows)],
+                "timestamp": [
+                    datetime(2024, 1, 1) + timedelta(minutes=i) for i in range(n_rows)
+                ],
                 "event_properties": [
                     json.dumps(
                         {
@@ -751,7 +791,9 @@ class TestDataSourceManagerPerformanceEdgeCases:
         execution_time = end_time - start_time
 
         # Should complete in reasonable time regardless of implementation
-        assert execution_time < 60.0, f"Segmentation took too long: {execution_time:.2f}s"
+        assert (
+            execution_time < 60.0
+        ), f"Segmentation took too long: {execution_time:.2f}s"
 
         # Should extract some properties
         event_props = properties.get("event_properties", [])
@@ -759,7 +801,9 @@ class TestDataSourceManagerPerformanceEdgeCases:
         total_props = len(event_props) + len(user_props)
         assert total_props > 0, "Should extract properties from complex JSON"
 
-        print(f"✅ Polars/Pandas fallback performance test passed ({execution_time:.2f}s)")
+        print(
+            f"✅ Polars/Pandas fallback performance test passed ({execution_time:.2f}s)"
+        )
 
 
 # Integration test combining multiple DataSourceManager features
@@ -800,10 +844,14 @@ class TestDataSourceManagerIntegration:
                 "event_properties": [
                     json.dumps(
                         {
-                            "source": ["organic", "google_ads", "facebook", "email"][i % 4],
+                            "source": ["organic", "google_ads", "facebook", "email"][
+                                i % 4
+                            ],
                             "campaign": f"campaign_{i % 5}",
                             "value": round(i * 1.5, 2),
-                            "category": ["acquisition", "engagement", "conversion"][i % 3],
+                            "category": ["acquisition", "engagement", "conversion"][
+                                i % 3
+                            ],
                         }
                     )
                     for i in range(1000)
@@ -842,8 +890,12 @@ class TestDataSourceManagerIntegration:
         for prop_type in ["event_properties", "user_properties"]:
             if prop_type in segmentation_props and segmentation_props[prop_type]:
                 prop_name = segmentation_props[prop_type][0]
-                values = data_manager.get_property_values(realistic_data, prop_name, prop_type)
-                assert isinstance(values, list), f"Should get values for {prop_type}.{prop_name}"
+                values = data_manager.get_property_values(
+                    realistic_data, prop_name, prop_type
+                )
+                assert isinstance(
+                    values, list
+                ), f"Should get values for {prop_type}.{prop_name}"
 
         # Step 6: Generate sample data and compare
         sample_data = data_manager.get_sample_data()

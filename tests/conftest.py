@@ -113,7 +113,9 @@ class TestDataFactory:
         # Generate segment assignments
         segment_keys = list(spec.segment_distribution.keys())
         segment_probs = list(spec.segment_distribution.values())
-        user_segments = np.random.choice(segment_keys, size=spec.total_users, p=segment_probs)
+        user_segments = np.random.choice(
+            segment_keys, size=spec.total_users, p=segment_probs
+        )
 
         # Generate events for each step
         for step_idx, step_name in enumerate(steps):
@@ -505,7 +507,8 @@ def conversion_window_test_data(simple_funnel_steps, base_timestamp):
             {
                 "user_id": "within_window_user",
                 "event_name": step,
-                "timestamp": base_timestamp + timedelta(hours=i * 2),  # 2 hours between steps
+                "timestamp": base_timestamp
+                + timedelta(hours=i * 2),  # 2 hours between steps
                 "event_properties": "{}",
                 "user_properties": "{}",
             }
@@ -517,7 +520,8 @@ def conversion_window_test_data(simple_funnel_steps, base_timestamp):
             {
                 "user_id": "outside_window_user",
                 "event_name": step,
-                "timestamp": base_timestamp + timedelta(hours=i * 30),  # 30 hours between steps
+                "timestamp": base_timestamp
+                + timedelta(hours=i * 30),  # 30 hours between steps
                 "event_properties": "{}",
                 "user_properties": "{}",
             }
@@ -670,9 +674,9 @@ def assert_funnel_results_valid(results: FunnelResults, expected_steps: list[str
 
     # User counts should be monotonically decreasing (or equal)
     for i in range(1, len(results.users_count)):
-        assert results.users_count[i] <= results.users_count[i - 1], (
-            f"User count increased from step {i - 1} to {i}: {results.users_count[i - 1]} -> {results.users_count[i]}"
-        )
+        assert (
+            results.users_count[i] <= results.users_count[i - 1]
+        ), f"User count increased from step {i - 1} to {i}: {results.users_count[i - 1]} -> {results.users_count[i]}"
 
 
 def assert_results_approximately_equal(
@@ -684,14 +688,16 @@ def assert_results_approximately_equal(
     # Allow small differences due to floating point precision
     assert len(result1.users_count) == len(result2.users_count)
     for i, (count1, count2) in enumerate(zip(result1.users_count, result2.users_count)):
-        assert abs(count1 - count2) <= tolerance * max(count1, count2, 1), (
-            f"User counts differ at step {i}: {count1} vs {count2}"
-        )
+        assert abs(count1 - count2) <= tolerance * max(
+            count1, count2, 1
+        ), f"User counts differ at step {i}: {count1} vs {count2}"
 
-    for i, (rate1, rate2) in enumerate(zip(result1.conversion_rates, result2.conversion_rates)):
-        assert abs(rate1 - rate2) <= tolerance * 100, (
-            f"Conversion rates differ at step {i}: {rate1}% vs {rate2}%"
-        )
+    for i, (rate1, rate2) in enumerate(
+        zip(result1.conversion_rates, result2.conversion_rates)
+    ):
+        assert (
+            abs(rate1 - rate2) <= tolerance * 100
+        ), f"Conversion rates differ at step {i}: {rate1}% vs {rate2}%"
 
 
 def log_test_performance(test_name: str, duration: float, data_size: int):
@@ -710,11 +716,17 @@ def log_test_performance(test_name: str, duration: float, data_size: int):
 def pytest_configure(config):
     """Configure pytest markers for organized test execution."""
     config.addinivalue_line("markers", "unit: Unit tests for individual components")
-    config.addinivalue_line("markers", "integration: Integration tests for end-to-end flows")
+    config.addinivalue_line(
+        "markers", "integration: Integration tests for end-to-end flows"
+    )
     config.addinivalue_line("markers", "performance: Performance and scalability tests")
-    config.addinivalue_line("markers", "edge_case: Edge cases and boundary condition tests")
+    config.addinivalue_line(
+        "markers", "edge_case: Edge cases and boundary condition tests"
+    )
     config.addinivalue_line("markers", "polars: Polars-specific functionality tests")
-    config.addinivalue_line("markers", "fallback: Polars to Pandas fallback detection tests")
+    config.addinivalue_line(
+        "markers", "fallback: Polars to Pandas fallback detection tests"
+    )
     config.addinivalue_line("markers", "slow: Tests that take longer than 5 seconds")
 
 
@@ -907,7 +919,8 @@ def multi_week_month_data(base_timestamp):
                         {
                             "user_id": user_id,
                             "event_name": "Purchase",
-                            "timestamp": week_start + timedelta(hours=user_idx % 24 + 2),
+                            "timestamp": week_start
+                            + timedelta(hours=user_idx % 24 + 2),
                             "event_properties": json.dumps({"source": "organic"}),
                             "user_properties": json.dumps({"cohort": f"week_{week}"}),
                         }

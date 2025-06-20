@@ -25,12 +25,16 @@ def main():
         )
 
         # Add signup event
-        events.append({"user_id": user_id, "event_name": "signup", "timestamp": timestamp})
+        events.append(
+            {"user_id": user_id, "event_name": "signup", "timestamp": timestamp}
+        )
 
         # Add login event (90% of users)
         if np.random.random() < 0.9:
             timestamp += pd.Timedelta(minutes=np.random.randint(1, 60))
-            events.append({"user_id": user_id, "event_name": "login", "timestamp": timestamp})
+            events.append(
+                {"user_id": user_id, "event_name": "login", "timestamp": timestamp}
+            )
 
             # Add some events between login and purchase
             for _ in range(np.random.randint(0, 5)):
@@ -127,7 +131,9 @@ def main():
                     .to_list()
                 )
                 next_step_users = (
-                    pl_funnel_events.filter(pl.col("event_name") == next_step)["user_id"]
+                    pl_funnel_events.filter(pl.col("event_name") == next_step)[
+                        "user_id"
+                    ]
                     .unique()
                     .to_list()
                 )
@@ -141,10 +147,14 @@ def main():
                 for user_id in common_users:
                     user_events = pl_funnel_events.filter(pl.col("user_id") == user_id)
                     user_step_events = user_events.filter(pl.col("event_name") == step)
-                    user_next_step_events = user_events.filter(pl.col("event_name") == next_step)
+                    user_next_step_events = user_events.filter(
+                        pl.col("event_name") == next_step
+                    )
 
                     if user_step_events.height > 0 and user_next_step_events.height > 0:
-                        step_time = user_step_events.select(pl.col("timestamp").min()).item()
+                        step_time = user_step_events.select(
+                            pl.col("timestamp").min()
+                        ).item()
                         next_step_time = user_next_step_events.select(
                             pl.col("timestamp").min()
                         ).item()

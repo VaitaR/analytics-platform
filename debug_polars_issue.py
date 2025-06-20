@@ -59,7 +59,9 @@ def test_polars_struct_fields():
 
         # Test JSON decode
         logger.debug("   Attempting JSON decode...")
-        decoded = valid_props.select(pl.col(column).str.json_decode().alias("decoded_props"))
+        decoded = valid_props.select(
+            pl.col(column).str.json_decode().alias("decoded_props")
+        )
         logger.info(f"✅ JSON decode successful, got {decoded.height} rows")
 
         # Test modern struct.fields() approach
@@ -83,7 +85,9 @@ def test_polars_struct_fields():
             # Test fallback approach
             logger.debug("   Testing fallback approach...")
             try:
-                sample_struct = decoded.filter(pl.col("decoded_props").is_not_null()).limit(1)
+                sample_struct = decoded.filter(
+                    pl.col("decoded_props").is_not_null()
+                ).limit(1)
                 if not sample_struct.is_empty():
                     first_row = sample_struct.row(0, named=True)
                     if first_row["decoded_props"] is not None:
@@ -142,7 +146,9 @@ def test_json_schema_inference():
     for approach_name, kwargs in approaches:
         logger.debug(f"   Testing {approach_name} approach...")
         try:
-            decoded = df.select(pl.col("json_col").str.json_decode(**kwargs).alias("decoded"))
+            decoded = df.select(
+                pl.col("json_col").str.json_decode(**kwargs).alias("decoded")
+            )
             logger.info(f"✅ {approach_name} schema inference successful")
 
             # Try to get fields

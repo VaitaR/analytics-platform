@@ -81,9 +81,11 @@ class TestUniversalVisualizationStandards:
 
         # Test height standards
         height = chart.layout.height
-        assert self.HEIGHT_STANDARDS["minimum"] <= height <= self.HEIGHT_STANDARDS["maximum"], (
-            f"Funnel chart height {height} outside standards {self.HEIGHT_STANDARDS}"
-        )
+        assert (
+            self.HEIGHT_STANDARDS["minimum"]
+            <= height
+            <= self.HEIGHT_STANDARDS["maximum"]
+        ), f"Funnel chart height {height} outside standards {self.HEIGHT_STANDARDS}"
 
         # Test responsive configuration
         assert chart.layout.autosize == True, "Chart should be responsive"
@@ -104,20 +106,22 @@ class TestUniversalVisualizationStandards:
 
         # Test height capping (our recent fix)
         height = chart.layout.height
-        assert height <= self.HEIGHT_STANDARDS["maximum"], (
-            f"Time series height {height} exceeds maximum {self.HEIGHT_STANDARDS['maximum']}"
-        )
+        assert (
+            height <= self.HEIGHT_STANDARDS["maximum"]
+        ), f"Time series height {height} exceeds maximum {self.HEIGHT_STANDARDS['maximum']}"
 
         # Test aspect ratio calculation (allow more flexible ranges for responsive design)
         width = chart.layout.width or 800  # Default width assumption
         aspect_ratio = width / height
         min_ratio, max_ratio = 0.8, 4.0  # Flexible range for responsive charts
-        assert min_ratio <= aspect_ratio <= max_ratio, (
-            f"Time series aspect ratio {aspect_ratio:.2f} outside reasonable range ({min_ratio}-{max_ratio})"
-        )
+        assert (
+            min_ratio <= aspect_ratio <= max_ratio
+        ), f"Time series aspect ratio {aspect_ratio:.2f} outside reasonable range ({min_ratio}-{max_ratio})"
 
         # Test dual axis configuration
-        assert chart.layout.xaxis.rangeslider.visible == True, "Should have range slider"
+        assert (
+            chart.layout.xaxis.rangeslider.visible == True
+        ), "Should have range slider"
         assert chart.layout.xaxis.rangeslider.thickness <= 0.2, "Range slider too thick"
 
     @pytest.mark.visualization
@@ -126,9 +130,11 @@ class TestUniversalVisualizationStandards:
         chart = visualizer.create_enhanced_conversion_flow_sankey(sample_funnel_results)
 
         height = chart.layout.height
-        assert self.HEIGHT_STANDARDS["minimum"] <= height <= self.HEIGHT_STANDARDS["maximum"], (
-            f"Sankey height {height} outside standards"
-        )
+        assert (
+            self.HEIGHT_STANDARDS["minimum"]
+            <= height
+            <= self.HEIGHT_STANDARDS["maximum"]
+        ), f"Sankey height {height} outside standards"
 
         # Check that Sankey has proper node/link configuration
         sankey_trace = None
@@ -150,13 +156,15 @@ class TestUniversalVisualizationStandards:
             aspect_ratio = width / height
 
             # All chart dimensions should have reasonable aspect ratios
-            assert 1.0 <= aspect_ratio <= 3.0, (
-                f"{size} chart aspect ratio {aspect_ratio:.2f} unreasonable"
-            )
+            assert (
+                1.0 <= aspect_ratio <= 3.0
+            ), f"{size} chart aspect ratio {aspect_ratio:.2f} unreasonable"
 
             # Heights should be within our standards
             assert (
-                self.HEIGHT_STANDARDS["minimum"] <= height <= self.HEIGHT_STANDARDS["maximum"]
+                self.HEIGHT_STANDARDS["minimum"]
+                <= height
+                <= self.HEIGHT_STANDARDS["maximum"]
             ), f"{size} chart height {height} outside standards"
 
         # Test margin calculations
@@ -185,14 +193,14 @@ class TestUniversalVisualizationStandards:
         for content_count, (min_expected, max_expected) in test_cases:
             height = LayoutConfig.get_responsive_height(base_height, content_count)
 
-            assert min_expected <= height <= max_expected, (
-                f"Height {height} for {content_count} items outside expected range ({min_expected}-{max_expected})"
-            )
+            assert (
+                min_expected <= height <= max_expected
+            ), f"Height {height} for {content_count} items outside expected range ({min_expected}-{max_expected})"
 
             # Ensure it never exceeds our absolute maximum
-            assert height <= self.HEIGHT_STANDARDS["maximum"], (
-                f"Height {height} exceeds absolute maximum"
-            )
+            assert (
+                height <= self.HEIGHT_STANDARDS["maximum"]
+            ), f"Height {height} exceeds absolute maximum"
 
     @pytest.mark.visualization
     def test_color_palette_accessibility(self, visualizer):
@@ -210,9 +218,13 @@ class TestUniversalVisualizationStandards:
             "neutral",
         ]
         for color_name in semantic_colors:
-            assert color_name in palette.SEMANTIC, f"Missing semantic color: {color_name}"
+            assert (
+                color_name in palette.SEMANTIC
+            ), f"Missing semantic color: {color_name}"
             color_value = palette.SEMANTIC[color_name]
-            assert color_value.startswith("#"), f"Color {color_name} should be hex format"
+            assert color_value.startswith(
+                "#"
+            ), f"Color {color_name} should be hex format"
             assert len(color_value) == 7, f"Color {color_name} should be 6-digit hex"
 
         # Test dark mode colors (updated to match actual DARK_MODE structure)
@@ -243,7 +255,8 @@ class TestUniversalVisualizationStandards:
                 users_count=[int(x) for x in users_count],
                 conversion_rates=conversion_rates,
                 drop_offs=[
-                    int(users_count[i] - users_count[i + 1]) for i in range(len(users_count) - 1)
+                    int(users_count[i] - users_count[i + 1])
+                    for i in range(len(users_count) - 1)
                 ],
                 drop_off_rates=[20.0] * (data_size - 1),
             )
@@ -267,9 +280,11 @@ class TestUniversalVisualizationStandards:
 
         # Verify chart meets standards regardless of data size
         height = chart.layout.height
-        assert self.HEIGHT_STANDARDS["minimum"] <= height <= self.HEIGHT_STANDARDS["maximum"], (
-            f"{chart_type} chart with {data_size} items: height {height} outside standards"
-        )
+        assert (
+            self.HEIGHT_STANDARDS["minimum"]
+            <= height
+            <= self.HEIGHT_STANDARDS["maximum"]
+        ), f"{chart_type} chart with {data_size} items: height {height} outside standards"
 
     @pytest.mark.visualization
     def test_mobile_responsive_behavior(self, visualizer):
@@ -283,12 +298,12 @@ class TestUniversalVisualizationStandards:
 
         # Small chart dimensions should be mobile-friendly
         small_dims = LayoutConfig.CHART_DIMENSIONS["small"]
-        assert small_dims["width"] >= self.WIDTH_STANDARDS["min_effective_width"], (
-            "Small chart width too narrow for mobile"
-        )
-        assert small_dims["height"] >= self.HEIGHT_STANDARDS["minimum"], (
-            "Small chart height too short"
-        )
+        assert (
+            small_dims["width"] >= self.WIDTH_STANDARDS["min_effective_width"]
+        ), "Small chart width too narrow for mobile"
+        assert (
+            small_dims["height"] >= self.HEIGHT_STANDARDS["minimum"]
+        ), "Small chart height too short"
 
 
 if __name__ == "__main__":

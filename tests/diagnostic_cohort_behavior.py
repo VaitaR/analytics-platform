@@ -61,7 +61,9 @@ def diagnose_cohort_attribution():
             {
                 "user_id": f"user_jan2_{i}",
                 "event_name": "signup",
-                "timestamp": datetime(2024, 1, 2, 11 + i % 8, 0, 0),  # Jan 2, various hours
+                "timestamp": datetime(
+                    2024, 1, 2, 11 + i % 8, 0, 0
+                ),  # Jan 2, various hours
                 "event_properties": "{}",
                 "user_properties": "{}",
             }
@@ -74,7 +76,9 @@ def diagnose_cohort_attribution():
     print(f"Total events: {len(events_df)}")
     print("\\nEvents by date:")
     events_df["date"] = events_df["timestamp"].dt.date
-    date_summary = events_df.groupby(["date", "event_name"]).size().unstack(fill_value=0)
+    date_summary = (
+        events_df.groupby(["date", "event_name"]).size().unstack(fill_value=0)
+    )
     print(date_summary)
     print()
 
@@ -106,7 +110,9 @@ def diagnose_cohort_attribution():
     # Analyze what SHOULD happen vs what IS happening
     print("📈 EXPECTED COHORT BEHAVIOR:")
     print("Jan 1 cohort: 1 signup (user_A) -> 1 conversion -> 100% rate")
-    print("Jan 2 cohort: 11 signups (user_B + 10 non-converters) -> 1 conversion -> 9.09% rate")
+    print(
+        "Jan 2 cohort: 11 signups (user_B + 10 non-converters) -> 1 conversion -> 9.09% rate"
+    )
     print()
 
     print("📉 POTENTIAL BUG BEHAVIOR:")
@@ -141,15 +147,23 @@ def diagnose_cohort_attribution():
         # Jan 1: 1 starter, 0 completers
         # Jan 2: 11 starters, 2 completers (both user_A and user_B)
 
-        if jan_1["completed_funnel_users"] == 0 and jan_2["completed_funnel_users"] == 2:
-            print("🚨 BUG DETECTED: Conversions attributed to conversion date, not cohort date!")
+        if (
+            jan_1["completed_funnel_users"] == 0
+            and jan_2["completed_funnel_users"] == 2
+        ):
+            print(
+                "🚨 BUG DETECTED: Conversions attributed to conversion date, not cohort date!"
+            )
             print(
                 f"  Jan 1 should have 1 completer (user_A), but got {jan_1['completed_funnel_users']}"
             )
             print(
                 f"  Jan 2 should have 1 completer (user_B), but got {jan_2['completed_funnel_users']}"
             )
-        elif jan_1["completed_funnel_users"] == 1 and jan_2["completed_funnel_users"] == 1:
+        elif (
+            jan_1["completed_funnel_users"] == 1
+            and jan_2["completed_funnel_users"] == 1
+        ):
             print("✅ CORRECT: Conversions properly attributed to cohort start dates!")
         else:
             print(

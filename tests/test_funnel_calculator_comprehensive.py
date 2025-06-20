@@ -338,7 +338,9 @@ def events_data_very_large():
     for user_id in range(1, 501):
         base_time = datetime(2023, 1, 1, 10, 0, 0) + timedelta(minutes=user_id)
         for i, step in enumerate(steps):
-            if i == 0 or np.random.random() < 0.9:  # 90% chance of proceeding to next step
+            if (
+                i == 0 or np.random.random() < 0.9
+            ):  # 90% chance of proceeding to next step
                 event_time = base_time + timedelta(hours=i)
                 data.append(
                     {
@@ -397,7 +399,9 @@ class TestFunnelCalculatorComprehensive:
     """
 
     @pytest.mark.parametrize("funnel_order", [FunnelOrder.ORDERED])  # Most common case
-    @pytest.mark.parametrize("reentry_mode", [ReentryMode.FIRST_ONLY])  # Most common case
+    @pytest.mark.parametrize(
+        "reentry_mode", [ReentryMode.FIRST_ONLY]
+    )  # Most common case
     @pytest.mark.parametrize(
         "counting_method",
         [
@@ -430,9 +434,10 @@ class TestFunnelCalculatorComprehensive:
             and funnel_order == FunnelOrder.UNORDERED
         ):
             # This combination is likely to cause fallback
-            assert "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower(), (
-                f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
-            )
+            assert (
+                "falling back" in caplog.text.lower()
+                and "pandas" in caplog.text.lower()
+            ), f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
 
         # Instead of checking exact counts, just make sure we get a valid result
         # with non-negative values
@@ -455,7 +460,9 @@ class TestFunnelCalculatorComprehensive:
             ReentryMode.OPTIMIZED_REENTRY,  # Important to test both for this case
         ],
     )
-    @pytest.mark.parametrize("counting_method", [CountingMethod.UNIQUE_USERS])  # Most common case
+    @pytest.mark.parametrize(
+        "counting_method", [CountingMethod.UNIQUE_USERS]
+    )  # Most common case
     def test_reentry_scenario(
         self,
         funnel_order,
@@ -486,9 +493,10 @@ class TestFunnelCalculatorComprehensive:
             and reentry_mode == ReentryMode.OPTIMIZED_REENTRY
         ):
             # This combination often causes fallback
-            assert "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower(), (
-                f"Expected fallback to Pandas for {counting_method.value}, {reentry_mode.value}"
-            )
+            assert (
+                "falling back" in caplog.text.lower()
+                and "pandas" in caplog.text.lower()
+            ), f"Expected fallback to Pandas for {counting_method.value}, {reentry_mode.value}"
 
         # Instead of checking exact counts, just make sure we get a valid result
         # with non-negative values
@@ -522,8 +530,12 @@ class TestFunnelCalculatorComprehensive:
             FunnelOrder.UNORDERED,
         ],  # Important to test both for this case
     )
-    @pytest.mark.parametrize("reentry_mode", [ReentryMode.FIRST_ONLY])  # Most common case
-    @pytest.mark.parametrize("counting_method", [CountingMethod.UNIQUE_USERS])  # Most common case
+    @pytest.mark.parametrize(
+        "reentry_mode", [ReentryMode.FIRST_ONLY]
+    )  # Most common case
+    @pytest.mark.parametrize(
+        "counting_method", [CountingMethod.UNIQUE_USERS]
+    )  # Most common case
     def test_unordered_completion(
         self,
         funnel_order,
@@ -546,7 +558,9 @@ class TestFunnelCalculatorComprehensive:
         calculator = FunnelCalculator(config=config, use_polars=True)
 
         # Execute
-        results = calculator.calculate_funnel_metrics(events_data_unordered_completion, steps)
+        results = calculator.calculate_funnel_metrics(
+            events_data_unordered_completion, steps
+        )
 
         # Check for fallback to Pandas
         if (
@@ -554,9 +568,10 @@ class TestFunnelCalculatorComprehensive:
             and funnel_order == FunnelOrder.UNORDERED
         ):
             # This combination is known to cause issues
-            assert "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower(), (
-                f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
-            )
+            assert (
+                "falling back" in caplog.text.lower()
+                and "pandas" in caplog.text.lower()
+            ), f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
 
         # Instead of checking exact counts, just make sure we get a valid result
         # with non-negative values
@@ -587,8 +602,12 @@ class TestFunnelCalculatorComprehensive:
             FunnelOrder.UNORDERED,
         ],  # Important to test both for this case
     )
-    @pytest.mark.parametrize("reentry_mode", [ReentryMode.FIRST_ONLY])  # Most common case
-    @pytest.mark.parametrize("counting_method", [CountingMethod.UNIQUE_USERS])  # Most common case
+    @pytest.mark.parametrize(
+        "reentry_mode", [ReentryMode.FIRST_ONLY]
+    )  # Most common case
+    @pytest.mark.parametrize(
+        "counting_method", [CountingMethod.UNIQUE_USERS]
+    )  # Most common case
     def test_out_of_order_sequence(
         self,
         funnel_order,
@@ -612,7 +631,9 @@ class TestFunnelCalculatorComprehensive:
 
         # Out-of-order sequences can cause errors in some configurations
         try:
-            results = calculator.calculate_funnel_metrics(events_data_out_of_order_sequence, steps)
+            results = calculator.calculate_funnel_metrics(
+                events_data_out_of_order_sequence, steps
+            )
 
             # If we got here, no exception was raised
 
@@ -621,9 +642,10 @@ class TestFunnelCalculatorComprehensive:
                 funnel_order == FunnelOrder.ORDERED
                 and counting_method == CountingMethod.UNIQUE_PAIRS
             ):
-                assert "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower(), (
-                    f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
-                )
+                assert (
+                    "falling back" in caplog.text.lower()
+                    and "pandas" in caplog.text.lower()
+                ), f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
 
             # Instead of checking exact counts, just make sure we get a valid result
             # with non-negative values
@@ -711,9 +733,9 @@ class TestFunnelCalculatorComprehensive:
                 )
             else:
                 # Unexpected failure
-                assert False, (
-                    f"Unexpected failure for {counting_method.value}, {reentry_mode.value}, {funnel_order.value}: {str(e)}"
-                )
+                assert (
+                    False
+                ), f"Unexpected failure for {counting_method.value}, {reentry_mode.value}, {funnel_order.value}: {str(e)}"
 
     # Test with empty dataset
     def test_edge_case_empty_dataset(self):
@@ -740,7 +762,11 @@ class TestFunnelCalculatorComprehensive:
         # We expect all zeros or empty lists depending on the implementation
         assert len(results.steps) <= len(steps)  # Should be empty or match steps
         assert all(x == 0 for x in results.users_count) if results.users_count else True
-        assert all(x == 0 for x in results.conversion_rates) if results.conversion_rates else True
+        assert (
+            all(x == 0 for x in results.conversion_rates)
+            if results.conversion_rates
+            else True
+        )
 
     # Test with single user
     def test_edge_case_single_user(self):
@@ -784,7 +810,9 @@ class TestFunnelCalculatorComprehensive:
 
     # Compatibility test between Polars and Pandas implementations
     @pytest.mark.parametrize("funnel_order", [FunnelOrder.ORDERED])  # Most common case
-    @pytest.mark.parametrize("reentry_mode", [ReentryMode.FIRST_ONLY])  # Most common case
+    @pytest.mark.parametrize(
+        "reentry_mode", [ReentryMode.FIRST_ONLY]
+    )  # Most common case
     @pytest.mark.parametrize(
         "counting_method",
         [
@@ -819,7 +847,9 @@ class TestFunnelCalculatorComprehensive:
         # Calculate with Polars
         calculator_polars = FunnelCalculator(config=config, use_polars=True)
         try:
-            polars_results = calculator_polars.calculate_funnel_metrics(events_data_basic, steps)
+            polars_results = calculator_polars.calculate_funnel_metrics(
+                events_data_basic, steps
+            )
             polars_success = True
         except Exception as e:
             print(f"Polars calculation failed: {str(e)}")
@@ -830,7 +860,9 @@ class TestFunnelCalculatorComprehensive:
 
         # Calculate with Pandas
         calculator_pandas = FunnelCalculator(config=config, use_polars=False)
-        pandas_results = calculator_pandas.calculate_funnel_metrics(events_data_basic, steps)
+        pandas_results = calculator_pandas.calculate_funnel_metrics(
+            events_data_basic, steps
+        )
 
         # Compare results with tolerance
         if polars_success:
@@ -844,7 +876,9 @@ class TestFunnelCalculatorComprehensive:
                 )
 
                 # Check structure but not exact values for conversion rates
-                assert len(polars_results.conversion_rates) == len(pandas_results.conversion_rates)
+                assert len(polars_results.conversion_rates) == len(
+                    pandas_results.conversion_rates
+                )
 
                 # Check drop-off structure
                 assert len(polars_results.drop_offs) == len(pandas_results.drop_offs)

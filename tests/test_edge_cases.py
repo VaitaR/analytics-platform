@@ -38,7 +38,9 @@ class TestEdgeCases:
         calculator = calculator_factory()
         empty_steps = []
 
-        results = calculator.calculate_funnel_metrics(simple_linear_funnel_data, empty_steps)
+        results = calculator.calculate_funnel_metrics(
+            simple_linear_funnel_data, empty_steps
+        )
 
         assert results.steps == []
         assert results.users_count == []
@@ -54,7 +56,9 @@ class TestEdgeCases:
         calculator = calculator_factory()
         single_step = ["Sign Up"]
 
-        results = calculator.calculate_funnel_metrics(simple_linear_funnel_data, single_step)
+        results = calculator.calculate_funnel_metrics(
+            simple_linear_funnel_data, single_step
+        )
 
         assert results.steps == []
         assert results.users_count == []
@@ -161,7 +165,8 @@ class TestEdgeCases:
             {
                 "user_id": "user_002",
                 "event_name": "First Login",
-                "timestamp": base_timestamp + timedelta(minutes=30),  # Skip verification
+                "timestamp": base_timestamp
+                + timedelta(minutes=30),  # Skip verification
                 "event_properties": json.dumps({}),
                 "user_properties": json.dumps({}),
             },
@@ -383,7 +388,9 @@ class TestEdgeCases:
         print("\n🚀 Performance Test Results:")
         print(f"   Dataset size: {len(large_dataset):,} events")
         print(f"   Execution time: {execution_time:.2f} seconds")
-        print(f"   Throughput: {len(large_dataset) / execution_time:,.0f} events/second")
+        print(
+            f"   Throughput: {len(large_dataset) / execution_time:,.0f} events/second"
+        )
 
         # Performance thresholds for warnings (but don't fail)
         if execution_time > 60.0:
@@ -500,7 +507,9 @@ class TestEdgeCases:
         # Should process valid events only
         assert len(results.users_count) >= 0  # Should not crash
 
-    def test_duplicate_events_same_user_same_time(self, calculator_factory, base_timestamp):
+    def test_duplicate_events_same_user_same_time(
+        self, calculator_factory, base_timestamp
+    ):
         """
         Test handling of exact duplicate events (same user, event, timestamp).
         Expected: Should be deterministic in counting.

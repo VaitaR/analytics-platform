@@ -201,10 +201,14 @@ def log_polars_operation(operation_name: str, func):
                 logger.error("   💡 Suggestion: Check Polars version compatibility")
             elif "schema" in error_msg:
                 logger.error("   🔍 This appears to be a schema inference issue")
-                logger.error("   💡 Suggestion: Try with explicit schema or pandas fallback")
+                logger.error(
+                    "   💡 Suggestion: Try with explicit schema or pandas fallback"
+                )
             elif "json" in error_msg:
                 logger.error("   🔍 This appears to be a JSON processing issue")
-                logger.error("   💡 Suggestion: Check JSON format and schema consistency")
+                logger.error(
+                    "   💡 Suggestion: Check JSON format and schema consistency"
+                )
 
             raise
 

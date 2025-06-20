@@ -42,7 +42,9 @@ class TestTrueTimeCohortAnalysis:
                 {
                     "user_id": "user_A",
                     "event_name": "signup",
-                    "timestamp": datetime(2024, 1, 1, 23, 30, 0),  # Поздно вечером 1 января
+                    "timestamp": datetime(
+                        2024, 1, 1, 23, 30, 0
+                    ),  # Поздно вечером 1 января
                     "event_properties": "{}",
                 },
                 {
@@ -124,29 +126,29 @@ class TestTrueTimeCohortAnalysis:
         print("  Период 2 (2024-01-02): ожидаем 1 started, 1 completed, 100%")
 
         # Эти ассерты должны пройти после исправления
-        assert period_1["started_funnel_users"] == 1, (
-            f"Период 1: ожидали 1 started, получили {period_1['started_funnel_users']}"
-        )
+        assert (
+            period_1["started_funnel_users"] == 1
+        ), f"Период 1: ожидали 1 started, получили {period_1['started_funnel_users']}"
 
-        assert period_1["completed_funnel_users"] == 1, (
-            f"Период 1: ожидали 1 completed, получили {period_1['completed_funnel_users']}"
-        )
+        assert (
+            period_1["completed_funnel_users"] == 1
+        ), f"Период 1: ожидали 1 completed, получили {period_1['completed_funnel_users']}"
 
-        assert abs(period_1["conversion_rate"] - 100.0) < 0.01, (
-            f"Период 1: ожидали 100% conversion, получили {period_1['conversion_rate']:.2f}%"
-        )
+        assert (
+            abs(period_1["conversion_rate"] - 100.0) < 0.01
+        ), f"Период 1: ожидали 100% conversion, получили {period_1['conversion_rate']:.2f}%"
 
-        assert period_2["started_funnel_users"] == 1, (
-            f"Период 2: ожидали 1 started, получили {period_2['started_funnel_users']}"
-        )
+        assert (
+            period_2["started_funnel_users"] == 1
+        ), f"Период 2: ожидали 1 started, получили {period_2['started_funnel_users']}"
 
-        assert period_2["completed_funnel_users"] == 1, (
-            f"Период 2: ожидали 1 completed, получили {period_2['completed_funnel_users']}"
-        )
+        assert (
+            period_2["completed_funnel_users"] == 1
+        ), f"Период 2: ожидали 1 completed, получили {period_2['completed_funnel_users']}"
 
-        assert abs(period_2["conversion_rate"] - 100.0) < 0.01, (
-            f"Период 2: ожидали 100% conversion, получили {period_2['conversion_rate']:.2f}%"
-        )
+        assert (
+            abs(period_2["conversion_rate"] - 100.0) < 0.01
+        ), f"Период 2: ожидали 100% conversion, получили {period_2['conversion_rate']:.2f}%"
 
     def test_multi_day_conversion_window_cohort(self, cohort_calculator):
         """
@@ -330,7 +332,9 @@ class TestTrueTimeCohortAnalysis:
         # (можно сделать через мокинг polars исключения, но проще проверить прямо метод)
         try:
             # Попробуем вызвать pandas метод напрямую
-            results = cohort_calculator._calculate_timeseries_metrics_pandas(df, steps, "1d")
+            results = cohort_calculator._calculate_timeseries_metrics_pandas(
+                df, steps, "1d"
+            )
 
             print("\n=== ТЕСТ PANDAS FALLBACK КОГОРТНОЙ ЛОГИКИ ===")
             print("Результаты pandas fallback:")

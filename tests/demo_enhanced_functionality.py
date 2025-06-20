@@ -110,7 +110,9 @@ def demonstrate_enhanced_metrics():
 
     print("📊 RAW EVENT DISTRIBUTION:")
     events_df["date"] = events_df["timestamp"].dt.date
-    event_summary = events_df.groupby(["date", "event_name"]).size().unstack(fill_value=0)
+    event_summary = (
+        events_df.groupby(["date", "event_name"]).size().unstack(fill_value=0)
+    )
     print(event_summary)
     print()
 
@@ -142,13 +144,21 @@ def demonstrate_enhanced_metrics():
     print()
 
     print("🔍 METRIC INTERPRETATION:")
-    print("   Jan 1 cohort: 2 signups → 2 conversions → 100% conversion (both users converted)")
-    print("   Jan 2 cohort: 3 signups → 1 conversion → 33.3% conversion (1 of 3 users converted)")
-    print("   Jan 3 activity: 0 signups but 2 purchase events occurred (from previous cohorts)")
+    print(
+        "   Jan 1 cohort: 2 signups → 2 conversions → 100% conversion (both users converted)"
+    )
+    print(
+        "   Jan 2 cohort: 3 signups → 1 conversion → 33.3% conversion (1 of 3 users converted)"
+    )
+    print(
+        "   Jan 3 activity: 0 signups but 2 purchase events occurred (from previous cohorts)"
+    )
     print()
 
     print("🎉 ENHANCEMENT COMPLETE!")
-    print("The timeseries analysis now provides both cohort insights and daily activity insights!")
+    print(
+        "The timeseries analysis now provides both cohort insights and daily activity insights!"
+    )
 
 
 if __name__ == "__main__":

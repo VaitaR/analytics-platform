@@ -25,11 +25,16 @@ def problematic_polars_function(df, column_name):
 
     # This will cause the struct.fields() error
     try:
-        decoded = pl_df.select(pl.col(column_name).str.json_decode().alias("decoded_props"))
+        decoded = pl_df.select(
+            pl.col(column_name).str.json_decode().alias("decoded_props")
+        )
 
         # This line will fail in newer Polars versions
         all_keys = (
-            decoded.select(pl.col("decoded_props").struct.fields()).to_series().explode().unique()
+            decoded.select(pl.col("decoded_props").struct.fields())
+            .to_series()
+            .explode()
+            .unique()
         )
 
         return all_keys.to_list()
@@ -128,8 +133,12 @@ def main():
         for i, failure in enumerate(report["failure_points"]):
             print(f"   Failure {i + 1}:")
             print(f"     Function: {failure['function']}")
-            print(f"     Error: {failure['exception_type']}: {failure['exception_message']}")
-            print(f"     Suggestions: {len(failure['suggested_fixes'])} recommendations")
+            print(
+                f"     Error: {failure['exception_type']}: {failure['exception_message']}"
+            )
+            print(
+                f"     Suggestions: {len(failure['suggested_fixes'])} recommendations"
+            )
             for suggestion in failure["suggested_fixes"]:
                 print(f"       💡 {suggestion}")
 

@@ -154,54 +154,56 @@ class TestEnhancedTimeseriesMetrics:
         # Day 1 cohort: 3 users started, 3 users converted (100% conversion)
         assert "2024-01-01" in results_dict
         day1_cohort = results_dict["2024-01-01"]
-        assert day1_cohort["started_funnel_users"] == 3, (
-            f"Day 1 cohort should have 3 starters, got {day1_cohort['started_funnel_users']}"
-        )
-        assert day1_cohort["completed_funnel_users"] == 3, (
-            f"Day 1 cohort should have 3 completers, got {day1_cohort['completed_funnel_users']}"
-        )
-        assert abs(day1_cohort["conversion_rate"] - 100.0) < 0.01, (
-            f"Day 1 cohort conversion should be 100%, got {day1_cohort['conversion_rate']}"
-        )
+        assert (
+            day1_cohort["started_funnel_users"] == 3
+        ), f"Day 1 cohort should have 3 starters, got {day1_cohort['started_funnel_users']}"
+        assert (
+            day1_cohort["completed_funnel_users"] == 3
+        ), f"Day 1 cohort should have 3 completers, got {day1_cohort['completed_funnel_users']}"
+        assert (
+            abs(day1_cohort["conversion_rate"] - 100.0) < 0.01
+        ), f"Day 1 cohort conversion should be 100%, got {day1_cohort['conversion_rate']}"
 
         # Day 2 cohort: 5 users started, 2 users converted (40% conversion)
         assert "2024-01-02" in results_dict
         day2_cohort = results_dict["2024-01-02"]
-        assert day2_cohort["started_funnel_users"] == 5, (
-            f"Day 2 cohort should have 5 starters, got {day2_cohort['started_funnel_users']}"
-        )
-        assert day2_cohort["completed_funnel_users"] == 2, (
-            f"Day 2 cohort should have 2 completers, got {day2_cohort['completed_funnel_users']}"
-        )
-        assert abs(day2_cohort["conversion_rate"] - 40.0) < 0.01, (
-            f"Day 2 cohort conversion should be 40%, got {day2_cohort['conversion_rate']}"
-        )
+        assert (
+            day2_cohort["started_funnel_users"] == 5
+        ), f"Day 2 cohort should have 5 starters, got {day2_cohort['started_funnel_users']}"
+        assert (
+            day2_cohort["completed_funnel_users"] == 2
+        ), f"Day 2 cohort should have 2 completers, got {day2_cohort['completed_funnel_users']}"
+        assert (
+            abs(day2_cohort["conversion_rate"] - 40.0) < 0.01
+        ), f"Day 2 cohort conversion should be 40%, got {day2_cohort['conversion_rate']}"
 
         # Day 3: No cohort (no signups) - should not appear in results
-        assert "2024-01-03" not in results_dict, (
-            "Day 3 should not appear in results since no users started funnel"
-        )
+        assert (
+            "2024-01-03" not in results_dict
+        ), "Day 3 should not appear in results since no users started funnel"
 
         # Verify only 2 cohorts exist (Day 1 and Day 2)
-        assert len(results_dict) == 2, f"Should have exactly 2 cohorts, got {len(results_dict)}"
+        assert (
+            len(results_dict) == 2
+        ), f"Should have exactly 2 cohorts, got {len(results_dict)}"
 
         # DAILY ACTIVITY METRICS (attributed to event date)
 
         # Day 1: 3 unique users, 3 events (all signups)
-        assert day1_cohort["daily_active_users"] == 3, (
-            f"Day 1 should have 3 daily active users, got {day1_cohort['daily_active_users']}"
-        )
-        assert day1_cohort["daily_events_total"] == 3, (
-            f"Day 1 should have 3 daily events, got {day1_cohort['daily_events_total']}"
-        )
+        assert (
+            day1_cohort["daily_active_users"] == 3
+        ), f"Day 1 should have 3 daily active users, got {day1_cohort['daily_active_users']}"
+        assert (
+            day1_cohort["daily_events_total"] == 3
+        ), f"Day 1 should have 3 daily events, got {day1_cohort['daily_events_total']}"
 
         # Day 2: 7 unique users, 7 events (5 signups + 2 purchases)
-        assert day2_cohort["daily_active_users"] == 7, (
-            f"Day 2 should have 7 daily active users, got {day2_cohort['daily_active_users']}"
-        )
-        assert day2_cohort["daily_events_total"] == 7, (
-            f"Day 2 should have 7 daily events, got {day2_cohort['daily_events_total']}"
-        )
+        assert (
+            day2_cohort["daily_active_users"] == 7
+        ), f"Day 2 should have 7 daily active users, got {day2_cohort['daily_active_users']}"
+        assert (
+            day2_cohort["daily_events_total"] == 7
+        ), f"Day 2 should have 7 daily events, got {day2_cohort['daily_events_total']}"
 
         # Note: Day 3 has no cohort since no users started funnel that day
         # The daily activity metrics for Day 3 events are not tracked in cohort-based analysis
@@ -254,23 +256,23 @@ class TestEnhancedTimeseriesMetrics:
         result = results.iloc[0]
 
         # Cohort metrics: 2 starters, 1 completer, 50% conversion
-        assert result["started_funnel_users"] == 2, (
-            f"Should have 2 starters, got {result['started_funnel_users']}"
-        )
-        assert result["completed_funnel_users"] == 1, (
-            f"Should have 1 completer, got {result['completed_funnel_users']}"
-        )
-        assert abs(result["conversion_rate"] - 50.0) < 0.01, (
-            f"Conversion should be 50%, got {result['conversion_rate']}"
-        )
+        assert (
+            result["started_funnel_users"] == 2
+        ), f"Should have 2 starters, got {result['started_funnel_users']}"
+        assert (
+            result["completed_funnel_users"] == 1
+        ), f"Should have 1 completer, got {result['completed_funnel_users']}"
+        assert (
+            abs(result["conversion_rate"] - 50.0) < 0.01
+        ), f"Conversion should be 50%, got {result['conversion_rate']}"
 
         # Daily activity metrics: 2 unique users, 3 events (2 signups + 1 purchase)
-        assert result["daily_active_users"] == 2, (
-            f"Should have 2 daily active users, got {result['daily_active_users']}"
-        )
-        assert result["daily_events_total"] == 3, (
-            f"Should have 3 daily events, got {result['daily_events_total']}"
-        )
+        assert (
+            result["daily_active_users"] == 2
+        ), f"Should have 2 daily active users, got {result['daily_active_users']}"
+        assert (
+            result["daily_events_total"] == 3
+        ), f"Should have 3 daily events, got {result['daily_events_total']}"
 
         print("✅ SAME-DAY CONVERSION TEST PASSED!")
 
@@ -303,23 +305,23 @@ class TestEnhancedTimeseriesMetrics:
         result = results.iloc[0]
 
         # Cohort metrics: 5 starters, 0 completers, 0% conversion
-        assert result["started_funnel_users"] == 5, (
-            f"Should have 5 starters, got {result['started_funnel_users']}"
-        )
-        assert result["completed_funnel_users"] == 0, (
-            f"Should have 0 completers, got {result['completed_funnel_users']}"
-        )
-        assert abs(result["conversion_rate"] - 0.0) < 0.01, (
-            f"Conversion should be 0%, got {result['conversion_rate']}"
-        )
+        assert (
+            result["started_funnel_users"] == 5
+        ), f"Should have 5 starters, got {result['started_funnel_users']}"
+        assert (
+            result["completed_funnel_users"] == 0
+        ), f"Should have 0 completers, got {result['completed_funnel_users']}"
+        assert (
+            abs(result["conversion_rate"] - 0.0) < 0.01
+        ), f"Conversion should be 0%, got {result['conversion_rate']}"
 
         # Daily activity metrics: 5 unique users, 5 events (all signups)
-        assert result["daily_active_users"] == 5, (
-            f"Should have 5 daily active users, got {result['daily_active_users']}"
-        )
-        assert result["daily_events_total"] == 5, (
-            f"Should have 5 daily events, got {result['daily_events_total']}"
-        )
+        assert (
+            result["daily_active_users"] == 5
+        ), f"Should have 5 daily active users, got {result['daily_active_users']}"
+        assert (
+            result["daily_events_total"] == 5
+        ), f"Should have 5 daily events, got {result['daily_events_total']}"
 
         print("✅ NO CONVERSIONS TEST PASSED!")
 
@@ -355,14 +357,16 @@ class TestEnhancedTimeseriesMetrics:
         result = results.iloc[0]
 
         # Legacy metrics should still exist and have the same values as new metrics
-        assert "total_unique_users" in result, "Legacy total_unique_users metric missing"
+        assert (
+            "total_unique_users" in result
+        ), "Legacy total_unique_users metric missing"
         assert "total_events" in result, "Legacy total_events metric missing"
-        assert result["total_unique_users"] == result["daily_active_users"], (
-            "Legacy and new user metrics should match"
-        )
-        assert result["total_events"] == result["daily_events_total"], (
-            "Legacy and new event metrics should match"
-        )
+        assert (
+            result["total_unique_users"] == result["daily_active_users"]
+        ), "Legacy and new user metrics should match"
+        assert (
+            result["total_events"] == result["daily_events_total"]
+        ), "Legacy and new event metrics should match"
 
         print("✅ BACKWARDS COMPATIBILITY TEST PASSED!")
 

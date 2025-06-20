@@ -64,7 +64,9 @@ class TestTimeSeriesCalculation:
 
                 # Verify Email (second step) - 70% conversion
                 if np.random.random() < 0.7:
-                    verify_timestamp = user_timestamp + timedelta(minutes=np.random.randint(5, 30))
+                    verify_timestamp = user_timestamp + timedelta(
+                        minutes=np.random.randint(5, 30)
+                    )
                     events.append(
                         {
                             "user_id": f"user_{day}_{user_id}",
@@ -124,7 +126,9 @@ class TestTimeSeriesCalculation:
         )
         return FunnelCalculator(config, use_polars=True)
 
-    def test_timeseries_daily_aggregation(self, calculator, sample_events_data, funnel_steps):
+    def test_timeseries_daily_aggregation(
+        self, calculator, sample_events_data, funnel_steps
+    ):
         """Test time series calculation with daily aggregation."""
         result = calculator.calculate_timeseries_metrics(
             sample_events_data, funnel_steps, aggregation_period="1d"
@@ -133,43 +137,53 @@ class TestTimeSeriesCalculation:
         # Validate result structure
         assert not result.empty, "Time series result should not be empty"
         assert "period_date" in result.columns, "Should have period_date column"
-        assert "started_funnel_users" in result.columns, "Should have started_funnel_users column"
-        assert "completed_funnel_users" in result.columns, (
-            "Should have completed_funnel_users column"
-        )
+        assert (
+            "started_funnel_users" in result.columns
+        ), "Should have started_funnel_users column"
+        assert (
+            "completed_funnel_users" in result.columns
+        ), "Should have completed_funnel_users column"
         assert "conversion_rate" in result.columns, "Should have conversion_rate column"
 
         # Should have 7 days of data (or close to it, allowing for edge cases)
         assert 6 <= len(result) <= 8, f"Expected 6-8 days of data, got {len(result)}"
 
         # Validate data types
-        assert pd.api.types.is_datetime64_any_dtype(result["period_date"]), (
-            "period_date should be datetime"
-        )
-        assert pd.api.types.is_integer_dtype(result["started_funnel_users"]), (
-            "started_funnel_users should be integer"
-        )
-        assert pd.api.types.is_numeric_dtype(result["conversion_rate"]), (
-            "conversion_rate should be numeric"
-        )
+        assert pd.api.types.is_datetime64_any_dtype(
+            result["period_date"]
+        ), "period_date should be datetime"
+        assert pd.api.types.is_integer_dtype(
+            result["started_funnel_users"]
+        ), "started_funnel_users should be integer"
+        assert pd.api.types.is_numeric_dtype(
+            result["conversion_rate"]
+        ), "conversion_rate should be numeric"
 
         # Validate logical constraints
-        assert (result["started_funnel_users"] >= result["completed_funnel_users"]).all(), (
-            "Started users should be >= completed users"
-        )
-        assert (result["conversion_rate"] >= 0).all(), "Conversion rate should be non-negative"
-        assert (result["conversion_rate"] <= 100).all(), "Conversion rate should be <= 100%"
+        assert (
+            result["started_funnel_users"] >= result["completed_funnel_users"]
+        ).all(), "Started users should be >= completed users"
+        assert (
+            result["conversion_rate"] >= 0
+        ).all(), "Conversion rate should be non-negative"
+        assert (
+            result["conversion_rate"] <= 100
+        ).all(), "Conversion rate should be <= 100%"
 
         print(f"✅ Daily aggregation test passed: {len(result)} periods")
 
-    def test_timeseries_hourly_aggregation(self, calculator, sample_events_data, funnel_steps):
+    def test_timeseries_hourly_aggregation(
+        self, calculator, sample_events_data, funnel_steps
+    ):
         """Test time series calculation with hourly aggregation."""
         result = calculator.calculate_timeseries_metrics(
             sample_events_data, funnel_steps, aggregation_period="1h"
         )
 
         assert not result.empty, "Hourly time series result should not be empty"
-        assert len(result) > 7, "Hourly aggregation should produce more periods than daily"
+        assert (
+            len(result) > 7
+        ), "Hourly aggregation should produce more periods than daily"
 
         # Check that we have reasonable hourly data
         # Business hours should have more activity
@@ -181,11 +195,15 @@ class TestTimeSeriesCalculation:
             if len(business_hours) > 0 and len(off_hours) > 0:
                 avg_business = business_hours["started_funnel_users"].mean()
                 avg_off = off_hours["started_funnel_users"].mean()
-                assert avg_business >= avg_off, "Business hours should have more activity"
+                assert (
+                    avg_business >= avg_off
+                ), "Business hours should have more activity"
 
         print(f"✅ Hourly aggregation test passed: {len(result)} periods")
 
-    def test_timeseries_weekly_aggregation(self, calculator, sample_events_data, funnel_steps):
+    def test_timeseries_weekly_aggregation(
+        self, calculator, sample_events_data, funnel_steps
+    ):
         """Test time series calculation with weekly aggregation."""
         result = calculator.calculate_timeseries_metrics(
             sample_events_data, funnel_steps, aggregation_period="1w"
@@ -196,7 +214,9 @@ class TestTimeSeriesCalculation:
 
         print(f"✅ Weekly aggregation test passed: {len(result)} periods")
 
-    def test_timeseries_monthly_aggregation(self, calculator, sample_events_data, funnel_steps):
+    def test_timeseries_monthly_aggregation(
+        self, calculator, sample_events_data, funnel_steps
+    ):
         """Test time series calculation with monthly aggregation."""
         result = calculator.calculate_timeseries_metrics(
             sample_events_data, funnel_steps, aggregation_period="1mo"
@@ -207,7 +227,9 @@ class TestTimeSeriesCalculation:
 
         print(f"✅ Monthly aggregation test passed: {len(result)} periods")
 
-    def test_timeseries_step_conversion_rates(self, calculator, sample_events_data, funnel_steps):
+    def test_timeseries_step_conversion_rates(
+        self, calculator, sample_events_data, funnel_steps
+    ):
         """Test that step-by-step conversion rates are calculated correctly."""
         result = calculator.calculate_timeseries_metrics(
             sample_events_data, funnel_steps, aggregation_period="1d"
@@ -223,7 +245,9 @@ class TestTimeSeriesCalculation:
             assert col in result.columns, f"Should have {col} column"
             # Check that non-null values are non-negative and reasonable
             non_null_values = result[col].dropna()
-            assert (non_null_values >= 0).all(), f"{col} should be non-negative (excluding NaN)"
+            assert (
+                non_null_values >= 0
+            ).all(), f"{col} should be non-negative (excluding NaN)"
             # Remove the 100% cap check since actual conversion rates can be higher in some time periods
 
         print("✅ Step conversion rates test passed")
@@ -312,7 +336,9 @@ class TestTimeSeriesVisualization:
         # Check trace types
         trace_types = [type(trace).__name__ for trace in chart.data]
         assert "Bar" in trace_types, "Should have Bar trace for primary metric"
-        assert "Scatter" in trace_types, "Should have Scatter trace for secondary metric"
+        assert (
+            "Scatter" in trace_types
+        ), "Should have Scatter trace for secondary metric"
 
         print("✅ Basic time series chart creation test passed")
 
@@ -328,7 +354,9 @@ class TestTimeSeriesVisualization:
 
         assert chart is not None, "Chart should be created even with empty data"
         # Should have annotation for empty state
-        assert len(chart.layout.annotations) > 0, "Should have annotation for empty state"
+        assert (
+            len(chart.layout.annotations) > 0
+        ), "Should have annotation for empty state"
 
         print("✅ Empty data chart creation test passed")
 
@@ -341,8 +369,12 @@ class TestTimeSeriesVisualization:
         )
 
         # Check dark theme styling
-        assert chart.layout.paper_bgcolor is not None, "Should have paper background color"
-        assert chart.layout.plot_bgcolor is not None, "Should have plot background color"
+        assert (
+            chart.layout.paper_bgcolor is not None
+        ), "Should have paper background color"
+        assert (
+            chart.layout.plot_bgcolor is not None
+        ), "Should have plot background color"
 
         # Check that axes are configured
         assert chart.layout.xaxis.title.text is not None, "X-axis should have title"
@@ -362,7 +394,9 @@ class TestTimeSeriesVisualization:
 
         for input_name, expected_output in test_cases:
             formatted = visualizer._format_metric_name(input_name)
-            assert formatted == expected_output, f"Expected '{expected_output}', got '{formatted}'"
+            assert (
+                formatted == expected_output
+            ), f"Expected '{expected_output}', got '{formatted}'"
 
         print("✅ Metric name formatting test passed")
 
@@ -382,13 +416,17 @@ class TestTimeSeriesIntegration:
             {
                 "user_id": ["user1", "user2"],
                 "event_name": ["Step1", "Step2"],
-                "timestamp": pd.to_datetime(["2024-01-01 10:00:00", "2024-01-01 11:00:00"]),
+                "timestamp": pd.to_datetime(
+                    ["2024-01-01 10:00:00", "2024-01-01 11:00:00"]
+                ),
                 "event_properties": ["{}", "{}"],
                 "user_properties": ["{}", "{}"],
             }
         )
 
-        result = calculator.calculate_timeseries_metrics(events_df, ["Step1", "Step2"], "1d")
+        result = calculator.calculate_timeseries_metrics(
+            events_df, ["Step1", "Step2"], "1d"
+        )
 
         # Should not crash and should return valid data structure
         assert isinstance(result, pd.DataFrame), "Should return DataFrame"
@@ -479,9 +517,9 @@ class TestTimeSeriesPerformance:
         execution_time = end_time - start_time
 
         assert not result.empty, "Should handle large dataset"
-        assert execution_time < 10.0, (
-            f"Should complete in under 10 seconds, took {execution_time:.2f}s"
-        )
+        assert (
+            execution_time < 10.0
+        ), f"Should complete in under 10 seconds, took {execution_time:.2f}s"
 
         print(
             f"✅ Large dataset performance test passed: {execution_time:.2f}s for {len(large_df)} events"

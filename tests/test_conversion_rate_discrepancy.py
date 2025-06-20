@@ -30,7 +30,8 @@ class TestConversionRateDiscrepancy:
                 {
                     "user_id": f"user_{i}",
                     "event_name": "step1",
-                    "timestamp": base_time + timedelta(minutes=i * 5),  # Spread across 45 minutes
+                    "timestamp": base_time
+                    + timedelta(minutes=i * 5),  # Spread across 45 minutes
                     "event_properties": "{}",
                 }
             )
@@ -41,7 +42,8 @@ class TestConversionRateDiscrepancy:
                     {
                         "user_id": f"user_{i}",
                         "event_name": "step2",
-                        "timestamp": base_time + timedelta(minutes=i * 5 + 10),  # 10 minutes later
+                        "timestamp": base_time
+                        + timedelta(minutes=i * 5 + 10),  # 10 minutes later
                         "event_properties": "{}",
                     }
                 )
@@ -63,7 +65,8 @@ class TestConversionRateDiscrepancy:
                     {
                         "user_id": f"user_{i}",
                         "event_name": "step2",
-                        "timestamp": base_time + timedelta(hours=1, minutes=(i - 10) * 10 + 15),
+                        "timestamp": base_time
+                        + timedelta(hours=1, minutes=(i - 10) * 10 + 15),
                         "event_properties": "{}",
                     }
                 )
@@ -108,11 +111,15 @@ class TestConversionRateDiscrepancy:
         print(f"   Conversion rates: {overall_results.conversion_rates}")
 
         overall_final_conversion = (
-            overall_results.conversion_rates[-1] if overall_results.conversion_rates else 0
+            overall_results.conversion_rates[-1]
+            if overall_results.conversion_rates
+            else 0
         )
 
         # 2. Calculate hourly timeseries metrics
-        timeseries_results = calculator.calculate_timeseries_metrics(diagnostic_data, steps, "1h")
+        timeseries_results = calculator.calculate_timeseries_metrics(
+            diagnostic_data, steps, "1h"
+        )
 
         print("\n2. HOURLY TIMESERIES RESULTS:")
         print(f"   Shape: {timeseries_results.shape}")
@@ -121,8 +128,12 @@ class TestConversionRateDiscrepancy:
             print("   Data:")
             for idx, row in timeseries_results.iterrows():
                 period = row.get("period_date", row.get("period", "Unknown"))
-                started = row.get("started_funnel_users", row.get("started_count", "N/A"))
-                completed = row.get("completed_funnel_users", row.get("completed_count", "N/A"))
+                started = row.get(
+                    "started_funnel_users", row.get("started_count", "N/A")
+                )
+                completed = row.get(
+                    "completed_funnel_users", row.get("completed_count", "N/A")
+                )
                 conversion_rate = row.get("conversion_rate", "N/A")
                 print(
                     f"     {period}: started={started}, completed={completed}, "
@@ -161,7 +172,9 @@ class TestConversionRateDiscrepancy:
                 # 4. Compare the methodologies
                 print("\n4. COMPARISON:")
                 print(f"   Overall funnel conversion: {overall_final_conversion:.2f}%")
-                print(f"   Timeseries aggregate conversion: {aggregate_conversion:.2f}%")
+                print(
+                    f"   Timeseries aggregate conversion: {aggregate_conversion:.2f}%"
+                )
                 print(
                     f"   Difference: {abs(overall_final_conversion - aggregate_conversion):.2f}%"
                 )
@@ -265,9 +278,13 @@ class TestConversionRateDiscrepancy:
             test_calculator = FunnelCalculator(config)
 
             # Overall funnel
-            overall_results = test_calculator.calculate_funnel_metrics(diagnostic_data, steps)
+            overall_results = test_calculator.calculate_funnel_metrics(
+                diagnostic_data, steps
+            )
             overall_conversion = (
-                overall_results.conversion_rates[-1] if overall_results.conversion_rates else 0
+                overall_results.conversion_rates[-1]
+                if overall_results.conversion_rates
+                else 0
             )
 
             # Timeseries
@@ -286,10 +303,15 @@ class TestConversionRateDiscrepancy:
                 else "completed_count"
             )
 
-            if not timeseries_results.empty and started_col in timeseries_results.columns:
+            if (
+                not timeseries_results.empty
+                and started_col in timeseries_results.columns
+            ):
                 total_started = timeseries_results[started_col].sum()
                 total_completed = timeseries_results[completed_col].sum()
-                ts_conversion = (total_completed / total_started * 100) if total_started > 0 else 0
+                ts_conversion = (
+                    (total_completed / total_started * 100) if total_started > 0 else 0
+                )
             else:
                 ts_conversion = 0
 
@@ -314,9 +336,13 @@ class TestConversionRateDiscrepancy:
             test_calculator = FunnelCalculator(config)
 
             # Overall funnel
-            overall_results = test_calculator.calculate_funnel_metrics(diagnostic_data, steps)
+            overall_results = test_calculator.calculate_funnel_metrics(
+                diagnostic_data, steps
+            )
             overall_conversion = (
-                overall_results.conversion_rates[-1] if overall_results.conversion_rates else 0
+                overall_results.conversion_rates[-1]
+                if overall_results.conversion_rates
+                else 0
             )
 
             # Timeseries
@@ -335,10 +361,15 @@ class TestConversionRateDiscrepancy:
                 else "completed_count"
             )
 
-            if not timeseries_results.empty and started_col in timeseries_results.columns:
+            if (
+                not timeseries_results.empty
+                and started_col in timeseries_results.columns
+            ):
                 total_started = timeseries_results[started_col].sum()
                 total_completed = timeseries_results[completed_col].sum()
-                ts_conversion = (total_completed / total_started * 100) if total_started > 0 else 0
+                ts_conversion = (
+                    (total_completed / total_started * 100) if total_started > 0 else 0
+                )
             else:
                 ts_conversion = 0
 
