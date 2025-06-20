@@ -489,30 +489,44 @@ class DataSourceManager:
                         if not decoded.is_empty():
                             try:
                                 # Try modern Polars API first
-                                self.logger.debug("Trying modern Polars struct.fields() API for event_properties")
+                                self.logger.debug(
+                                    "Trying modern Polars struct.fields() API for event_properties"
+                                )
                                 all_keys = (
                                     decoded.select(pl.col("decoded_props").struct.fields())
                                     .to_series()
                                     .explode()
                                     .unique()
                                 )
-                                self.logger.debug(f"Successfully extracted {len(all_keys)} event property keys using modern API")
+                                self.logger.debug(
+                                    f"Successfully extracted {len(all_keys)} event property keys using modern API"
+                                )
                             except Exception as e:
-                                self.logger.debug(f"Modern Polars API failed for event_properties: {str(e)}, trying fallback")
+                                self.logger.debug(
+                                    f"Modern Polars API failed for event_properties: {str(e)}, trying fallback"
+                                )
                                 try:
                                     # Fallback: Get schema from first non-null struct
-                                    sample_struct = decoded.filter(pl.col("decoded_props").is_not_null()).limit(1)
+                                    sample_struct = decoded.filter(
+                                        pl.col("decoded_props").is_not_null()
+                                    ).limit(1)
                                     if not sample_struct.is_empty():
                                         first_row = sample_struct.row(0, named=True)
                                         if first_row["decoded_props"] is not None:
-                                            all_keys = pl.Series(list(first_row["decoded_props"].keys()))
-                                            self.logger.debug(f"Successfully extracted {len(all_keys)} event property keys using fallback API")
+                                            all_keys = pl.Series(
+                                                list(first_row["decoded_props"].keys())
+                                            )
+                                            self.logger.debug(
+                                                f"Successfully extracted {len(all_keys)} event property keys using fallback API"
+                                            )
                                         else:
                                             all_keys = pl.Series([])
                                     else:
                                         all_keys = pl.Series([])
                                 except Exception as e2:
-                                    self.logger.warning(f"Both Polars methods failed for event_properties: {str(e2)}")
+                                    self.logger.warning(
+                                        f"Both Polars methods failed for event_properties: {str(e2)}"
+                                    )
                                     all_keys = pl.Series([])
 
                             # Add to properties set
@@ -534,30 +548,44 @@ class DataSourceManager:
                         if not decoded.is_empty():
                             try:
                                 # Try modern Polars API first
-                                self.logger.debug("Trying modern Polars struct.fields() API for user_properties")
+                                self.logger.debug(
+                                    "Trying modern Polars struct.fields() API for user_properties"
+                                )
                                 all_keys = (
                                     decoded.select(pl.col("decoded_props").struct.fields())
                                     .to_series()
                                     .explode()
                                     .unique()
                                 )
-                                self.logger.debug(f"Successfully extracted {len(all_keys)} user property keys using modern API")
+                                self.logger.debug(
+                                    f"Successfully extracted {len(all_keys)} user property keys using modern API"
+                                )
                             except Exception as e:
-                                self.logger.debug(f"Modern Polars API failed for user_properties: {str(e)}, trying fallback")
+                                self.logger.debug(
+                                    f"Modern Polars API failed for user_properties: {str(e)}, trying fallback"
+                                )
                                 try:
                                     # Fallback: Get schema from first non-null struct
-                                    sample_struct = decoded.filter(pl.col("decoded_props").is_not_null()).limit(1)
+                                    sample_struct = decoded.filter(
+                                        pl.col("decoded_props").is_not_null()
+                                    ).limit(1)
                                     if not sample_struct.is_empty():
                                         first_row = sample_struct.row(0, named=True)
                                         if first_row["decoded_props"] is not None:
-                                            all_keys = pl.Series(list(first_row["decoded_props"].keys()))
-                                            self.logger.debug(f"Successfully extracted {len(all_keys)} user property keys using fallback API")
+                                            all_keys = pl.Series(
+                                                list(first_row["decoded_props"].keys())
+                                            )
+                                            self.logger.debug(
+                                                f"Successfully extracted {len(all_keys)} user property keys using fallback API"
+                                            )
                                         else:
                                             all_keys = pl.Series([])
                                     else:
                                         all_keys = pl.Series([])
                                 except Exception as e2:
-                                    self.logger.warning(f"Both Polars methods failed for user_properties: {str(e2)}")
+                                    self.logger.warning(
+                                        f"Both Polars methods failed for user_properties: {str(e2)}"
+                                    )
                                     all_keys = pl.Series([])
 
                             # Add to properties set
@@ -1310,13 +1338,17 @@ class FunnelCalculator:
                 # Get field names from all objects - with compatibility for different Polars versions
                 try:
                     # Modern Polars version approach
-                    self.logger.debug(f"Trying modern Polars struct.fields() API for JSON expansion in column: {column}")
+                    self.logger.debug(
+                        f"Trying modern Polars struct.fields() API for JSON expansion in column: {column}"
+                    )
                     all_keys = (
                         decoded.select(pl.col("decoded_props").struct.fields())
                         .to_series()
                         .explode()
                     )
-                    self.logger.debug(f"Successfully extracted {len(all_keys)} field names using modern API")
+                    self.logger.debug(
+                        f"Successfully extracted {len(all_keys)} field names using modern API"
+                    )
                 except Exception as e:
                     self.logger.debug(
                         f"Modern Polars API failed for JSON expansion in {column}: {str(e)}, trying alternate method"
@@ -1325,7 +1357,9 @@ class FunnelCalculator:
                     if not decoded.is_empty():
                         try:
                             # Try to get schema from the first non-null struct
-                            sample_struct = decoded.filter(pl.col("decoded_props").is_not_null()).limit(1)
+                            sample_struct = decoded.filter(
+                                pl.col("decoded_props").is_not_null()
+                            ).limit(1)
                             if not sample_struct.is_empty():
                                 first_row = sample_struct.row(0, named=True)
                                 if (
@@ -1334,7 +1368,9 @@ class FunnelCalculator:
                                 ):
                                     # Get all keys from sample rows to ensure we capture all possible fields
                                     all_keys_set = set()
-                                    sample_size = min(decoded.height, 100)  # Sample up to 100 rows for performance
+                                    sample_size = min(
+                                        decoded.height, 100
+                                    )  # Sample up to 100 rows for performance
                                     for i in range(sample_size):
                                         try:
                                             row = decoded.row(i, named=True)
@@ -1344,7 +1380,9 @@ class FunnelCalculator:
                                             continue
                                     # Convert to series for unique values
                                     all_keys = pl.Series(list(all_keys_set))
-                                    self.logger.debug(f"Successfully extracted {len(all_keys)} field names using fallback method")
+                                    self.logger.debug(
+                                        f"Successfully extracted {len(all_keys)} field names using fallback method"
+                                    )
                                 else:
                                     self.logger.debug("No valid decoded props found in sample")
                                     return df
@@ -1352,7 +1390,9 @@ class FunnelCalculator:
                                 self.logger.debug("No non-null decoded props found")
                                 return df
                         except Exception as e2:
-                            self.logger.warning(f"Both Polars methods failed for JSON expansion: {str(e2)}")
+                            self.logger.warning(
+                                f"Both Polars methods failed for JSON expansion: {str(e2)}"
+                            )
                             return df
                     else:
                         self.logger.debug("Decoded dataframe is empty")
