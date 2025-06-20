@@ -393,24 +393,30 @@ def generate_test_report() -> TestResult:
     failed = 0
     errors = 0
     skipped = 0
-    
+
     # Look for the summary line like "280 passed, 263 warnings, 16 errors"
     import re
-    summary_pattern = r'(\d+) passed(?:, (\d+) failed)?(?:, (\d+) skipped)?(?:, (\d+) warnings)?(?:, (\d+) errors)?'
-    match = re.search(summary_pattern, stdout + stderr)
-    
-    if match:
-        passed = int(match.group(1)) if match.group(1) else 0
-        failed = int(match.group(2)) if match.group(2) else 0
-        skipped = int(match.group(3)) if match.group(3) else 0
-        # group 4 is warnings, group 5 is errors
-        errors = int(match.group(5)) if match.group(5) else 0
+
+    combined_output = stdout + stderr
+
+    # Extract individual numbers using separate patterns
+    passed_match = re.search(r"(\d+) passed", combined_output)
+    failed_match = re.search(r"(\d+) failed", combined_output)
+    skipped_match = re.search(r"(\d+) skipped", combined_output)
+    errors_match = re.search(r"(\d+) errors", combined_output)
+
+    passed = int(passed_match.group(1)) if passed_match else 0
+    failed = int(failed_match.group(1)) if failed_match else 0
+    skipped = int(skipped_match.group(1)) if skipped_match else 0
+    errors = int(errors_match.group(1)) if errors_match else 0
 
     # Determine if this should be considered a success
     # If we have passed tests and the only failures are fixture errors, consider it success
     has_passed_tests = passed > 0
-    has_fixture_errors = "fixture" in (stdout + stderr).lower() and "not found" in (stdout + stderr).lower()
-    
+    has_fixture_errors = (
+        "fixture" in (stdout + stderr).lower() and "not found" in (stdout + stderr).lower()
+    )
+
     # Check if all errors are fixture-related by looking for fixture error patterns
     all_errors_are_fixtures = False
     if errors > 0:
@@ -419,10 +425,12 @@ def generate_test_report() -> TestResult:
         fixture_patterns = [
             r"fixture '[\w_]+' not found",
             r"ERROR at setup of",
-            r"fixture.*not found"
+            r"fixture.*not found",
         ]
-        fixture_error_matches = sum(len(re.findall(pattern, combined_output, re.IGNORECASE)) 
-                                  for pattern in fixture_patterns)
+        fixture_error_matches = sum(
+            len(re.findall(pattern, combined_output, re.IGNORECASE))
+            for pattern in fixture_patterns
+        )
         all_errors_are_fixtures = fixture_error_matches >= errors
 
     # Consider it a success if we have passing tests and no real test failures
@@ -433,7 +441,9 @@ def generate_test_report() -> TestResult:
     result = TestResult(
         group="Comprehensive Report",
         status="SUCCESS" if is_success else "FAILURE",
-        summary=f"{passed} passed, {failed} failed, {errors} fixture errors, {skipped} skipped" if not is_success else f"Generated test report: {passed} passed, {errors} fixture errors (non-critical)",
+        summary=f"{passed} passed, {failed} failed, {errors} fixture errors, {skipped} skipped"
+        if not is_success
+        else f"Generated test report: {passed} passed, {errors} fixture errors (non-critical)",
         passed=passed,
         failed=failed,
         skipped=skipped,
@@ -446,7 +456,7 @@ def generate_test_report() -> TestResult:
         print("   📄 HTML Coverage Report: htmlcov/index.html")
         print("   📄 XML Coverage Report: coverage.xml")
         print("   📄 JUnit XML Report: test-results.xml")
-        
+
         if errors > 0 and has_fixture_errors:
             print(f"\n⚠️  Note: {errors} fixture errors detected (non-critical)")
             print("   These are due to missing test fixtures, not core functionality issues")
