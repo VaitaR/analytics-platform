@@ -15,14 +15,8 @@ import pandas as pd
 # Add the parent directory to the path to import our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app import (
-    CountingMethod,
-    FunnelCalculator,
-    FunnelConfig,
-    FunnelOrder,
-    PathAnalysisData,
-    ReentryMode,
-)
+from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
+                 PathAnalysisData, ReentryMode)
 
 
 def create_test_data_for_path_analysis() -> pd.DataFrame:

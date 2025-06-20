@@ -40,6 +40,7 @@ except ImportError:
 
 # Suppress the deprecation warning for pkg_resources
 import warnings
+
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="pkg_resources")
 
 
@@ -307,9 +308,12 @@ def check_test_dependencies() -> bool:
             if dep == "pytest-json-report":
                 # Special case for pytest-json-report - check if it's available via pytest plugin
                 import subprocess
+
                 result = subprocess.run(
-                    ["python", "-m", "pytest", "--help"], 
-                    capture_output=True, text=True, check=False
+                    ["python", "-m", "pytest", "--help"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
                 )
                 if "--json-report" not in result.stdout:
                     raise ImportError("pytest-json-report plugin not available")

@@ -23,7 +23,6 @@ Test Architecture:
 import json
 import logging
 import os
-
 # Import system under test
 import sys
 import time
@@ -38,14 +37,8 @@ import pytest
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import (
-    CountingMethod,
-    FunnelCalculator,
-    FunnelConfig,
-    FunnelOrder,
-    FunnelResults,
-    ReentryMode,
-)
+from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
+                 FunnelResults, ReentryMode)
 
 # Configure logging for tests
 logging.basicConfig(level=logging.WARNING)
