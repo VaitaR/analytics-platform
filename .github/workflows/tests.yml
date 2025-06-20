@@ -41,31 +41,7 @@ jobs:
         python tests/test_data_generator.py
         echo "✅ Test data generated successfully"
 
-    - name: Check test dependencies
-      run: |
-        python run_tests.py --check
-
-    - name: Validate test files
-      run: |
-        python run_tests.py --validate
-
-    - name: Run smoke tests
-      run: |
-        python run_tests.py --smoke
-
-    - name: Run basic tests
-      run: |
-        python run_tests.py --basic-all
-
-    - name: Run Polars tests
-      run: |
-        python run_tests.py --polars-all
-
-    - name: Run data integrity tests
-      run: |
-        python run_tests.py --data-integrity
-
-    - name: Generate test report with coverage
+    - name: Run tests with coverage
       run: |
         echo "🔍 Debug: Python version and environment"
         python --version
@@ -73,8 +49,8 @@ jobs:
         echo "🔍 Debug: Checking imports"
         python -c "import app; print('✅ app imported successfully')" || echo "❌ app import failed"
         python -c "import models; print('✅ models imported successfully')" || echo "❌ models import failed"
-        echo "🔍 Debug: Running test command with verbose output"
-        python run_tests.py --coverage --report
+        echo "🔍 Debug: Running pytest directly"
+        python -m pytest tests/ --cov=app --cov-report=html:htmlcov --cov-report=term-missing --cov-report=xml:coverage.xml --junit-xml=test-results.xml -v
 
     - name: Upload coverage reports to Codecov
       if: matrix.python-version == '3.12'
@@ -128,27 +104,15 @@ jobs:
 
     - name: Run comprehensive tests
       run: |
-        python run_tests.py --comprehensive-all
+        echo "🔍 Running comprehensive tests..."
+        python -m pytest tests/ -v --tb=short
 
-    - name: Run fallback detection tests
-      run: |
-        python run_tests.py --fallback-all
-
-    - name: Generate fallback report
-      run: |
-        python run_tests.py --fallback-report
-
-    - name: Run benchmarks
-      run: |
-        python run_tests.py --benchmarks
-
-    - name: Upload benchmark results
+    - name: Upload test results
       uses: actions/upload-artifact@v4
       with:
-        name: benchmark-results
+        name: advanced-test-results
         path: |
-          benchmark_results.json
-          fallback_report.json
+          test-results.xml
 
   lint:
     runs-on: ubuntu-latest
@@ -198,5 +162,3 @@ jobs:
         name: ci-simulation-results
         path: |
           htmlcov/
-          test-results.xml
-          coverage.xml
