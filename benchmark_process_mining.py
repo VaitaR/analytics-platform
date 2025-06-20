@@ -50,9 +50,7 @@ def generate_process_mining_data(num_users=1000, events_per_user=20):
 
         # Start with login for most users
         if random.random() < 0.8:
-            data.append(
-                {"user_id": user_id, "event_name": "login", "timestamp": current_time}
-            )
+            data.append({"user_id": user_id, "event_name": "login", "timestamp": current_time})
             current_time += timedelta(minutes=random.randint(1, 30))
 
         # Generate realistic event sequences
@@ -67,14 +65,10 @@ def generate_process_mining_data(num_users=1000, events_per_user=20):
             else:
                 event = random.choice(event_names)
 
-            data.append(
-                {"user_id": user_id, "event_name": event, "timestamp": current_time}
-            )
+            data.append({"user_id": user_id, "event_name": event, "timestamp": current_time})
 
             # Add realistic time gaps
-            current_time += timedelta(
-                minutes=random.randint(1, 60), seconds=random.randint(0, 59)
-            )
+            current_time += timedelta(minutes=random.randint(1, 60), seconds=random.randint(0, 59))
 
     # Convert to DataFrame and sort
     df = pd.DataFrame(data)
@@ -153,9 +147,7 @@ def benchmark_process_mining():
         # Calculate cycle detection overhead
         cycle_overhead = time_with_cycles - time_no_cycles
         overhead_pct = (cycle_overhead / time_no_cycles) * 100
-        print(
-            f"  Cycle detection overhead: {cycle_overhead:.3f}s ({overhead_pct:.1f}%)"
-        )
+        print(f"  Cycle detection overhead: {cycle_overhead:.3f}s ({overhead_pct:.1f}%)")
 
         results.append(
             {
@@ -174,9 +166,7 @@ def benchmark_process_mining():
     print(f"\n{'=' * 60}")
     print("PERFORMANCE SUMMARY")
     print(f"{'=' * 60}")
-    print(
-        f"{'Size':<10} {'Events':<8} {'No Cycles':<12} {'With Cycles':<12} {'Overhead':<10}"
-    )
+    print(f"{'Size':<10} {'Events':<8} {'No Cycles':<12} {'With Cycles':<12} {'Overhead':<10}")
     print(f"{'-' * 60}")
 
     for r in results:
@@ -222,13 +212,9 @@ def benchmark_process_mining():
         # Identify bottleneck severity
         overhead_pct = (r["cycle_overhead"] / r["time_no_cycles"]) * 100
         if overhead_pct > 100:
-            print(
-                f"  🚨 Severe bottleneck: Cycle detection adds {overhead_pct:.0f}% overhead"
-            )
+            print(f"  🚨 Severe bottleneck: Cycle detection adds {overhead_pct:.0f}% overhead")
         elif overhead_pct > 50:
-            print(
-                f"  ⚠️  Moderate bottleneck: Cycle detection adds {overhead_pct:.0f}% overhead"
-            )
+            print(f"  ⚠️  Moderate bottleneck: Cycle detection adds {overhead_pct:.0f}% overhead")
         else:
             print(f"  ✅ Acceptable: Cycle detection adds {overhead_pct:.0f}% overhead")
 

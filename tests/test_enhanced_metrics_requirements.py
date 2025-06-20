@@ -122,9 +122,7 @@ def test_daily_metrics_vs_cohort_metrics():
     calculator = FunnelCalculator(config)
 
     # Get current results
-    results = calculator.calculate_timeseries_metrics(
-        events_df, ["signup", "purchase"], "1d"
-    )
+    results = calculator.calculate_timeseries_metrics(events_df, ["signup", "purchase"], "1d")
 
     print("🔍 CURRENT RESULTS:")
     for _, row in results.iterrows():
@@ -252,9 +250,7 @@ def test_current_total_users_attribution():
     config = FunnelConfig(conversion_window_hours=24)
     calculator = FunnelCalculator(config)
 
-    results = calculator.calculate_timeseries_metrics(
-        events_df, ["signup", "purchase"], "1d"
-    )
+    results = calculator.calculate_timeseries_metrics(events_df, ["signup", "purchase"], "1d")
 
     print("\\n🔍 TESTING DAILY METRICS ATTRIBUTION:")
     for _, row in results.iterrows():

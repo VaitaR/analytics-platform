@@ -244,9 +244,7 @@ class TestFallbackComprehensive:
         calculator = FunnelCalculator(config=config, use_polars=True)
 
         # Choose appropriate test data for this configuration
-        test_data = get_appropriate_test_data(
-            funnel_order, reentry_mode, all_test_data_fixtures
-        )
+        test_data = get_appropriate_test_data(funnel_order, reentry_mode, all_test_data_fixtures)
 
         # Clear log capture before running
         log_capture.truncate(0)
@@ -319,29 +317,21 @@ class TestFallbackComprehensive:
         calculator = FunnelCalculator(config=config, use_polars=True)
 
         # Choose appropriate test data for this configuration
-        test_data = get_appropriate_test_data(
-            funnel_order, reentry_mode, all_test_data_fixtures
-        )
+        test_data = get_appropriate_test_data(funnel_order, reentry_mode, all_test_data_fixtures)
 
         # Test components separately
         components_to_test = [
             (
                 "path_analysis",
-                lambda calc, data: calc._calculate_path_analysis_optimized(
-                    data, steps, data
-                ),
+                lambda calc, data: calc._calculate_path_analysis_optimized(data, steps, data),
             ),
             (
                 "time_to_convert",
-                lambda calc, data: calc._calculate_time_to_convert_optimized(
-                    data, steps
-                ),
+                lambda calc, data: calc._calculate_time_to_convert_optimized(data, steps),
             ),
             (
                 "cohort_analysis",
-                lambda calc, data: calc._calculate_cohort_analysis_optimized(
-                    data, steps
-                ),
+                lambda calc, data: calc._calculate_cohort_analysis_optimized(data, steps),
             ),
         ]
 
@@ -356,9 +346,7 @@ class TestFallbackComprehensive:
 
                 # Check logs for fallback messages
                 log_output = log_capture.getvalue()
-                fallback_detected, fallback_messages = check_logs_for_fallback(
-                    log_output
-                )
+                fallback_detected, fallback_messages = check_logs_for_fallback(log_output)
 
                 # This test should fail if fallback was detected
                 if fallback_detected:
@@ -377,9 +365,7 @@ class TestFallbackComprehensive:
             except Exception as e:
                 # If there was an exception unrelated to fallback, we want to know that too
                 log_output = log_capture.getvalue()
-                fallback_detected, fallback_messages = check_logs_for_fallback(
-                    log_output
-                )
+                fallback_detected, fallback_messages = check_logs_for_fallback(log_output)
 
                 if fallback_detected:
                     pytest.fail(
@@ -435,9 +421,7 @@ class TestFallbackComprehensive:
                 "This is a known issue that should be fixed."
             )
 
-    def test_path_analysis_nested_object_types_error(
-        self, standard_test_data, log_capture
-    ):
+    def test_path_analysis_nested_object_types_error(self, standard_test_data, log_capture):
         """
         Test specifically for the nested object types error.
 
@@ -484,9 +468,7 @@ class TestFallbackComprehensive:
 
         # Check logs for specific error
         log_output = log_capture.getvalue()
-        nested_object_error = (
-            "not yet implemented: nested object types" in log_output.lower()
-        )
+        nested_object_error = "not yet implemented: nested object types" in log_output.lower()
 
         # Verify that we got valid results with our fix
         assert results is not None
@@ -535,9 +517,7 @@ class TestFallbackComprehensive:
         # Monkey patch to inject LazyFrame
         original_method = calculator._calculate_path_analysis_polars_optimized
 
-        def mock_method(
-            segment_funnel_events_df, funnel_steps, full_history_for_segment_users
-        ):
+        def mock_method(segment_funnel_events_df, funnel_steps, full_history_for_segment_users):
             # Convert inputs to LazyFrame to trigger the error
             if hasattr(segment_funnel_events_df, "lazy"):
                 segment_funnel_events_df = segment_funnel_events_df.lazy()
@@ -551,9 +531,7 @@ class TestFallbackComprehensive:
             )
 
         # Apply monkey patch
-        monkeypatch.setattr(
-            calculator, "_calculate_path_analysis_polars_optimized", mock_method
-        )
+        monkeypatch.setattr(calculator, "_calculate_path_analysis_polars_optimized", mock_method)
 
         # Clear log capture
         log_capture.truncate(0)
@@ -565,8 +543,7 @@ class TestFallbackComprehensive:
         # Check logs for specific error
         log_output = log_capture.getvalue()
         lazy_frame_error = (
-            "cannot create expression literal for value of type lazyframe"
-            in log_output.lower()
+            "cannot create expression literal for value of type lazyframe" in log_output.lower()
         )
 
         # Assert that either we don't have the error, or if we do, it's properly handled
@@ -582,9 +559,7 @@ class TestFallbackComprehensive:
                 "This is a known issue that should be fixed using the provided solution."
             )
 
-    def test_documentation_of_fallback_patterns(
-        self, all_test_data_fixtures, log_capture
-    ):
+    def test_documentation_of_fallback_patterns(self, all_test_data_fixtures, log_capture):
         """
         Document which configurations trigger fallbacks.
 
@@ -633,18 +608,14 @@ class TestFallbackComprehensive:
                                     test_data, steps, test_data
                                 )
                             elif component_name == "time_to_convert":
-                                calculator._calculate_time_to_convert_optimized(
-                                    test_data, steps
-                                )
+                                calculator._calculate_time_to_convert_optimized(test_data, steps)
                             elif component_name == "cohort_analysis":
-                                calculator._calculate_cohort_analysis_optimized(
-                                    test_data, steps
-                                )
+                                calculator._calculate_cohort_analysis_optimized(test_data, steps)
 
                             # Check logs for fallback messages
                             log_output = log_capture.getvalue()
-                            fallback_detected, fallback_messages = (
-                                check_logs_for_fallback(log_output)
+                            fallback_detected, fallback_messages = check_logs_for_fallback(
+                                log_output
                             )
 
                             # Record result for this component
@@ -654,10 +625,7 @@ class TestFallbackComprehensive:
                                 for message in fallback_messages:
                                     if "nested object types" in message.lower():
                                         error_types.add("nested_object_types")
-                                    elif (
-                                        "cross join should not pass join keys"
-                                        in message.lower()
-                                    ):
+                                    elif "cross join should not pass join keys" in message.lower():
                                         error_types.add("cross_join_keys")
                                     elif (
                                         "int64 is incompatible with expected type uint32"
@@ -688,8 +656,8 @@ class TestFallbackComprehensive:
                         except Exception as e:
                             # Record exception
                             log_output = log_capture.getvalue()
-                            fallback_detected, fallback_messages = (
-                                check_logs_for_fallback(log_output)
+                            fallback_detected, fallback_messages = check_logs_for_fallback(
+                                log_output
                             )
 
                             error_types = set()
@@ -697,10 +665,7 @@ class TestFallbackComprehensive:
                                 for message in fallback_messages:
                                     if "nested object types" in message.lower():
                                         error_types.add("nested_object_types")
-                                    elif (
-                                        "cross join should not pass join keys"
-                                        in message.lower()
-                                    ):
+                                    elif "cross join should not pass join keys" in message.lower():
                                         error_types.add("cross_join_keys")
                                     elif (
                                         "int64 is incompatible with expected type uint32"
@@ -734,9 +699,7 @@ class TestFallbackComprehensive:
         report.append("## Summary Statistics")
 
         # Count fallback occurrences by component and error type
-        component_stats = {
-            comp: {"total": 0, "fallbacks": 0} for comp in components_to_test
-        }
+        component_stats = {comp: {"total": 0, "fallbacks": 0} for comp in components_to_test}
         error_type_counts = {}
 
         for config, components in results.items():
@@ -769,9 +732,7 @@ class TestFallbackComprehensive:
         report.append("|------------|-------------|")
 
         # Sort error types by frequency (most common first)
-        sorted_error_types = sorted(
-            error_type_counts.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_error_types = sorted(error_type_counts.items(), key=lambda x: x[1], reverse=True)
         for error_type, count in sorted_error_types:
             report.append(f"| {error_type} | {count} |")
 
@@ -795,9 +756,7 @@ class TestFallbackComprehensive:
             for comp_name, comp_result in components.items():
                 fallback_status = "✓ Yes" if comp_result["fallback"] else "✗ No"
                 error_types = (
-                    ", ".join(comp_result["error_types"])
-                    if comp_result["error_types"]
-                    else ""
+                    ", ".join(comp_result["error_types"]) if comp_result["error_types"] else ""
                 )
 
                 report.append(
@@ -820,10 +779,7 @@ class TestFallbackComprehensive:
             report.append("df = pl.from_pandas(pandas_df, strict=False)")
             report.append("```")
 
-        if (
-            "original_order" in error_type_counts
-            or "cross_join_keys" in error_type_counts
-        ):
+        if "original_order" in error_type_counts or "cross_join_keys" in error_type_counts:
             report.append("\n### 2. Fix Polars Join Issues")
             report.append(
                 "Issues with joins are causing fallbacks from standard Polars to Pandas."
@@ -834,9 +790,7 @@ class TestFallbackComprehensive:
 
         if "int64_uint32_type" in error_type_counts:
             report.append("\n### 3. Fix Type Compatibility Issues")
-            report.append(
-                "Type mismatches between Int64 and UInt32 are causing fallbacks."
-            )
+            report.append("Type mismatches between Int64 and UInt32 are causing fallbacks.")
             report.append(
                 "Recommendation: Explicitly cast types before operations or use compatible types."
             )

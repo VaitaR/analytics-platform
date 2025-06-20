@@ -82,9 +82,7 @@ def generate_large_test_data(num_users=2000, events_per_user=15):
             )
 
             # Realistic time gaps
-            current_time += timedelta(
-                minutes=random.randint(1, 30), seconds=random.randint(0, 59)
-            )
+            current_time += timedelta(minutes=random.randint(1, 30), seconds=random.randint(0, 59))
 
     df = pd.DataFrame(events)
     return df.sort_values(["user_id", "timestamp"])

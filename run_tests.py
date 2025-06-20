@@ -430,9 +430,7 @@ def generate_test_report() -> TestResult:
     # Look for the final summary line (usually the last one)
     main_summary = ""
     for match in summary_matches:
-        if any(
-            word in match.lower() for word in ["passed", "failed", "error", "skipped"]
-        ):
+        if any(word in match.lower() for word in ["passed", "failed", "error", "skipped"]):
             main_summary = match
 
     # Extract individual numbers using separate patterns from the entire output
@@ -455,8 +453,7 @@ def generate_test_report() -> TestResult:
     # Initialize variables that will be used later
     has_passed_tests = passed > 0
     has_fixture_errors = (
-        "fixture" in (stdout + stderr).lower()
-        and "not found" in (stdout + stderr).lower()
+        "fixture" in (stdout + stderr).lower() and "not found" in (stdout + stderr).lower()
     )
 
     # If no results were parsed, there might be an issue - but don't fail completely
@@ -467,9 +464,7 @@ def generate_test_report() -> TestResult:
             "collected" in combined_output.lower()
             or "test session starts" in combined_output.lower()
         ):
-            print(
-                "   ℹ️  Tests appear to have run, but results weren't parsed correctly"
-            )
+            print("   ℹ️  Tests appear to have run, but results weren't parsed correctly")
             # In this case, assume success if no explicit failures found
             is_success = "FAILED" not in combined_output and result.returncode in [0, 1]
         else:
@@ -498,9 +493,7 @@ def generate_test_report() -> TestResult:
         # Consider it a success if we have passing tests and no real test failures
         # Fixture errors are considered non-critical for coverage reports
         is_success = (
-            has_passed_tests
-            and (failed == 0)
-            and (errors == 0 or all_errors_are_fixtures)
+            has_passed_tests and (failed == 0) and (errors == 0 or all_errors_are_fixtures)
         )
 
     # Create a TestResult
@@ -527,9 +520,7 @@ def generate_test_report() -> TestResult:
 
         if errors > 0 and has_fixture_errors:
             print(f"\n⚠️  Note: {errors} fixture errors detected (non-critical)")
-            print(
-                "   These are due to missing test fixtures, not core functionality issues"
-            )
+            print("   These are due to missing test fixtures, not core functionality issues")
 
     return result
 
@@ -624,9 +615,7 @@ def parse_fallback_test_output(output: str) -> dict[str, Any]:
     for component in results["component_stats"]:
         # Each component is tested with each configuration
         component_tests = (
-            len(results["config_combinations"])
-            if results["config_combinations"]
-            else 12
+            len(results["config_combinations"]) if results["config_combinations"] else 12
         )  # Default to 12 combinations
         results["component_stats"][component]["total"] = component_tests
         total_tests += component_tests
@@ -839,9 +828,7 @@ BASIC_TESTS.add_test(
 )
 
 # Advanced tests
-ADVANCED_TESTS.add_test(
-    "edge_cases", ["tests/test_edge_cases.py"], "Running edge case tests"
-)
+ADVANCED_TESTS.add_test("edge_cases", ["tests/test_edge_cases.py"], "Running edge case tests")
 ADVANCED_TESTS.add_test(
     "segmentation", ["tests/test_segmentation.py"], "Running segmentation tests"
 )
@@ -902,9 +889,7 @@ FALLBACK_TESTS.add_test(
 )
 
 # Benchmark tests
-BENCHMARK_TESTS.add_test(
-    "performance", ["tests/"], "Running performance tests", "performance"
-)
+BENCHMARK_TESTS.add_test("performance", ["tests/"], "Running performance tests", "performance")
 BENCHMARK_TESTS.add_test(
     "comprehensive_performance",
     ["tests/test_funnel_calculator_comprehensive.py"],
@@ -925,9 +910,7 @@ BENCHMARK_TESTS.add_test(
 )
 
 # Utility tests
-UTILITY_TESTS.add_test(
-    "smoke", ["tests/test_basic_scenarios.py"], "Running smoke test", "smoke"
-)
+UTILITY_TESTS.add_test("smoke", ["tests/test_basic_scenarios.py"], "Running smoke test", "smoke")
 
 # Combine all categories
 TEST_CATEGORIES = {
@@ -1047,9 +1030,7 @@ def run_specific_test(
             failed=0,
             skipped=0,
             duration=0.0,
-            failed_tests=[
-                f"ERROR: Unknown test {test_name} in category {category_name}"
-            ],
+            failed_tests=[f"ERROR: Unknown test {test_name} in category {category_name}"],
         )
         print(f"❌ Unknown test in category {category_name}: {test_name}")
         return result
@@ -1061,9 +1042,7 @@ def run_specific_test(
     test_files, description, specific_marker = category.test_functions[test_name]
     group_name = f"{category_name}:{test_name}"
 
-    result = run_pytest(
-        test_files, group_name, parallel, coverage, markers, specific_marker
-    )
+    result = run_pytest(test_files, group_name, parallel, coverage, markers, specific_marker)
     return result
 
 
@@ -1142,16 +1121,12 @@ def print_final_summary(test_results: list[TestResult]):
 
     # Print failed tests details if there are any
     if failed_groups:
-        print(
-            "\n======================= 🔬 Failed Tests Details ======================="
-        )
+        print("\n======================= 🔬 Failed Tests Details =======================")
 
         for result in failed_groups:
             print(f"\n❌ {result['group']}:")
             if result["failed_tests"]:
-                for failed_test in result["failed_tests"][
-                    :5
-                ]:  # Show first 5 failed tests
+                for failed_test in result["failed_tests"][:5]:  # Show first 5 failed tests
                     print(f"   • {failed_test}")
                 if len(result["failed_tests"]) > 5:
                     print(f"   ... and {len(result['failed_tests']) - 5} more")
@@ -1239,25 +1214,17 @@ Examples:
     )
 
     # Category group options
-    parser.add_argument(
-        "--all", action="store_true", help="Run all tests (default action)"
-    )
+    parser.add_argument("--all", action="store_true", help="Run all tests (default action)")
     parser.add_argument("--basic-all", action="store_true", help="Run all basic tests")
-    parser.add_argument(
-        "--advanced-all", action="store_true", help="Run all advanced tests"
-    )
-    parser.add_argument(
-        "--polars-all", action="store_true", help="Run all Polars tests"
-    )
+    parser.add_argument("--advanced-all", action="store_true", help="Run all advanced tests")
+    parser.add_argument("--polars-all", action="store_true", help="Run all Polars tests")
     parser.add_argument(
         "--comprehensive-all", action="store_true", help="Run all comprehensive tests"
     )
     parser.add_argument(
         "--fallback-all", action="store_true", help="Run all fallback detection tests"
     )
-    parser.add_argument(
-        "--benchmarks", action="store_true", help="Run all benchmark tests"
-    )
+    parser.add_argument("--benchmarks", action="store_true", help="Run all benchmark tests")
     parser.add_argument(
         "--process-mining-all", action="store_true", help="Run all process mining tests"
     )
@@ -1273,9 +1240,7 @@ Examples:
         metavar="TEST",
         help="Run specific advanced test: edge_cases, segmentation, integration, no_reload",
     )
-    parser.add_argument(
-        "--polars", metavar="TEST", help="Run specific Polars test: polars_engine"
-    )
+    parser.add_argument("--polars", metavar="TEST", help="Run specific Polars test: polars_engine")
     parser.add_argument(
         "--comprehensive",
         metavar="TEST",
@@ -1299,9 +1264,7 @@ Examples:
 
     # Specific named tests for backward compatibility
     parser.add_argument("--smoke", action="store_true", help="Run a quick smoke test")
-    parser.add_argument(
-        "--data-integrity", action="store_true", help="Run data integrity tests"
-    )
+    parser.add_argument("--data-integrity", action="store_true", help="Run data integrity tests")
     parser.add_argument("--check", action="store_true", help="Check test dependencies")
     parser.add_argument("--validate", action="store_true", help="Validate test files")
     parser.add_argument(
@@ -1318,9 +1281,7 @@ Examples:
 
     # Test execution options
     parser.add_argument("--parallel", action="store_true", help="Run tests in parallel")
-    parser.add_argument(
-        "--coverage", action="store_true", help="Generate coverage report"
-    )
+    parser.add_argument("--coverage", action="store_true", help="Generate coverage report")
     parser.add_argument(
         "--marker",
         action="append",
@@ -1371,37 +1332,27 @@ Examples:
 
     # Run category groups
     if args.basic_all:
-        result = run_tests_by_category(
-            "basic", args.parallel, args.coverage, args.marker
-        )
+        result = run_tests_by_category("basic", args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
 
     if args.advanced_all:
-        result = run_tests_by_category(
-            "advanced", args.parallel, args.coverage, args.marker
-        )
+        result = run_tests_by_category("advanced", args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
 
     if args.polars_all:
-        result = run_tests_by_category(
-            "polars", args.parallel, args.coverage, args.marker
-        )
+        result = run_tests_by_category("polars", args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
 
     if args.comprehensive_all:
-        result = run_tests_by_category(
-            "comprehensive", args.parallel, args.coverage, args.marker
-        )
+        result = run_tests_by_category("comprehensive", args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
 
     if args.fallback_all:
-        result = run_tests_by_category(
-            "fallback", args.parallel, args.coverage, args.marker
-        )
+        result = run_tests_by_category("fallback", args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
 
@@ -1411,17 +1362,13 @@ Examples:
         actions_performed = True
 
     if args.process_mining_all:
-        result = run_tests_by_category(
-            "process_mining", args.parallel, args.coverage, args.marker
-        )
+        result = run_tests_by_category("process_mining", args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
 
     # Run specific tests from categories
     if args.basic:
-        result = run_specific_test(
-            "basic", args.basic, args.parallel, args.coverage, args.marker
-        )
+        result = run_specific_test("basic", args.basic, args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
 
@@ -1477,9 +1424,7 @@ Examples:
 
     # Handle specific named tests for backward compatibility
     if args.smoke:
-        result = run_specific_test(
-            "utility", "smoke", args.parallel, args.coverage, args.marker
-        )
+        result = run_specific_test("utility", "smoke", args.parallel, args.coverage, args.marker)
         test_results.append(result)
         actions_performed = True
 

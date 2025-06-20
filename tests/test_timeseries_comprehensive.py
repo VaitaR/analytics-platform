@@ -134,8 +134,7 @@ class TestTimeSeriesCalculationComprehensive:
                             {
                                 "user_id": user_id,
                                 "event_name": "Purchase",
-                                "timestamp": day2_date
-                                + timedelta(minutes=i * 10 + 135),
+                                "timestamp": day2_date + timedelta(minutes=i * 10 + 135),
                                 "event_properties": "{}",
                                 "user_properties": "{}",
                             }
@@ -233,8 +232,7 @@ class TestTimeSeriesCalculationComprehensive:
                         {
                             "user_id": user_id,
                             "event_name": "Step2",
-                            "timestamp": timestamp
-                            + timedelta(minutes=user_idx * 5 + 10),
+                            "timestamp": timestamp + timedelta(minutes=user_idx * 5 + 10),
                             "event_properties": "{}",
                             "user_properties": "{}",
                         }
@@ -246,8 +244,7 @@ class TestTimeSeriesCalculationComprehensive:
                             {
                                 "user_id": user_id,
                                 "event_name": "Step3",
-                                "timestamp": timestamp
-                                + timedelta(minutes=user_idx * 5 + 20),
+                                "timestamp": timestamp + timedelta(minutes=user_idx * 5 + 20),
                                 "event_properties": "{}",
                                 "user_properties": "{}",
                             }
@@ -350,65 +347,62 @@ class TestTimeSeriesCalculationComprehensive:
 
         # Validate Day 1 metrics (10 started, 3 completed)
         day1_row = result.iloc[0]
-        assert (
-            day1_row["started_funnel_users"] == 10
-        ), f"Day 1: Expected 10 starters, got {day1_row['started_funnel_users']}"
-        assert (
-            day1_row["completed_funnel_users"] == 3
-        ), f"Day 1: Expected 3 completers, got {day1_row['completed_funnel_users']}"
+        assert day1_row["started_funnel_users"] == 10, (
+            f"Day 1: Expected 10 starters, got {day1_row['started_funnel_users']}"
+        )
+        assert day1_row["completed_funnel_users"] == 3, (
+            f"Day 1: Expected 3 completers, got {day1_row['completed_funnel_users']}"
+        )
         expected_day1_rate = (3 / 10) * 100  # 30%
-        assert (
-            abs(day1_row["conversion_rate"] - expected_day1_rate) < 0.01
-        ), f"Day 1: Expected {expected_day1_rate}% conversion, got {day1_row['conversion_rate']}%"
+        assert abs(day1_row["conversion_rate"] - expected_day1_rate) < 0.01, (
+            f"Day 1: Expected {expected_day1_rate}% conversion, got {day1_row['conversion_rate']}%"
+        )
 
         # Validate step-by-step counts for Day 1
-        assert (
-            day1_row["Sign Up_users"] == 10
-        ), f"Day 1: Expected 10 Sign Up users, got {day1_row['Sign Up_users']}"
-        assert (
-            day1_row["Verify Email_users"] == 7
-        ), f"Day 1: Expected 7 Verify Email users, got {day1_row['Verify Email_users']}"
-        assert (
-            day1_row["Complete Profile_users"] == 5
-        ), f"Day 1: Expected 5 Complete Profile users, got {day1_row['Complete Profile_users']}"
-        assert (
-            day1_row["Purchase_users"] == 3
-        ), f"Day 1: Expected 3 Purchase users, got {day1_row['Purchase_users']}"
+        assert day1_row["Sign Up_users"] == 10, (
+            f"Day 1: Expected 10 Sign Up users, got {day1_row['Sign Up_users']}"
+        )
+        assert day1_row["Verify Email_users"] == 7, (
+            f"Day 1: Expected 7 Verify Email users, got {day1_row['Verify Email_users']}"
+        )
+        assert day1_row["Complete Profile_users"] == 5, (
+            f"Day 1: Expected 5 Complete Profile users, got {day1_row['Complete Profile_users']}"
+        )
+        assert day1_row["Purchase_users"] == 3, (
+            f"Day 1: Expected 3 Purchase users, got {day1_row['Purchase_users']}"
+        )
 
         # Validate Day 2 metrics (5 started, 2 completed)
         day2_row = result.iloc[1]
-        assert (
-            day2_row["started_funnel_users"] == 5
-        ), f"Day 2: Expected 5 starters, got {day2_row['started_funnel_users']}"
-        assert (
-            day2_row["completed_funnel_users"] == 2
-        ), f"Day 2: Expected 2 completers, got {day2_row['completed_funnel_users']}"
+        assert day2_row["started_funnel_users"] == 5, (
+            f"Day 2: Expected 5 starters, got {day2_row['started_funnel_users']}"
+        )
+        assert day2_row["completed_funnel_users"] == 2, (
+            f"Day 2: Expected 2 completers, got {day2_row['completed_funnel_users']}"
+        )
         expected_day2_rate = (2 / 5) * 100  # 40%
-        assert (
-            abs(day2_row["conversion_rate"] - expected_day2_rate) < 0.01
-        ), f"Day 2: Expected {expected_day2_rate}% conversion, got {day2_row['conversion_rate']}%"
+        assert abs(day2_row["conversion_rate"] - expected_day2_rate) < 0.01, (
+            f"Day 2: Expected {expected_day2_rate}% conversion, got {day2_row['conversion_rate']}%"
+        )
 
         # Validate step-by-step conversion rates
         day1_signup_to_verify = (7 / 10) * 100  # 70%
         day1_verify_to_profile = (5 / 7) * 100  # ~71.43%
         day1_profile_to_purchase = (3 / 5) * 100  # 60%
 
+        assert abs(day1_row["Sign Up_to_Verify Email_rate"] - day1_signup_to_verify) < 0.01, (
+            f"Day 1: Sign Up to Verify rate should be {day1_signup_to_verify}%, got {day1_row['Sign Up_to_Verify Email_rate']}%"
+        )
         assert (
-            abs(day1_row["Sign Up_to_Verify Email_rate"] - day1_signup_to_verify) < 0.01
-        ), f"Day 1: Sign Up to Verify rate should be {day1_signup_to_verify}%, got {day1_row['Sign Up_to_Verify Email_rate']}%"
+            abs(day1_row["Verify Email_to_Complete Profile_rate"] - day1_verify_to_profile) < 0.01
+        ), (
+            f"Day 1: Verify to Profile rate should be ~{day1_verify_to_profile:.2f}%, got {day1_row['Verify Email_to_Complete Profile_rate']}%"
+        )
         assert (
-            abs(
-                day1_row["Verify Email_to_Complete Profile_rate"]
-                - day1_verify_to_profile
-            )
-            < 0.01
-        ), f"Day 1: Verify to Profile rate should be ~{day1_verify_to_profile:.2f}%, got {day1_row['Verify Email_to_Complete Profile_rate']}%"
-        assert (
-            abs(
-                day1_row["Complete Profile_to_Purchase_rate"] - day1_profile_to_purchase
-            )
-            < 0.01
-        ), f"Day 1: Profile to Purchase rate should be {day1_profile_to_purchase}%, got {day1_row['Complete Profile_to_Purchase_rate']}%"
+            abs(day1_row["Complete Profile_to_Purchase_rate"] - day1_profile_to_purchase) < 0.01
+        ), (
+            f"Day 1: Profile to Purchase rate should be {day1_profile_to_purchase}%, got {day1_row['Complete Profile_to_Purchase_rate']}%"
+        )
 
         print("✅ Precise cohort calculation test passed")
 
@@ -427,25 +421,23 @@ class TestTimeSeriesCalculationComprehensive:
 
         day_row = result.iloc[0]
         # 3 users started, only 1 completed within 1-hour window
-        assert (
-            day_row["started_funnel_users"] == 3
-        ), f"Expected 3 starters, got {day_row['started_funnel_users']}"
-        assert (
-            day_row["completed_funnel_users"] == 1
-        ), f"Expected 1 completer (within window), got {day_row['completed_funnel_users']}"
+        assert day_row["started_funnel_users"] == 3, (
+            f"Expected 3 starters, got {day_row['started_funnel_users']}"
+        )
+        assert day_row["completed_funnel_users"] == 1, (
+            f"Expected 1 completer (within window), got {day_row['completed_funnel_users']}"
+        )
 
         expected_rate = (1 / 3) * 100  # ~33.33%
-        assert (
-            abs(day_row["conversion_rate"] - expected_rate) < 0.01
-        ), f"Expected {expected_rate:.2f}% conversion, got {day_row['conversion_rate']}%"
+        assert abs(day_row["conversion_rate"] - expected_rate) < 0.01, (
+            f"Expected {expected_rate:.2f}% conversion, got {day_row['conversion_rate']}%"
+        )
 
         # Validate step counts
-        assert (
-            day_row["Start_users"] == 3
-        ), f"Expected 3 Start users, got {day_row['Start_users']}"
-        assert (
-            day_row["Finish_users"] == 1
-        ), f"Expected 1 Finish user (within window), got {day_row['Finish_users']}"
+        assert day_row["Start_users"] == 3, f"Expected 3 Start users, got {day_row['Start_users']}"
+        assert day_row["Finish_users"] == 1, (
+            f"Expected 1 Finish user (within window), got {day_row['Finish_users']}"
+        )
 
         print("✅ Conversion window enforcement test passed")
 
@@ -459,9 +451,9 @@ class TestTimeSeriesCalculationComprehensive:
 
         assert not result.empty, "Result should not be empty"
         # Allow for boundary effects - could be 48-49 hours
-        assert (
-            48 <= len(result) <= 49
-        ), f"Expected 48-49 hours of data (hour boundaries), got {len(result)}"
+        assert 48 <= len(result) <= 49, (
+            f"Expected 48-49 hours of data (hour boundaries), got {len(result)}"
+        )
 
         # Test the underlying data pattern understanding first
         print(f"Total periods in result: {len(result)}")
@@ -482,9 +474,7 @@ class TestTimeSeriesCalculationComprehensive:
         # Total = 360 starters expected
 
         # Allow some tolerance for boundary effects
-        assert (
-            350 <= total_starters <= 370
-        ), f"Expected ~360 total starters, got {total_starters}"
+        assert 350 <= total_starters <= 370, f"Expected ~360 total starters, got {total_starters}"
 
         # Step2 should be ~80% of starters, Step3 should be ~60% of starters
         expected_step2_min = int(total_starters * 0.74)  # Allow more tolerance
@@ -492,27 +482,23 @@ class TestTimeSeriesCalculationComprehensive:
         expected_step3_min = int(total_starters * 0.54)
         expected_step3_max = int(total_starters * 0.67)
 
-        assert (
-            expected_step2_min <= total_step2 <= expected_step2_max
-        ), f"Step2 users should be 75-85% of starters ({expected_step2_min}-{expected_step2_max}), got {total_step2}"
+        assert expected_step2_min <= total_step2 <= expected_step2_max, (
+            f"Step2 users should be 75-85% of starters ({expected_step2_min}-{expected_step2_max}), got {total_step2}"
+        )
 
-        assert (
-            expected_step3_min <= total_step3 <= expected_step3_max
-        ), f"Step3 users should be 55-65% of starters ({expected_step3_min}-{expected_step3_max}), got {total_step3}"
+        assert expected_step3_min <= total_step3 <= expected_step3_max, (
+            f"Step3 users should be 55-65% of starters ({expected_step3_min}-{expected_step3_max}), got {total_step3}"
+        )
 
         # Validate that all conversion rates are reasonable
-        assert (
-            result["conversion_rate"] >= 0
-        ).all(), "All conversion rates should be non-negative"
-        assert (
-            result["conversion_rate"] <= 100
-        ).all(), "All conversion rates should be <= 100%"
+        assert (result["conversion_rate"] >= 0).all(), (
+            "All conversion rates should be non-negative"
+        )
+        assert (result["conversion_rate"] <= 100).all(), "All conversion rates should be <= 100%"
 
         print("✅ Hourly aggregation accuracy test passed")
 
-    def test_daily_aggregation_consistency(
-        self, standard_calculator, multi_period_data
-    ):
+    def test_daily_aggregation_consistency(self, standard_calculator, multi_period_data):
         """Test that daily aggregation properly sums hourly data."""
         funnel_steps = ["Step1", "Step2", "Step3"]
 
@@ -527,9 +513,7 @@ class TestTimeSeriesCalculationComprehensive:
         )
 
         # The data spans from 2024-01-01 00:00:00 for 48 hours, so could be 2 or 3 days depending on boundary handling
-        assert (
-            2 <= len(daily_result) <= 3
-        ), f"Expected 2-3 days of data, got {len(daily_result)}"
+        assert 2 <= len(daily_result) <= 3, f"Expected 2-3 days of data, got {len(daily_result)}"
 
         # Validate that total daily starters roughly equals total hourly starters
         total_daily_starters = daily_result["started_funnel_users"].sum()
@@ -537,18 +521,18 @@ class TestTimeSeriesCalculationComprehensive:
 
         # Should be close but may differ slightly due to boundary effects
         starters_diff = abs(total_daily_starters - total_hourly_starters)
-        assert (
-            starters_diff <= 20
-        ), f"Daily and hourly starters should be close: daily={total_daily_starters}, hourly={total_hourly_starters}, diff={starters_diff}"
+        assert starters_diff <= 20, (
+            f"Daily and hourly starters should be close: daily={total_daily_starters}, hourly={total_hourly_starters}, diff={starters_diff}"
+        )
 
         # Validate that conversion rates are within reasonable range
         for i, day_row in daily_result.iterrows():
-            assert (
-                0 <= day_row["conversion_rate"] <= 100
-            ), f"Day {i}: Conversion rate {day_row['conversion_rate']} should be 0-100%"
-            assert (
-                day_row["started_funnel_users"] >= day_row["completed_funnel_users"]
-            ), f"Day {i}: Starters should >= completers"
+            assert 0 <= day_row["conversion_rate"] <= 100, (
+                f"Day {i}: Conversion rate {day_row['conversion_rate']} should be 0-100%"
+            )
+            assert day_row["started_funnel_users"] >= day_row["completed_funnel_users"], (
+                f"Day {i}: Starters should >= completers"
+            )
 
         print(
             f"✅ Daily aggregation consistency test passed: {len(daily_result)} days, daily_starters={total_daily_starters}, hourly_starters={total_hourly_starters}"
@@ -566,18 +550,12 @@ class TestTimeSeriesCalculationComprehensive:
 
         # Should handle boundary cases gracefully
         for _, row in result.iterrows():
-            assert (
-                row["started_funnel_users"] >= 0
-            ), "Started users should be non-negative"
-            assert (
-                row["completed_funnel_users"] >= 0
-            ), "Completed users should be non-negative"
-            assert (
-                row["completed_funnel_users"] <= row["started_funnel_users"]
-            ), "Completed should not exceed started"
-            assert (
-                0 <= row["conversion_rate"] <= 100
-            ), "Conversion rate should be between 0-100%"
+            assert row["started_funnel_users"] >= 0, "Started users should be non-negative"
+            assert row["completed_funnel_users"] >= 0, "Completed users should be non-negative"
+            assert row["completed_funnel_users"] <= row["started_funnel_users"], (
+                "Completed should not exceed started"
+            )
+            assert 0 <= row["conversion_rate"] <= 100, "Conversion rate should be between 0-100%"
 
         print("✅ Edge cases handling test passed")
 
@@ -628,18 +606,18 @@ class TestTimeSeriesCalculationComprehensive:
                 current_step_users = row[f"{funnel_steps[i]}_users"]
                 next_step_users = row[f"{funnel_steps[i + 1]}_users"]
 
-                assert (
-                    next_step_users <= current_step_users
-                ), f"Step {i + 1} users ({next_step_users}) should not exceed step {i} users ({current_step_users})"
+                assert next_step_users <= current_step_users, (
+                    f"Step {i + 1} users ({next_step_users}) should not exceed step {i} users ({current_step_users})"
+                )
 
             # Test conversion rate calculation
             if row["started_funnel_users"] > 0:
                 calculated_rate = (
                     row["completed_funnel_users"] / row["started_funnel_users"]
                 ) * 100
-                assert (
-                    abs(row["conversion_rate"] - calculated_rate) < 0.01
-                ), f"Conversion rate mismatch: stored {row['conversion_rate']}%, calculated {calculated_rate}%"
+                assert abs(row["conversion_rate"] - calculated_rate) < 0.01, (
+                    f"Conversion rate mismatch: stored {row['conversion_rate']}%, calculated {calculated_rate}%"
+                )
 
             # Test step-to-step conversion rates
             for i in range(len(funnel_steps) - 1):
@@ -649,13 +627,11 @@ class TestTimeSeriesCalculationComprehensive:
 
                 if from_users > 0:
                     expected_rate = (to_users / from_users) * 100
-                    assert (
-                        abs(row[rate_col] - expected_rate) < 0.01
-                    ), f"Step rate mismatch for {rate_col}: stored {row[rate_col]}%, calculated {expected_rate}%"
+                    assert abs(row[rate_col] - expected_rate) < 0.01, (
+                        f"Step rate mismatch for {rate_col}: stored {row[rate_col]}%, calculated {expected_rate}%"
+                    )
                 else:
-                    assert (
-                        row[rate_col] == 0.0
-                    ), "Rate should be 0 when no users in from step"
+                    assert row[rate_col] == 0.0, "Rate should be 0 when no users in from step"
 
         print("✅ Mathematical consistency test passed")
 
@@ -683,9 +659,9 @@ class TestTimeSeriesCalculationComprehensive:
         )
 
         # Compare key metrics
-        assert len(polars_result) == len(
-            pandas_result
-        ), "Results should have same number of periods"
+        assert len(polars_result) == len(pandas_result), (
+            "Results should have same number of periods"
+        )
 
         for i in range(len(polars_result)):
             polars_row = polars_result.iloc[i]
@@ -693,24 +669,21 @@ class TestTimeSeriesCalculationComprehensive:
 
             # Allow small differences due to implementation details
             assert (
-                abs(
-                    polars_row["started_funnel_users"]
-                    - pandas_row["started_funnel_users"]
-                )
-                <= 1
-            ), f"Started users should be similar: Polars {polars_row['started_funnel_users']}, Pandas {pandas_row['started_funnel_users']}"
+                abs(polars_row["started_funnel_users"] - pandas_row["started_funnel_users"]) <= 1
+            ), (
+                f"Started users should be similar: Polars {polars_row['started_funnel_users']}, Pandas {pandas_row['started_funnel_users']}"
+            )
 
             assert (
-                abs(
-                    polars_row["completed_funnel_users"]
-                    - pandas_row["completed_funnel_users"]
-                )
+                abs(polars_row["completed_funnel_users"] - pandas_row["completed_funnel_users"])
                 <= 1
-            ), f"Completed users should be similar: Polars {polars_row['completed_funnel_users']}, Pandas {pandas_row['completed_funnel_users']}"
+            ), (
+                f"Completed users should be similar: Polars {polars_row['completed_funnel_users']}, Pandas {pandas_row['completed_funnel_users']}"
+            )
 
-            assert (
-                abs(polars_row["conversion_rate"] - pandas_row["conversion_rate"]) < 2.0
-            ), f"Conversion rates should be similar: Polars {polars_row['conversion_rate']}%, Pandas {pandas_row['conversion_rate']}%"
+            assert abs(polars_row["conversion_rate"] - pandas_row["conversion_rate"]) < 2.0, (
+                f"Conversion rates should be similar: Polars {polars_row['conversion_rate']}%, Pandas {pandas_row['conversion_rate']}%"
+            )
 
         print("✅ Polars-Pandas consistency test passed")
 
@@ -747,8 +720,7 @@ class TestTimeSeriesCalculationComprehensive:
                             {
                                 "user_id": user_id,
                                 "event_name": "Middle",
-                                "timestamp": timestamp
-                                + timedelta(minutes=user_idx + 10),
+                                "timestamp": timestamp + timedelta(minutes=user_idx + 10),
                                 "event_properties": "{}",
                                 "user_properties": "{}",
                             }
@@ -760,8 +732,7 @@ class TestTimeSeriesCalculationComprehensive:
                                 {
                                     "user_id": user_id,
                                     "event_name": "End",
-                                    "timestamp": timestamp
-                                    + timedelta(minutes=user_idx + 20),
+                                    "timestamp": timestamp + timedelta(minutes=user_idx + 20),
                                     "event_properties": "{}",
                                     "user_properties": "{}",
                                 }
@@ -770,9 +741,7 @@ class TestTimeSeriesCalculationComprehensive:
         large_df = pd.DataFrame(large_events)
         funnel_steps = ["Start", "Middle", "End"]
 
-        print(
-            f"Testing with {len(large_df)} events for {large_df['user_id'].nunique()} users"
-        )
+        print(f"Testing with {len(large_df)} events for {large_df['user_id'].nunique()} users")
 
         # Time the calculation
         start_time = time.time()
@@ -786,9 +755,9 @@ class TestTimeSeriesCalculationComprehensive:
         assert len(result) == 30, f"Expected 30 days of data, got {len(result)}"
 
         # Validate performance (should complete in reasonable time)
-        assert (
-            calculation_time < 30.0
-        ), f"Calculation took too long: {calculation_time:.2f} seconds"
+        assert calculation_time < 30.0, (
+            f"Calculation took too long: {calculation_time:.2f} seconds"
+        )
 
         # Validate data quality
         total_starters = result["started_funnel_users"].sum()
@@ -796,13 +765,9 @@ class TestTimeSeriesCalculationComprehensive:
 
         assert total_starters > 0, "Should have some starters"
         assert total_completers > 0, "Should have some completers"
-        assert (
-            total_completers <= total_starters
-        ), "Completers should not exceed starters"
+        assert total_completers <= total_starters, "Completers should not exceed starters"
 
-        print(
-            f"✅ Performance test passed: {calculation_time:.2f}s for {len(large_df)} events"
-        )
+        print(f"✅ Performance test passed: {calculation_time:.2f}s for {len(large_df)} events")
 
 
 @pytest.mark.visualization
@@ -843,9 +808,7 @@ class TestTimeSeriesVisualization:
 
         # Validate chart structure
         assert chart is not None, "Chart should be created"
-        assert (
-            len(chart.data) >= 2
-        ), "Should have at least 2 traces (primary and secondary)"
+        assert len(chart.data) >= 2, "Should have at least 2 traces (primary and secondary)"
 
         # Validate data integrity
         primary_trace = chart.data[0]

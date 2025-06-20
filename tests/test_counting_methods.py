@@ -243,9 +243,7 @@ class TestCountingMethods:
         assert abs(results.conversion_rates[1] - 66.67) < 0.01  # 2/3
         assert abs(results.conversion_rates[2] - 33.33) < 0.01  # 1/3
 
-    def test_counting_method_comparison_same_data(
-        self, calculator_factory, base_timestamp
-    ):
+    def test_counting_method_comparison_same_data(self, calculator_factory, base_timestamp):
         """
         Test that different counting methods produce different results on the same data.
         """
@@ -333,9 +331,7 @@ class TestCountingMethods:
         # Results should be different
         assert results_unique.users_count != results_totals.users_count
 
-    def test_unique_users_with_multiple_attempts(
-        self, calculator_factory, base_timestamp
-    ):
+    def test_unique_users_with_multiple_attempts(self, calculator_factory, base_timestamp):
         """
         Test unique_users method specifically with users who make multiple attempts.
         Should count user only once per step regardless of attempts.

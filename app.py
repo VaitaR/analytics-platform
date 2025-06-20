@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import random
 import time
 from collections import Counter, defaultdict
@@ -186,9 +187,7 @@ class DataSourceManager:
         self.logger = logging.getLogger(__name__)
         self._performance_metrics = {}  # Performance monitoring for data operations
 
-    def _safe_json_decode(
-        self, column_expr: pl.Expr, infer_all: bool = True
-    ) -> pl.Expr:
+    def _safe_json_decode(self, column_expr: pl.Expr, infer_all: bool = True) -> pl.Expr:
         """
         Safely decode JSON strings to struct type with flexible schema handling.
 
@@ -249,9 +248,7 @@ class DataSourceManager:
             # Attempt to decode JSON and access field
             return self._safe_json_decode(column_expr).struct.field(field_name)
         except Exception as e:
-            self.logger.debug(
-                f"JSON field access failed for field '{field_name}': {str(e)}"
-            )
+            self.logger.debug(f"JSON field access failed for field '{field_name}': {str(e)}")
             # Return null expression as fallback
             return pl.lit(None)
 
@@ -280,9 +277,7 @@ class DataSourceManager:
             elif uploaded_file.name.endswith(".parquet"):
                 df = pd.read_parquet(uploaded_file)
             else:
-                raise ValueError(
-                    "Unsupported file format. Please use CSV or Parquet files."
-                )
+                raise ValueError("Unsupported file format. Please use CSV or Parquet files.")
 
             # Validate data
             is_valid, message = self.validate_event_data(df)
@@ -382,18 +377,14 @@ class DataSourceManager:
             if step_idx > 0:
                 # Remove some users (dropout)
                 n_remaining = int(len(remaining_users) * (1 - dropout_rates[step_idx]))
-                remaining_users = np.random.choice(
-                    remaining_users, n_remaining, replace=False
-                )
+                remaining_users = np.random.choice(remaining_users, n_remaining, replace=False)
                 current_users = set(remaining_users)
 
             # Generate events for remaining users
             for user_id in remaining_users:
                 # Add some time variance between steps with cohort effect
                 user_props = user_properties[user_id]
-                reg_date = datetime.strptime(
-                    user_props["registration_date"], "%Y-%m-%d"
-                )
+                reg_date = datetime.strptime(user_props["registration_date"], "%Y-%m-%d")
 
                 # Time variance based on registration cohort
                 cohort_factor = (reg_date - base_time).days / 365 + 1
@@ -416,9 +407,7 @@ class DataSourceManager:
                     "app_version": np.random.choice(
                         ["2.1.0", "2.2.0", "2.3.0"], p=[0.2, 0.3, 0.5]
                     ),
-                    "device_type": np.random.choice(
-                        ["ios", "android", "web"], p=[0.4, 0.4, 0.2]
-                    ),
+                    "device_type": np.random.choice(["ios", "android", "web"], p=[0.4, 0.4, 0.2]),
                 }
 
                 events_data.append(
@@ -509,9 +498,7 @@ class DataSourceManager:
                                     "Trying modern Polars struct.fields() API for event_properties"
                                 )
                                 all_keys = (
-                                    decoded.select(
-                                        pl.col("decoded_props").struct.fields()
-                                    )
+                                    decoded.select(pl.col("decoded_props").struct.fields())
                                     .to_series()
                                     .explode()
                                     .unique()
@@ -549,9 +536,7 @@ class DataSourceManager:
 
                             # Add to properties set
                             if len(all_keys) > 0:
-                                properties["event_properties"].update(
-                                    all_keys.to_list()
-                                )
+                                properties["event_properties"].update(all_keys.to_list())
 
                 # Extract user properties
                 if "user_properties" in pl_df.columns:
@@ -572,9 +557,7 @@ class DataSourceManager:
                                     "Trying modern Polars struct.fields() API for user_properties"
                                 )
                                 all_keys = (
-                                    decoded.select(
-                                        pl.col("decoded_props").struct.fields()
-                                    )
+                                    decoded.select(pl.col("decoded_props").struct.fields())
                                     .to_series()
                                     .explode()
                                     .unique()
@@ -635,9 +618,7 @@ class DataSourceManager:
 
         return {k: sorted(list(v)) for k, v in properties.items() if v}
 
-    def _get_segmentation_properties_pandas(
-        self, df: pd.DataFrame
-    ) -> dict[str, list[str]]:
+    def _get_segmentation_properties_pandas(self, df: pd.DataFrame) -> dict[str, list[str]]:
         """Legacy pandas implementation for extracting segmentation properties"""
         properties = {"event_properties": set(), "user_properties": set()}
 
@@ -652,9 +633,7 @@ class DataSourceManager:
                     json.JSONDecodeError,
                     TypeError,
                 ):  # Handle both JSON errors and type errors
-                    self.logger.debug(
-                        f"Failed to decode event_properties: {prop_str[:50]}"
-                    )
+                    self.logger.debug(f"Failed to decode event_properties: {prop_str[:50]}")
                     continue
 
         # Extract user properties
@@ -668,16 +647,12 @@ class DataSourceManager:
                     json.JSONDecodeError,
                     TypeError,
                 ):  # Handle both JSON errors and type errors
-                    self.logger.debug(
-                        f"Failed to decode user_properties: {prop_str[:50]}"
-                    )
+                    self.logger.debug(f"Failed to decode user_properties: {prop_str[:50]}")
                     continue
 
         return {k: sorted(list(v)) for k, v in properties.items() if v}
 
-    def get_property_values(
-        self, df: pd.DataFrame, prop_name: str, prop_type: str
-    ) -> list[str]:
+    def get_property_values(self, df: pd.DataFrame, prop_name: str, prop_type: str) -> list[str]:
         """Get unique values for a specific property"""
         column = f"{prop_type}"
 
@@ -705,9 +680,7 @@ class DataSourceManager:
                     # Use struct.field to extract the property value
                     values = (
                         decoded.select(
-                            pl.col("decoded_props")
-                            .struct.field(prop_name)
-                            .alias("prop_value")
+                            pl.col("decoded_props").struct.field(prop_name).alias("prop_value")
                         )
                         .filter(pl.col("prop_value").is_not_null())
                         .select(pl.col("prop_value").cast(pl.Utf8))
@@ -772,31 +745,39 @@ class DataSourceManager:
             event_data = df[df["event_name"] == event_name]
             event_count = len(event_data)
             unique_users = (
-                event_data["user_id"].nunique()
-                if "user_id" in event_data.columns
-                else 0
+                event_data["user_id"].nunique() if "user_id" in event_data.columns else 0
             )
 
             # Calculate percentages
-            event_percentage = (
-                (event_count / total_events * 100) if total_events > 0 else 0
-            )
-            user_penetration = (
-                (unique_users / total_users * 100) if total_users > 0 else 0
-            )
+            event_percentage = (event_count / total_events * 100) if total_events > 0 else 0
+            user_penetration = (unique_users / total_users * 100) if total_users > 0 else 0
 
             event_stats[event_name] = {
                 "total_occurrences": event_count,
                 "unique_users": unique_users,
                 "event_percentage": event_percentage,
                 "user_penetration": user_penetration,
-                "avg_events_per_user": (
-                    (event_count / unique_users) if unique_users > 0 else 0
-                ),
+                "avg_events_per_user": ((event_count / unique_users) if unique_users > 0 else 0),
             }
 
         # Try to load demo events metadata
         try:
+            # Auto-generate demo data if it doesn't exist
+            if not os.path.exists("test_data/demo_events.csv"):
+                try:
+                    from tests.test_data_generator import ensure_test_data
+                    ensure_test_data()
+                except ImportError:
+                    self.logger.warning("Test data generator not available, creating minimal demo data")
+                    os.makedirs("test_data", exist_ok=True)
+                    # Create minimal demo data
+                    minimal_demo = pd.DataFrame([
+                        {"name": "Page View", "category": "Navigation", "description": "User views a page", "frequency": "high"},
+                        {"name": "User Sign-Up", "category": "Conversion", "description": "User creates an account", "frequency": "medium"},
+                        {"name": "First Purchase", "category": "Revenue", "description": "User makes first purchase", "frequency": "low"}
+                    ])
+                    minimal_demo.to_csv("test_data/demo_events.csv", index=False)
+            
             demo_df = pd.read_csv("test_data/demo_events.csv")
             metadata = {}
 
@@ -828,14 +809,10 @@ class DataSourceManager:
                 if event_name not in metadata:
                     # Categorize unknown events
                     event_lower = event_name.lower()
-                    if any(
-                        word in event_lower
-                        for word in ["sign", "login", "register", "auth"]
-                    ):
+                    if any(word in event_lower for word in ["sign", "login", "register", "auth"]):
                         category = "Authentication"
                     elif any(
-                        word in event_lower
-                        for word in ["onboard", "tutorial", "setup", "profile"]
+                        word in event_lower for word in ["onboard", "tutorial", "setup", "profile"]
                     ):
                         category = "Onboarding"
                     elif any(
@@ -844,18 +821,12 @@ class DataSourceManager:
                     ):
                         category = "E-commerce"
                     elif any(
-                        word in event_lower
-                        for word in ["view", "click", "search", "browse"]
+                        word in event_lower for word in ["view", "click", "search", "browse"]
                     ):
                         category = "Engagement"
-                    elif any(
-                        word in event_lower for word in ["share", "invite", "social"]
-                    ):
+                    elif any(word in event_lower for word in ["share", "invite", "social"]):
                         category = "Social"
-                    elif any(
-                        word in event_lower
-                        for word in ["mobile", "app", "notification"]
-                    ):
+                    elif any(word in event_lower for word in ["mobile", "app", "notification"]):
                         category = "Mobile"
                     else:
                         category = "Other"
@@ -892,14 +863,10 @@ class DataSourceManager:
             # Basic categorization based on event names
             for event in events:
                 event_lower = event.lower()
-                if any(
-                    word in event_lower
-                    for word in ["sign", "login", "register", "auth"]
-                ):
+                if any(word in event_lower for word in ["sign", "login", "register", "auth"]):
                     category = "Authentication"
                 elif any(
-                    word in event_lower
-                    for word in ["onboard", "tutorial", "setup", "profile"]
+                    word in event_lower for word in ["onboard", "tutorial", "setup", "profile"]
                 ):
                     category = "Onboarding"
                 elif any(
@@ -907,16 +874,11 @@ class DataSourceManager:
                     for word in ["purchase", "buy", "payment", "checkout", "cart"]
                 ):
                     category = "E-commerce"
-                elif any(
-                    word in event_lower
-                    for word in ["view", "click", "search", "browse"]
-                ):
+                elif any(word in event_lower for word in ["view", "click", "search", "browse"]):
                     category = "Engagement"
                 elif any(word in event_lower for word in ["share", "invite", "social"]):
                     category = "Social"
-                elif any(
-                    word in event_lower for word in ["mobile", "app", "notification"]
-                ):
+                elif any(word in event_lower for word in ["mobile", "app", "notification"]):
                     category = "Mobile"
                 else:
                     category = "Other"
@@ -965,9 +927,7 @@ def _funnel_performance_monitor(func_name: str):
 
                 self._performance_metrics[func_name].append(execution_time)
 
-                self.logger.info(
-                    f"{func_name} executed in {execution_time:.4f} seconds"
-                )
+                self.logger.info(f"{func_name} executed in {execution_time:.4f} seconds")
                 return result
 
             except Exception as e:
@@ -991,17 +951,13 @@ class FunnelCalculator:
         self._cached_properties = {}  # Cache for parsed JSON properties
         self._preprocessed_data = None  # Cache for preprocessed data
         self._performance_metrics = {}  # Performance monitoring
-        self._path_analyzer = PathAnalyzer(
-            self.config
-        )  # Initialize the path analyzer helper
+        self._path_analyzer = PathAnalyzer(self.config)  # Initialize the path analyzer helper
 
         # Set up logging for performance monitoring
         self.logger = logging.getLogger(__name__)
         if not self.logger.handlers:
             handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
@@ -1065,9 +1021,7 @@ class FunnelCalculator:
             # Attempt to decode JSON and access field
             return self._safe_json_decode(column_expr).struct.field(field_name)
         except Exception as e:
-            self.logger.debug(
-                f"JSON field access failed for field '{field_name}': {str(e)}"
-            )
+            self.logger.debug(f"JSON field access failed for field '{field_name}': {str(e)}")
             # Return null expression as fallback
             return pl.lit(None)
 
@@ -1095,9 +1049,7 @@ class FunnelCalculator:
                             lambda x: str(x) if x is not None else None
                         )
                     except Exception as e:
-                        self.logger.warning(
-                            f"Error preprocessing column {col}: {str(e)}"
-                        )
+                        self.logger.warning(f"Error preprocessing column {col}: {str(e)}")
 
             # Special handling for properties column which often contains nested JSON
             if "properties" in df_copy.columns:
@@ -1106,9 +1058,7 @@ class FunnelCalculator:
                         lambda x: str(x) if x is not None else None
                     )
                 except Exception as e:
-                    self.logger.warning(
-                        f"Error preprocessing properties column: {str(e)}"
-                    )
+                    self.logger.warning(f"Error preprocessing properties column: {str(e)}")
 
             try:
                 # Try using newer Polars versions with strict=False first
@@ -1129,9 +1079,7 @@ class FunnelCalculator:
                     if col == "timestamp":
                         schema[col] = pl.Datetime
                     elif df[col].dtype in ["int64", "float64"]:
-                        schema[col] = (
-                            pl.Float64 if df[col].dtype == "float64" else pl.Int64
-                        )
+                        schema[col] = pl.Float64 if df[col].dtype == "float64" else pl.Int64
                     else:
                         schema[col] = pl.Utf8
 
@@ -1143,9 +1091,7 @@ class FunnelCalculator:
 
                 return pl.from_pandas(df_copy)
             except Exception as inner_e:
-                self.logger.error(
-                    f"Failed to convert with explicit schema: {str(inner_e)}"
-                )
+                self.logger.error(f"Failed to convert with explicit schema: {str(inner_e)}")
                 # Last resort: convert one column at a time
                 try:
                     result = None
@@ -1157,9 +1103,7 @@ class FunnelCalculator:
                                 pl_series = pl.Series(col, series.astype(str).tolist())
                             elif series.dtype == "datetime64[ns]":
                                 # Convert to datetime
-                                pl_series = pl.Series(
-                                    col, series.tolist(), dtype=pl.Datetime
-                                )
+                                pl_series = pl.Series(col, series.tolist(), dtype=pl.Datetime)
                             else:
                                 # Use default conversion
                                 pl_series = pl.Series(col, series.tolist())
@@ -1169,9 +1113,7 @@ class FunnelCalculator:
                             else:
                                 result = result.with_columns([pl_series])
                         except Exception as s_e:
-                            self.logger.warning(
-                                f"Error converting column {col}: {str(s_e)}"
-                            )
+                            self.logger.warning(f"Error converting column {col}: {str(s_e)}")
                             # If we can't convert, use strings
                             pl_series = pl.Series(col, series.astype(str).tolist())
                             if result is None:
@@ -1189,9 +1131,7 @@ class FunnelCalculator:
         """Convert polars DataFrame to pandas DataFrame"""
         try:
             pandas_df = df.to_pandas()
-            self.logger.debug(
-                f"Converted polars DataFrame to pandas: {pandas_df.shape}"
-            )
+            self.logger.debug(f"Converted polars DataFrame to pandas: {pandas_df.shape}")
             return pandas_df
         except Exception as e:
             self.logger.error(f"Error converting to pandas: {str(e)}")
@@ -1260,9 +1200,7 @@ class FunnelCalculator:
             )
 
         # Identify critical bottlenecks (functions taking >20% of total time)
-        critical_bottlenecks = [
-            f for f in function_metrics if f["percentage_of_total"] > 20
-        ]
+        critical_bottlenecks = [f for f in function_metrics if f["percentage_of_total"] > 20]
 
         # Identify optimization candidates (high variance functions)
         high_variance_functions = [
@@ -1284,9 +1222,7 @@ class FunnelCalculator:
                         else 0
                     ),
                     "top_function_dominance": (
-                        function_metrics[0]["percentage_of_total"]
-                        if function_metrics
-                        else 0
+                        function_metrics[0]["percentage_of_total"] if function_metrics else 0
                     ),
                 },
             },
@@ -1356,9 +1292,7 @@ class FunnelCalculator:
 
         # Clean data: remove events with missing or invalid user_id
         # Ensure user_id is string type and filter out invalid values
-        funnel_events = funnel_events.with_columns(
-            [pl.col("user_id").cast(pl.Utf8)]
-        ).filter(
+        funnel_events = funnel_events.with_columns([pl.col("user_id").cast(pl.Utf8)]).filter(
             pl.col("user_id").is_not_null()
             & (pl.col("user_id") != "")
             & (pl.col("user_id") != "nan")
@@ -1382,15 +1316,11 @@ class FunnelCalculator:
         # Expand JSON properties using Polars native functionality
         # Process event_properties
         if "event_properties" in funnel_events.columns:
-            funnel_events = self._expand_json_properties_polars(
-                funnel_events, "event_properties"
-            )
+            funnel_events = self._expand_json_properties_polars(funnel_events, "event_properties")
 
         # Process user_properties
         if "user_properties" in funnel_events.columns:
-            funnel_events = self._expand_json_properties_polars(
-                funnel_events, "user_properties"
-            )
+            funnel_events = self._expand_json_properties_polars(funnel_events, "user_properties")
 
         execution_time = time.time() - start_time
         self.logger.info(
@@ -1399,9 +1329,7 @@ class FunnelCalculator:
 
         return funnel_events
 
-    def _expand_json_properties_polars(
-        self, df: pl.DataFrame, column: str
-    ) -> pl.DataFrame:
+    def _expand_json_properties_polars(self, df: pl.DataFrame, column: str) -> pl.DataFrame:
         """
         Expand commonly used JSON properties into separate columns using Polars
         for faster filtering and segmentation
@@ -1477,9 +1405,7 @@ class FunnelCalculator:
                                         try:
                                             row = decoded.row(i, named=True)
                                             if row["decoded_props"] is not None:
-                                                all_keys_set.update(
-                                                    row["decoded_props"].keys()
-                                                )
+                                                all_keys_set.update(row["decoded_props"].keys())
                                         except:
                                             continue
                                     # Convert to series for unique values
@@ -1488,9 +1414,7 @@ class FunnelCalculator:
                                         f"Successfully extracted {len(all_keys)} field names using fallback method"
                                     )
                                 else:
-                                    self.logger.debug(
-                                        "No valid decoded props found in sample"
-                                    )
+                                    self.logger.debug("No valid decoded props found in sample")
                                     return df
                             else:
                                 self.logger.debug("No non-null decoded props found")
@@ -1510,9 +1434,7 @@ class FunnelCalculator:
                 except Exception as e:
                     self.logger.debug(f"Key count error: {str(e)}")
                     # Fallback to simple approach
-                    key_counts = pl.DataFrame(
-                        {"values": all_keys, "counts": [1] * len(all_keys)}
-                    )
+                    key_counts = pl.DataFrame({"values": all_keys, "counts": [1] * len(all_keys)})
 
                 # Calculate threshold
                 threshold = df.height * 0.1
@@ -1537,9 +1459,7 @@ class FunnelCalculator:
                         )
                     else:
                         # Just use all properties if we can't determine counts
-                        self.logger.debug(
-                            f"Count column not found in: {key_counts.columns}"
-                        )
+                        self.logger.debug(f"Count column not found in: {key_counts.columns}")
                         common_props = all_keys.to_list()
                 except Exception as e:
                     self.logger.debug(f"Error filtering common properties: {str(e)}")
@@ -1555,9 +1475,7 @@ class FunnelCalculator:
                         expr = self._safe_json_field_access(pl.col(column), prop)
                         expanded_cols[col_name] = expr
                     except Exception as e:
-                        self.logger.debug(
-                            f"Error creating expression for {prop}: {str(e)}"
-                        )
+                        self.logger.debug(f"Error creating expression for {prop}: {str(e)}")
                         continue
 
                 # Cache the property expressions
@@ -1581,9 +1499,7 @@ class FunnelCalculator:
             return df
 
     @_funnel_performance_monitor("_preprocess_data")
-    def _preprocess_data(
-        self, events_df: pd.DataFrame, funnel_steps: list[str]
-    ) -> pd.DataFrame:
+    def _preprocess_data(self, events_df: pd.DataFrame, funnel_steps: list[str]) -> pd.DataFrame:
         """
         Preprocess and optimize data for funnel calculations with internal caching
 
@@ -1632,9 +1548,7 @@ class FunnelCalculator:
 
         # Sort by user_id, then original order, then timestamp for optimal performance
         # The original order ensures FIRST_ONLY mode works correctly
-        funnel_events = funnel_events.sort_values(
-            ["user_id", "_original_order", "timestamp"]
-        )
+        funnel_events = funnel_events.sort_values(["user_id", "_original_order", "timestamp"])
 
         # Optimize data types for better performance
         if "user_id" in funnel_events.columns:
@@ -1647,14 +1561,10 @@ class FunnelCalculator:
 
         # Expand frequently used JSON properties into columns for faster access
         if "event_properties" in funnel_events.columns:
-            funnel_events = self._expand_json_properties(
-                funnel_events, "event_properties"
-            )
+            funnel_events = self._expand_json_properties(funnel_events, "event_properties")
 
         if "user_properties" in funnel_events.columns:
-            funnel_events = self._expand_json_properties(
-                funnel_events, "user_properties"
-            )
+            funnel_events = self._expand_json_properties(funnel_events, "user_properties")
 
         # Reset index to ensure clean state for groupby operations
         funnel_events = funnel_events.reset_index(drop=True)
@@ -1740,9 +1650,7 @@ class FunnelCalculator:
             props = json.loads(json_str)
             return props.get(prop_name)
         except json.JSONDecodeError:  # Specific exception
-            self.logger.debug(
-                f"Failed to decode JSON in _extract_property_value: {json_str[:50]}"
-            )
+            self.logger.debug(f"Failed to decode JSON in _extract_property_value: {json_str[:50]}")
             return None
 
     @_funnel_performance_monitor("segment_events_data")
@@ -1796,9 +1704,7 @@ class FunnelCalculator:
         return segments if segments else {"All Users": events_df}
 
     @_funnel_performance_monitor("segment_events_data_polars")
-    def segment_events_data_polars(
-        self, events_df: pl.DataFrame
-    ) -> dict[str, pl.DataFrame]:
+    def segment_events_data_polars(self, events_df: pl.DataFrame) -> dict[str, pl.DataFrame]:
         """Segment events data based on configuration with optimized filtering using Polars"""
         if not self.config.segment_by or not self.config.segment_values:
             return {"All Users": events_df}
@@ -1865,8 +1771,7 @@ class FunnelCalculator:
             # Create a more robust expression to handle JSON strings
             # First attempt: Use JSON path expression to extract the property
             return filtered_df.filter(
-                pl.col(prop_type).str.json_extract_scalar(f"$.{prop_name}")
-                == prop_value
+                pl.col(prop_type).str.json_extract_scalar(f"$.{prop_name}") == prop_value
             )
         except Exception as e:
             self.logger.warning(f"JSON path extraction failed: {str(e)}")
@@ -1874,8 +1779,7 @@ class FunnelCalculator:
             try:
                 # Second attempt: Parse JSON and check field
                 return filtered_df.filter(
-                    self._safe_json_field_access(pl.col(prop_type), prop_name)
-                    == prop_value
+                    self._safe_json_field_access(pl.col(prop_type), prop_name) == prop_value
                 )
             except Exception as e:
                 self.logger.warning(f"JSON struct field extraction failed: {str(e)}")
@@ -1886,9 +1790,7 @@ class FunnelCalculator:
                     pattern = f'"{prop_name}": ?"{prop_value}"'
                     return filtered_df.filter(pl.col(prop_type).str.contains(pattern))
                 except Exception as e:
-                    self.logger.warning(
-                        f"Polars property filtering failed completely: {str(e)}"
-                    )
+                    self.logger.warning(f"Polars property filtering failed completely: {str(e)}")
                     # Return empty DataFrame with same schema
                     return pl.DataFrame(schema=df.schema)
 
@@ -1907,9 +1809,7 @@ class FunnelCalculator:
         # Try to use Polars for efficient filtering
         if len(df) > 1000:
             try:
-                return self._filter_by_property_polars(
-                    df, prop_name, prop_value, prop_type
-                )
+                return self._filter_by_property_polars(df, prop_name, prop_value, prop_type)
             except Exception as e:
                 self.logger.warning(
                     f"Polars property filtering failed: {str(e)}, falling back to pandas"
@@ -1917,9 +1817,7 @@ class FunnelCalculator:
                 # Fall back to pandas implementation
 
         # Pandas fallback
-        mask = df[prop_type].apply(
-            lambda x: self._has_property_value(x, prop_name, prop_value)
-        )
+        mask = df[prop_type].apply(lambda x: self._has_property_value(x, prop_name, prop_value))
         return df[mask].copy()
 
     def _filter_by_property_polars(
@@ -1942,9 +1840,7 @@ class FunnelCalculator:
         # Convert back to pandas
         return filtered_df.to_pandas()
 
-    def _has_property_value(
-        self, prop_str: str, prop_name: str, prop_value: str
-    ) -> bool:
+    def _has_property_value(self, prop_str: str, prop_name: str, prop_value: str) -> bool:
         """Check if property string contains specific value"""
         if pd.isna(prop_str):
             return False
@@ -1952,9 +1848,7 @@ class FunnelCalculator:
             props = json.loads(prop_str)
             return props.get(prop_name) == prop_value
         except json.JSONDecodeError:  # Specific exception
-            self.logger.debug(
-                f"Failed to decode JSON in _has_property_value: {prop_str[:50]}"
-            )
+            self.logger.debug(f"Failed to decode JSON in _has_property_value: {prop_str[:50]}")
             return False
 
     def calculate_funnel_metrics(
@@ -1989,13 +1883,9 @@ class FunnelCalculator:
             try:
                 # Convert to Polars at the entry point
                 polars_df = self._to_polars(events_df)
-                return self._calculate_funnel_metrics_polars(
-                    polars_df, funnel_steps, events_df
-                )
+                return self._calculate_funnel_metrics_polars(polars_df, funnel_steps, events_df)
             except Exception as e:
-                self.logger.warning(
-                    f"Polars calculation failed: {str(e)}, falling back to Pandas"
-                )
+                self.logger.warning(f"Polars calculation failed: {str(e)}, falling back to Pandas")
                 # Fallback to Pandas implementation
                 return self._calculate_funnel_metrics_pandas(events_df, funnel_steps)
         else:
@@ -2066,24 +1956,18 @@ class FunnelCalculator:
                 )
             elif self.config.counting_method == CountingMethod.UNIQUE_USERS:
                 # Use existing Polars implementation
-                segment_results[segment_name] = (
-                    self._calculate_unique_users_funnel_polars(
-                        segment_polars_df, funnel_steps
-                    )
+                segment_results[segment_name] = self._calculate_unique_users_funnel_polars(
+                    segment_polars_df, funnel_steps
                 )
             elif self.config.counting_method == CountingMethod.EVENT_TOTALS:
                 # Use new Polars implementation
-                segment_results[segment_name] = (
-                    self._calculate_event_totals_funnel_polars(
-                        segment_polars_df, funnel_steps
-                    )
+                segment_results[segment_name] = self._calculate_event_totals_funnel_polars(
+                    segment_polars_df, funnel_steps
                 )
             elif self.config.counting_method == CountingMethod.UNIQUE_PAIRS:
                 # Use new Polars implementation
-                segment_results[segment_name] = (
-                    self._calculate_unique_pairs_funnel_polars(
-                        segment_polars_df, funnel_steps
-                    )
+                segment_results[segment_name] = self._calculate_unique_pairs_funnel_polars(
+                    segment_polars_df, funnel_steps
                 )
 
         # If only one segment, return its results directly with additional analysis
@@ -2163,8 +2047,7 @@ class FunnelCalculator:
 
         # Add segment data
         main_result.segment_data = {
-            segment_name: result.users_count
-            for segment_name, result in segment_results.items()
+            segment_name: result.users_count for segment_name, result in segment_results.items()
         }
 
         # Calculate statistical significance between segments
@@ -2174,9 +2057,7 @@ class FunnelCalculator:
             )
 
         total_time = time.time() - start_time
-        self.logger.info(
-            f"Total Polars funnel calculation completed in {total_time:.4f} seconds"
-        )
+        self.logger.info(f"Total Polars funnel calculation completed in {total_time:.4f} seconds")
 
         return main_result
 
@@ -2247,20 +2128,16 @@ class FunnelCalculator:
                     segment_df, funnel_steps
                 )
             elif self.config.counting_method == CountingMethod.UNIQUE_USERS:
-                segment_results[segment_name] = (
-                    self._calculate_unique_users_funnel_optimized(
-                        segment_df, funnel_steps
-                    )
+                segment_results[segment_name] = self._calculate_unique_users_funnel_optimized(
+                    segment_df, funnel_steps
                 )
             elif self.config.counting_method == CountingMethod.EVENT_TOTALS:
                 segment_results[segment_name] = self._calculate_event_totals_funnel(
                     segment_df, funnel_steps
                 )
             elif self.config.counting_method == CountingMethod.UNIQUE_PAIRS:
-                segment_results[segment_name] = (
-                    self._calculate_unique_pairs_funnel_optimized(
-                        segment_df, funnel_steps
-                    )
+                segment_results[segment_name] = self._calculate_unique_pairs_funnel_optimized(
+                    segment_df, funnel_steps
                 )
 
         # If only one segment, return its results directly with additional analysis
@@ -2305,8 +2182,7 @@ class FunnelCalculator:
 
         # Add segment data
         main_result.segment_data = {
-            segment_name: result.users_count
-            for segment_name, result in segment_results.items()
+            segment_name: result.users_count for segment_name, result in segment_results.items()
         }
 
         # Calculate statistical significance between segments
@@ -2316,9 +2192,7 @@ class FunnelCalculator:
             )
 
         total_time = time.time() - start_time
-        self.logger.info(
-            f"Total Pandas funnel calculation completed in {total_time:.4f} seconds"
-        )
+        self.logger.info(f"Total Pandas funnel calculation completed in {total_time:.4f} seconds")
 
         return main_result
 
@@ -2375,9 +2249,7 @@ class FunnelCalculator:
                 continue
 
             # Get users who have both events
-            from_users = set(
-                from_events.select("user_id").unique().to_series().to_list()
-            )
+            from_users = set(from_events.select("user_id").unique().to_series().to_list())
             to_users = set(to_events.select("user_id").unique().to_series().to_list())
             converted_users = from_users.intersection(to_users)
 
@@ -2408,18 +2280,14 @@ class FunnelCalculator:
                 joined = from_df.join(to_df, on="user_id", suffix="_to")
 
                 # Calculate conversion times for valid conversions
-                valid_conversions = joined.filter(
-                    pl.col("timestamp_to") > pl.col("timestamp")
-                )
+                valid_conversions = joined.filter(pl.col("timestamp_to") > pl.col("timestamp"))
 
                 if valid_conversions.height > 0:
                     # Add hours column with time difference in hours
                     conversion_times_df = valid_conversions.with_columns(
                         [
                             (
-                                (
-                                    pl.col("timestamp_to") - pl.col("timestamp")
-                                ).dt.total_seconds()
+                                (pl.col("timestamp_to") - pl.col("timestamp")).dt.total_seconds()
                                 / 3600
                             ).alias("hours_diff")
                         ]
@@ -2433,9 +2301,7 @@ class FunnelCalculator:
                     # Extract conversion times
                     if conversion_times_df.height > 0:
                         conversion_times = (
-                            conversion_times_df.select("hours_diff")
-                            .to_series()
-                            .to_list()
+                            conversion_times_df.select("hours_diff").to_series().to_list()
                         )
                     else:
                         conversion_times = []
@@ -2459,9 +2325,9 @@ class FunnelCalculator:
                     user_from = from_events_filtered.filter(
                         pl.col("user_id") == str(user_id)
                     ).sort("timestamp")
-                    user_to = to_events_filtered.filter(
-                        pl.col("user_id") == str(user_id)
-                    ).sort("timestamp")
+                    user_to = to_events_filtered.filter(pl.col("user_id") == str(user_id)).sort(
+                        "timestamp"
+                    )
 
                     if user_from.height == 0 or user_to.height == 0:
                         continue
@@ -2473,17 +2339,13 @@ class FunnelCalculator:
                             (pl.col("timestamp") > from_time)
                             & (
                                 pl.col("timestamp")
-                                <= (
-                                    from_time + timedelta(hours=conversion_window_hours)
-                                )
+                                <= (from_time + timedelta(hours=conversion_window_hours))
                             )
                         )
 
                         if valid_to_times.height > 0:
                             # Find the closest to_event
-                            closest_to = valid_to_times.select(
-                                pl.min("timestamp")
-                            ).item()
+                            closest_to = valid_to_times.select(pl.min("timestamp")).item()
                             time_diff = (closest_to - from_time).total_seconds() / 3600
                             conversion_times.append(float(time_diff))
                             break  # Only need the first valid conversion for this from_event
@@ -2623,9 +2485,7 @@ class FunnelCalculator:
 
             return len(completed_steps) == len(funnel_steps)
         # For unordered funnels, just check if all steps were done
-        completed_steps = set(
-            user_events.select("event_name").unique().to_series().to_list()
-        )
+        completed_steps = set(user_events.select("event_name").unique().to_series().to_list())
         return len(completed_steps.intersection(set(funnel_steps))) == len(funnel_steps)
 
     def _check_user_funnel_completion_pandas(
@@ -2740,11 +2600,7 @@ class FunnelCalculator:
 
             # Add period column using truncate for efficient grouping
             events_with_period = relevant_events.with_columns(
-                [
-                    pl.col("timestamp")
-                    .dt.truncate(aggregation_period)
-                    .alias("period_date")
-                ]
+                [pl.col("timestamp").dt.truncate(aggregation_period).alias("period_date")]
             )
 
             # Get unique periods where the first step occurred (cohort periods only)
@@ -2774,9 +2630,7 @@ class FunnelCalculator:
                     period_end = period_date + timedelta(days=1)
 
                 # Get all events in this period
-                period_events = events_with_period.filter(
-                    pl.col("period_date") == period_date
-                )
+                period_events = events_with_period.filter(pl.col("period_date") == period_date)
 
                 # Find users who started the funnel in this period
                 period_starters = (
@@ -2790,13 +2644,10 @@ class FunnelCalculator:
                 if started_count == 0:
                     # No starters in this period - but still calculate daily activity metrics
                     daily_activity_events = relevant_events.filter(
-                        (pl.col("timestamp") >= period_date)
-                        & (pl.col("timestamp") < period_end)
+                        (pl.col("timestamp") >= period_date) & (pl.col("timestamp") < period_end)
                     )
 
-                    daily_active_users = daily_activity_events.select(
-                        "user_id"
-                    ).n_unique()
+                    daily_active_users = daily_activity_events.select("user_id").n_unique()
                     daily_events_total = daily_activity_events.height
 
                     result_row = {
@@ -2804,9 +2655,7 @@ class FunnelCalculator:
                         "started_funnel_users": 0,
                         "completed_funnel_users": 0,
                         "conversion_rate": 0.0,
-                        "total_unique_users": period_events.select(
-                            "user_id"
-                        ).n_unique(),
+                        "total_unique_users": period_events.select("user_id").n_unique(),
                         "total_events": period_events.height,
                         # NEW: Daily activity metrics even when no cohort exists
                         "daily_active_users": daily_active_users,
@@ -2818,9 +2667,7 @@ class FunnelCalculator:
                     continue
 
                 # Get starter user IDs efficiently
-                starter_user_ids = (
-                    period_starters.select("user_id").to_series().to_list()
-                )
+                starter_user_ids = period_starters.select("user_id").to_series().to_list()
 
                 # For each starter, get their start time in this period (vectorized)
                 starter_times = (
@@ -2835,10 +2682,9 @@ class FunnelCalculator:
                 # Calculate conversion deadline for each user
                 starters_with_deadline = starter_times.with_columns(
                     [
-                        (
-                            pl.col("start_time")
-                            + pl.duration(hours=conversion_window_hours)
-                        ).alias("deadline")
+                        (pl.col("start_time") + pl.duration(hours=conversion_window_hours)).alias(
+                            "deadline"
+                        )
                     ]
                 )
 
@@ -2858,9 +2704,7 @@ class FunnelCalculator:
 
                     # Join starters with their step events to find matches within conversion window
                     step_matches = (
-                        starters_with_deadline.join(
-                            step_events, on="user_id", how="inner"
-                        )
+                        starters_with_deadline.join(step_events, on="user_id", how="inner")
                         .filter(
                             (pl.col("timestamp") >= pl.col("start_time"))
                             & (pl.col("timestamp") <= pl.col("deadline"))
@@ -2876,16 +2720,13 @@ class FunnelCalculator:
 
                 # Calculate conversion rate
                 conversion_rate = (
-                    (completed_count / started_count * 100)
-                    if started_count > 0
-                    else 0.0
+                    (completed_count / started_count * 100) if started_count > 0 else 0.0
                 )
 
                 # Calculate daily activity metrics (separate from cohort metrics)
                 # Daily metrics count ALL activity on this date, not just cohort activity
                 daily_activity_events = relevant_events.filter(
-                    (pl.col("timestamp") >= period_date)
-                    & (pl.col("timestamp") < period_end)
+                    (pl.col("timestamp") >= period_date) & (pl.col("timestamp") < period_end)
                 )
 
                 daily_active_users = daily_activity_events.select("user_id").n_unique()
@@ -2970,9 +2811,7 @@ class FunnelCalculator:
 
         try:
             # Filter to relevant events
-            relevant_events = events_df[
-                events_df["event_name"].isin(funnel_steps)
-            ].copy()
+            relevant_events = events_df[events_df["event_name"].isin(funnel_steps)].copy()
 
             if relevant_events.empty:
                 return pd.DataFrame()
@@ -2981,9 +2820,7 @@ class FunnelCalculator:
             pandas_freq = self._convert_polars_to_pandas_period(aggregation_period)
 
             # Create period grouper
-            relevant_events["period_date"] = relevant_events["timestamp"].dt.floor(
-                pandas_freq
-            )
+            relevant_events["period_date"] = relevant_events["timestamp"].dt.floor(pandas_freq)
 
             # Get unique periods
             periods = sorted(relevant_events["period_date"].unique())
@@ -3046,9 +2883,7 @@ class FunnelCalculator:
 
                 # Calculate metrics for this period
                 conversion_rate = (
-                    (completed_count / started_count * 100)
-                    if started_count > 0
-                    else 0.0
+                    (completed_count / started_count * 100) if started_count > 0 else 0.0
                 )
 
                 # Count cohort progress for each step (how many from the starting cohort reached each step)
@@ -3076,10 +2911,7 @@ class FunnelCalculator:
                                     (relevant_events["user_id"] == user_id)
                                     & (relevant_events["event_name"] == step)
                                     & (relevant_events["timestamp"] >= start_time)
-                                    & (
-                                        relevant_events["timestamp"]
-                                        <= conversion_deadline
-                                    )
+                                    & (relevant_events["timestamp"] <= conversion_deadline)
                                 ]
 
                                 if not user_step_events.empty:
@@ -3131,13 +2963,11 @@ class FunnelCalculator:
                     if step_from_users > 0:
                         raw_rate = (step_to_users / step_from_users) * 100
                         # Cap at 100% to handle cases where users complete steps in different periods
-                        metrics[f"{funnel_steps[i]}_to_{funnel_steps[i + 1]}_rate"] = (
-                            min(raw_rate, 100.0)
+                        metrics[f"{funnel_steps[i]}_to_{funnel_steps[i + 1]}_rate"] = min(
+                            raw_rate, 100.0
                         )
                     else:
-                        metrics[f"{funnel_steps[i]}_to_{funnel_steps[i + 1]}_rate"] = (
-                            0.0
-                        )
+                        metrics[f"{funnel_steps[i]}_to_{funnel_steps[i + 1]}_rate"] = 0.0
 
                 results.append(metrics)
 
@@ -3164,9 +2994,7 @@ class FunnelCalculator:
         """
         # This method is no longer used directly; logic has been moved into _calculate_time_to_convert_polars
         # This is maintained for backwards compatibility
-        self.logger.warning(
-            "_find_conversion_time_polars is deprecated and scheduled for removal"
-        )
+        self.logger.warning("_find_conversion_time_polars is deprecated and scheduled for removal")
 
         from_times = from_events.to_series().to_list()
         to_times = to_events.to_series().to_list()
@@ -3214,12 +3042,8 @@ class FunnelCalculator:
             step_to = funnel_steps[i + 1]
 
             # Get users who have both events
-            users_with_from = set(
-                events_df[events_df["event_name"] == step_from]["user_id"]
-            )
-            users_with_to = set(
-                events_df[events_df["event_name"] == step_to]["user_id"]
-            )
+            users_with_from = set(events_df[events_df["event_name"] == step_from]["user_id"])
+            users_with_to = set(events_df[events_df["event_name"] == step_to]["user_id"])
             converted_users = users_with_from.intersection(users_with_to)
 
             if not converted_users:
@@ -3233,12 +3057,8 @@ class FunnelCalculator:
                     continue
                 user_events = user_groups.get_group(user_id)
 
-                from_events = user_events[user_events["event_name"] == step_from][
-                    "timestamp"
-                ]
-                to_events = user_events[user_events["event_name"] == step_to][
-                    "timestamp"
-                ]
+                from_events = user_events[user_events["event_name"] == step_from]["timestamp"]
+                to_events = user_events[user_events["event_name"] == step_to]["timestamp"]
 
                 # Find first valid conversion time
                 conversion_time = self._find_conversion_time_vectorized(
@@ -3318,15 +3138,9 @@ class FunnelCalculator:
                 return CohortData("monthly", {}, {}, [])
 
             # Convert to datetime and then to period
-            first_step_events["timestamp"] = pd.to_datetime(
-                first_step_events["timestamp"]
-            )
-            first_step_events["cohort_month"] = first_step_events[
-                "timestamp"
-            ].dt.to_period("M")
-            cohorts = (
-                first_step_events.groupby("cohort_month")["user_id"].nunique().to_dict()
-            )
+            first_step_events["timestamp"] = pd.to_datetime(first_step_events["timestamp"])
+            first_step_events["cohort_month"] = first_step_events["timestamp"].dt.to_period("M")
+            cohorts = first_step_events.groupby("cohort_month")["user_id"].nunique().to_dict()
         except Exception as e:
             self.logger.error(f"Error in cohort analysis: {str(e)}")
             return CohortData("monthly", {}, {}, [])
@@ -3338,25 +3152,17 @@ class FunnelCalculator:
         # Pre-calculate step users for efficiency
         step_user_sets = {}
         for step in funnel_steps:
-            step_user_sets[step] = set(
-                events_df[events_df["event_name"] == step]["user_id"]
-            )
+            step_user_sets[step] = set(events_df[events_df["event_name"] == step]["user_id"])
 
         for cohort_month in cohorts.keys():
             cohort_users = set(
-                first_step_events[first_step_events["cohort_month"] == cohort_month][
-                    "user_id"
-                ]
+                first_step_events[first_step_events["cohort_month"] == cohort_month]["user_id"]
             )
 
             step_conversions = []
             for step in funnel_steps:
                 converted = len(cohort_users.intersection(step_user_sets[step]))
-                rate = (
-                    (converted / len(cohort_users) * 100)
-                    if len(cohort_users) > 0
-                    else 0
-                )
+                rate = (converted / len(cohort_users) * 100) if len(cohort_users) > 0 else 0
                 step_conversions.append(rate)
 
             cohort_conversions[str(cohort_month)] = step_conversions
@@ -3426,21 +3232,15 @@ class FunnelCalculator:
             segment_funnel_events_df = segment_funnel_events_df.select(segment_cols)
 
         # Add _original_order as row index
-        segment_funnel_events_df = segment_funnel_events_df.with_row_index(
-            "_original_order"
-        )
+        segment_funnel_events_df = segment_funnel_events_df.with_row_index("_original_order")
 
         # Same for history DataFrame
         history_cols = [
-            col
-            for col in full_history_for_segment_users.columns
-            if col != "_original_order"
+            col for col in full_history_for_segment_users.columns if col != "_original_order"
         ]
         if len(history_cols) < len(full_history_for_segment_users.columns):
             # If _original_order was in columns, drop it using select rather than drop
-            full_history_for_segment_users = full_history_for_segment_users.select(
-                history_cols
-            )
+            full_history_for_segment_users = full_history_for_segment_users.select(history_cols)
 
         # Add _original_order as row index
         full_history_for_segment_users = full_history_for_segment_users.with_row_index(
@@ -3456,10 +3256,8 @@ class FunnelCalculator:
 
         if "properties" in full_history_for_segment_users.columns:
             # Convert properties to string to avoid nested object type issues
-            full_history_for_segment_users = (
-                full_history_for_segment_users.with_columns(
-                    [pl.col("properties").cast(pl.Utf8)]
-                )
+            full_history_for_segment_users = full_history_for_segment_users.with_columns(
+                [pl.col("properties").cast(pl.Utf8)]
             )
         dropoff_paths = {}
         between_steps_events = {}
@@ -3525,9 +3323,7 @@ class FunnelCalculator:
                 )
                 step_pair = f"{step} → {next_step}"
                 if between_events:  # Only add if non-empty
-                    between_steps_events[step_pair] = dict(
-                        between_events.most_common(10)
-                    )
+                    between_steps_events[step_pair] = dict(between_events.most_common(10))
 
         # Log the content of between_steps_events before returning
         self.logger.info(
@@ -3538,9 +3334,7 @@ class FunnelCalculator:
             dropoff_paths=dropoff_paths, between_steps_events=between_steps_events
         )
 
-    def _safe_polars_operation(
-        self, df: pl.DataFrame, operation: Callable, *args, **kwargs
-    ):
+    def _safe_polars_operation(self, df: pl.DataFrame, operation: Callable, *args, **kwargs):
         """Safely execute a Polars operation with proper error handling for nested object types"""
         try:
             return operation(*args, **kwargs)
@@ -3556,9 +3350,7 @@ class FunnelCalculator:
                         # Only process object columns
                         if dtype in [pl.Object, pl.List, pl.Struct]:
                             # Convert to string representation
-                            result_df = result_df.with_columns(
-                                [result_df[col].cast(pl.Utf8)]
-                            )
+                            result_df = result_df.with_columns([result_df[col].cast(pl.Utf8)])
                     except:
                         pass
 
@@ -3598,9 +3390,7 @@ class FunnelCalculator:
 
         # Cast to DataFrame for type safety after ensuring they're collected
         segment_funnel_events_df = cast(pl.DataFrame, segment_funnel_events_df)
-        full_history_for_segment_users = cast(
-            pl.DataFrame, full_history_for_segment_users
-        )
+        full_history_for_segment_users = cast(pl.DataFrame, full_history_for_segment_users)
 
         # Print debug information about the incoming data to help diagnose issues
         try:
@@ -3663,15 +3453,10 @@ class FunnelCalculator:
                 for col in df_columns:  # type: ignore
                     try:
                         col_dtype = df[col].dtype if hasattr(df, "__getitem__") else None  # type: ignore
-                        self.logger.info(
-                            f"Column {col} in {df_name} has dtype: {col_dtype}"
-                        )
+                        self.logger.info(f"Column {col} in {df_name} has dtype: {col_dtype}")
 
                         # Handle nested object types by converting to string
-                        if (
-                            str(col_dtype).startswith("Object")
-                            or "properties" in col.lower()
-                        ):
+                        if str(col_dtype).startswith("Object") or "properties" in col.lower():
                             self.logger.info(f"Converting column {col} to string")
                             df = df.with_columns([pl.col(col).cast(pl.Utf8)])
                     except Exception as e:
@@ -3703,10 +3488,8 @@ class FunnelCalculator:
             if "properties" in full_history_for_segment_users.columns:
                 try:
                     # Force properties column to string type
-                    full_history_for_segment_users = (
-                        full_history_for_segment_users.with_columns(
-                            [pl.col("properties").cast(pl.Utf8)]
-                        )
+                    full_history_for_segment_users = full_history_for_segment_users.with_columns(
+                        [pl.col("properties").cast(pl.Utf8)]
                     )
                 except Exception as e:
                     self.logger.warning(
@@ -3739,10 +3522,8 @@ class FunnelCalculator:
             if object_cols:
                 for col in object_cols:
                     try:
-                        segment_funnel_events_df = (
-                            segment_funnel_events_df.with_columns(
-                                [pl.col(col).cast(pl.Utf8)]
-                            )
+                        segment_funnel_events_df = segment_funnel_events_df.with_columns(
+                            [pl.col(col).cast(pl.Utf8)]
                         )
                     except:
                         pass
@@ -3777,30 +3558,22 @@ class FunnelCalculator:
         if "properties" in full_history_for_segment_users.columns:
             try:
                 # Try newer Polars API first
-                full_history_for_segment_users = (
-                    full_history_for_segment_users.with_column(
-                        pl.col("properties").cast(pl.Utf8)
-                    )
+                full_history_for_segment_users = full_history_for_segment_users.with_column(
+                    pl.col("properties").cast(pl.Utf8)
                 )
             except AttributeError:
                 # Fall back to older Polars API
-                full_history_for_segment_users = (
-                    full_history_for_segment_users.with_columns(
-                        [pl.col("properties").cast(pl.Utf8)]
-                    )
+                full_history_for_segment_users = full_history_for_segment_users.with_columns(
+                    [pl.col("properties").cast(pl.Utf8)]
                 )
 
         # Remove existing _original_order column if it exists and add a new one
         if "_original_order" in segment_funnel_events_df.columns:
             segment_funnel_events_df = segment_funnel_events_df.drop("_original_order")
-        segment_funnel_events_df = segment_funnel_events_df.with_row_index(
-            "_original_order"
-        )
+        segment_funnel_events_df = segment_funnel_events_df.with_row_index("_original_order")
 
         if "_original_order" in full_history_for_segment_users.columns:
-            full_history_for_segment_users = full_history_for_segment_users.drop(
-                "_original_order"
-            )
+            full_history_for_segment_users = full_history_for_segment_users.drop("_original_order")
         full_history_for_segment_users = full_history_for_segment_users.with_row_index(
             "_original_order"
         )
@@ -3814,10 +3587,8 @@ class FunnelCalculator:
 
         if "properties" in full_history_for_segment_users.columns:
             # Convert properties to string to avoid nested object type issues
-            full_history_for_segment_users = (
-                full_history_for_segment_users.with_columns(
-                    [pl.col("properties").cast(pl.Utf8)]
-                )
+            full_history_for_segment_users = full_history_for_segment_users.with_columns(
+                [pl.col("properties").cast(pl.Utf8)]
             )
         dropoff_paths = {}
         between_steps_events = {}
@@ -3835,20 +3606,14 @@ class FunnelCalculator:
         history_df_lazy = full_history_for_segment_users.lazy()
 
         # Ensure proper types for timestamp column
-        segment_df_lazy = segment_df_lazy.with_columns(
-            [pl.col("timestamp").cast(pl.Datetime)]
-        )
-        history_df_lazy = history_df_lazy.with_columns(
-            [pl.col("timestamp").cast(pl.Datetime)]
-        )
+        segment_df_lazy = segment_df_lazy.with_columns([pl.col("timestamp").cast(pl.Datetime)])
+        history_df_lazy = history_df_lazy.with_columns([pl.col("timestamp").cast(pl.Datetime)])
 
         # Filter to only include events in funnel steps (for performance)
         # Collect the funnel steps into a list to avoid LazyFrame issues
         funnel_steps_list = funnel_steps
         funnel_events_df = (
-            segment_df_lazy.filter(pl.col("event_name").is_in(funnel_steps_list))
-            .collect()
-            .lazy()
+            segment_df_lazy.filter(pl.col("event_name").is_in(funnel_steps_list)).collect().lazy()
         )
 
         conversion_window = pl.duration(hours=self.config.conversion_window_hours)
@@ -3902,10 +3667,7 @@ class FunnelCalculator:
                     history_df_lazy, on="user_id", how="inner"
                 ).filter(
                     (pl.col("timestamp") > pl.col("last_step_time"))
-                    & (
-                        pl.col("timestamp")
-                        <= pl.col("last_step_time") + conversion_window
-                    )
+                    & (pl.col("timestamp") <= pl.col("last_step_time") + conversion_window)
                     & (pl.col("event_name") != step)
                 )
 
@@ -3940,9 +3702,7 @@ class FunnelCalculator:
                     no_events_df = pl.DataFrame(
                         {
                             "next_event": ["(no further activity)"],
-                            "count": [
-                                int(users_with_no_events)
-                            ],  # Explicit conversion to int
+                            "count": [int(users_with_no_events)],  # Explicit conversion to int
                         }
                     )
 
@@ -3965,12 +3725,9 @@ class FunnelCalculator:
                         )
 
                 # Take top 10 events and convert to dict
-                top_events = event_counts_collected.sort("count", descending=True).head(
-                    10
-                )
+                top_events = event_counts_collected.sort("count", descending=True).head(10)
                 dropoff_paths[step] = {
-                    row["next_event"]: row["count"]
-                    for row in top_events.iter_rows(named=True)
+                    row["next_event"]: row["count"] for row in top_events.iter_rows(named=True)
                 }
 
             # ------ BETWEEN STEPS EVENTS ANALYSIS ------
@@ -3997,9 +3754,7 @@ class FunnelCalculator:
                         (pl.col("event_name") == next_step)
                         & pl.col("user_id").is_in(step_user_ids & next_step_user_ids)
                     )
-                    .select(
-                        ["user_id", "timestamp", pl.lit(next_step).alias("step_name")]
-                    )
+                    .select(["user_id", "timestamp", pl.lit(next_step).alias("step_name")])
                     .collect()
                 )
 
@@ -4056,11 +3811,7 @@ class FunnelCalculator:
                         try:
                             # Explicitly convert timestamps to ensure they are proper datetime columns
                             step_A_events_clean = step_A_events.with_columns(
-                                [
-                                    pl.col("timestamp")
-                                    .cast(pl.Datetime)
-                                    .alias("step_A_time")
-                                ]
+                                [pl.col("timestamp").cast(pl.Datetime).alias("step_A_time")]
                             )
 
                             step_B_events_clean = step_B_events.with_columns(
@@ -4097,13 +3848,9 @@ class FunnelCalculator:
                                     .filter(pl.col("timestamp_right").is_not_null())
                                     .with_columns(
                                         [
-                                            pl.col("timestamp_right").alias(
-                                                "step_B_time"
-                                            ),
+                                            pl.col("timestamp_right").alias("step_B_time"),
                                             pl.col("step_name").alias("step"),
-                                            pl.col("step_name_right").alias(
-                                                "next_step"
-                                            ),
+                                            pl.col("step_name_right").alias("next_step"),
                                         ]
                                     )
                                     .select(
@@ -4132,10 +3879,7 @@ class FunnelCalculator:
                                     f"join_asof failed in optimized_reentry: {e}, falling back to standard join approach"
                                 )
                                 # Check specifically for Object dtype errors
-                                if (
-                                    "could not extract number from any-value of dtype"
-                                    in str(e)
-                                ):
+                                if "could not extract number from any-value of dtype" in str(e):
                                     self.logger.info(
                                         "Detected Object dtype error in join_asof, using vectorized fallback approach"
                                     )
@@ -4192,9 +3936,7 @@ class FunnelCalculator:
                                 .alias("hours_diff")
                             ]
                         )
-                        .filter(
-                            pl.col("hours_diff") <= self.config.conversion_window_hours
-                        )
+                        .filter(pl.col("hours_diff") <= self.config.conversion_window_hours)
                         .drop(["ordered_times", "hours_diff"])
                         .with_columns(
                             [
@@ -4218,9 +3960,7 @@ class FunnelCalculator:
 
                         # Join with full history to get all events between the steps
                         between_events_lazy = (
-                            history_df_lazy.join(
-                                step_pairs_lazy, on="user_id", how="inner"
-                            )
+                            history_df_lazy.join(step_pairs_lazy, on="user_id", how="inner")
                             .filter(
                                 (pl.col("timestamp") > pl.col("step_A_time"))
                                 & (pl.col("timestamp") < pl.col("step_B_time"))
@@ -4315,13 +4055,8 @@ class FunnelCalculator:
 
         try:
             # Ensure we have step_A_time column
-            if (
-                "step_A_time" not in step_A_df.columns
-                and "timestamp" in step_A_df.columns
-            ):
-                step_A_df = step_A_df.with_columns(
-                    pl.col("timestamp").alias("step_A_time")
-                )
+            if "step_A_time" not in step_A_df.columns and "timestamp" in step_A_df.columns:
+                step_A_df = step_A_df.with_columns(pl.col("timestamp").alias("step_A_time"))
 
             # Get step names for labels
             step_name = "Step A"
@@ -4355,10 +4090,7 @@ class FunnelCalculator:
                 # Use only native Polars expressions for the filter condition
                 .filter(
                     (pl.col("step_B_time") > pl.col("step_A_time"))
-                    & (
-                        pl.col("step_B_time")
-                        <= pl.col("step_A_time") + conversion_window
-                    )
+                    & (pl.col("step_B_time") <= pl.col("step_A_time") + conversion_window)
                 )
                 # For each step_A_time, find the earliest valid step_B_time
                 .sort(["user_id", "step_A_time", "step_B_time"])
@@ -4388,9 +4120,7 @@ class FunnelCalculator:
             return valid_conversions
 
         except Exception as e:
-            self.logger.error(
-                f"Fully vectorized approach for finding step pairs failed: {e}"
-            )
+            self.logger.error(f"Fully vectorized approach for finding step pairs failed: {e}")
 
             # Final fallback with empty DataFrame with correct structure
             return pl.DataFrame(
@@ -4429,10 +4159,7 @@ class FunnelCalculator:
             if "timestamp" in step_B_df.columns:
                 joined = joined.rename({"timestamp": "step_B_time"})
 
-            if (
-                "timestamp" in step_A_df.columns
-                and "step_A_time" not in step_A_df.columns
-            ):
+            if "timestamp" in step_A_df.columns and "step_A_time" not in step_A_df.columns:
                 joined = joined.rename({"timestamp": "step_A_time"})
 
             # Filter to find valid conversion pairs (B after A within window)
@@ -4450,9 +4177,7 @@ class FunnelCalculator:
             # Handle conversion window calculation
             if hasattr(conversion_window, "total_seconds"):
                 # If it's a Python timedelta
-                conversion_window_ns = int(
-                    conversion_window.total_seconds() * 1_000_000_000
-                )
+                conversion_window_ns = int(conversion_window.total_seconds() * 1_000_000_000)
             else:
                 # If it's a polars duration
                 conversion_window_ns = int(
@@ -4471,9 +4196,7 @@ class FunnelCalculator:
             )
 
             # Sort to get first valid conversion for each user
-            valid_pairs = valid_pairs.sort(
-                ["user_id", step_A_time_col, step_B_time_col]
-            )
+            valid_pairs = valid_pairs.sort(["user_id", step_A_time_col, step_B_time_col])
 
             if group_by_user:
                 # Get first conversion pair for each user
@@ -4529,9 +4252,7 @@ class FunnelCalculator:
             )
 
             # Filter to events within conversion window
-            filtered = joined.filter(
-                pl.col("time_diff_hours") <= conversion_window_hours
-            )
+            filtered = joined.filter(pl.col("time_diff_hours") <= conversion_window_hours)
 
             # Add computed columns for further processing
             result = filtered.with_columns(
@@ -4559,9 +4280,7 @@ class FunnelCalculator:
 
             return result
         except Exception as e:
-            self.logger.error(
-                f"Fallback unordered conversion calculation failed: {str(e)}"
-            )
+            self.logger.error(f"Fallback unordered conversion calculation failed: {str(e)}")
             return pl.DataFrame(
                 schema={
                     "user_id": pl.Utf8,
@@ -4592,9 +4311,7 @@ class FunnelCalculator:
         # Handle _original_order column to fix related errors
         # If there's no _original_order column, add it to maintain event order
         if "_original_order" not in segment_funnel_events_df.columns:
-            segment_funnel_events_df["_original_order"] = range(
-                len(segment_funnel_events_df)
-            )
+            segment_funnel_events_df["_original_order"] = range(len(segment_funnel_events_df))
 
         if "_original_order" not in full_history_for_segment_users.columns:
             full_history_for_segment_users["_original_order"] = range(
@@ -4610,9 +4327,7 @@ class FunnelCalculator:
         step_user_sets = {}
         for step in funnel_steps:
             step_user_sets[step] = set(
-                segment_funnel_events_df[
-                    segment_funnel_events_df["event_name"] == step
-                ]["user_id"]
+                segment_funnel_events_df[segment_funnel_events_df["event_name"] == step]["user_id"]
             )
 
         # Group events by user for efficient processing
@@ -4665,9 +4380,7 @@ class FunnelCalculator:
                 )
                 step_pair = f"{step} → {next_step}"
                 if between_events:  # Only add if non-empty
-                    between_steps_events[step_pair] = dict(
-                        between_events.most_common(10)
-                    )
+                    between_steps_events[step_pair] = dict(between_events.most_common(10))
 
         # Log the content of between_steps_events before returning
         self.logger.info(
@@ -4691,9 +4404,7 @@ class FunnelCalculator:
                 continue
 
             user_events = user_groups.get_group(user_id).sort_values("timestamp")
-            step_time = user_events[user_events["event_name"] == step][
-                "timestamp"
-            ].max()
+            step_time = user_events[user_events["event_name"] == step]["timestamp"].max()
 
             # Find events after this step (within 7 days) using vectorized filtering
             later_events = user_events[
@@ -4775,17 +4486,14 @@ class FunnelCalculator:
                         continue
 
                     step_A_time = user_A[0, "step_A_time"]
-                    conversion_window = timedelta(
-                        hours=self.config.conversion_window_hours
-                    )
+                    conversion_window = timedelta(hours=self.config.conversion_window_hours)
 
                     # Find first B after A within conversion window
                     potential_Bs = user_B.filter(
                         (pl.col("timestamp") > step_A_time)
                         & (
                             pl.col("timestamp")
-                            <= step_A_time
-                            + pl.duration(hours=self.config.conversion_window_hours)
+                            <= step_A_time + pl.duration(hours=self.config.conversion_window_hours)
                         )
                     ).sort("timestamp")
 
@@ -4907,10 +4615,7 @@ class FunnelCalculator:
                     ~pl.col("event_name").is_in(funnel_steps)
                 )
                 unique_event_names = (
-                    non_funnel_events.select("event_name")
-                    .unique()
-                    .to_series()
-                    .to_list()
+                    non_funnel_events.select("event_name").unique().to_series().to_list()
                 )
                 self.logger.info(
                     f"_analyze_between_steps_polars: Found {len(unique_event_names)} unique non-funnel event types"
@@ -5013,23 +4718,15 @@ class FunnelCalculator:
             conversion_times = []
 
             # Get users who completed both steps
-            users_step_from = set(
-                events_df[events_df["event_name"] == step_from]["user_id"]
-            )
-            users_step_to = set(
-                events_df[events_df["event_name"] == step_to]["user_id"]
-            )
+            users_step_from = set(events_df[events_df["event_name"] == step_from]["user_id"])
+            users_step_to = set(events_df[events_df["event_name"] == step_to]["user_id"])
             converted_users = users_step_from.intersection(users_step_to)
 
             for user_id in converted_users:
                 user_events = events_df[events_df["user_id"] == user_id]
 
-                from_events = user_events[user_events["event_name"] == step_from][
-                    "timestamp"
-                ]
-                to_events = user_events[user_events["event_name"] == step_to][
-                    "timestamp"
-                ]
+                from_events = user_events[user_events["event_name"] == step_from]["timestamp"]
+                to_events = user_events[user_events["event_name"] == step_to]["timestamp"]
 
                 if len(from_events) > 0 and len(to_events) > 0:
                     # Find valid conversion (to event after from event, within window)
@@ -5038,8 +4735,7 @@ class FunnelCalculator:
                             (to_events > from_time)
                             & (
                                 to_events
-                                <= from_time
-                                + timedelta(hours=self.config.conversion_window_hours)
+                                <= from_time + timedelta(hours=self.config.conversion_window_hours)
                             )
                         ]
                         if len(valid_to_events) > 0:
@@ -5075,12 +4771,8 @@ class FunnelCalculator:
             first_step_events = events_df[events_df["event_name"] == first_step].copy()
 
             # Group by month of first step
-            first_step_events["cohort_month"] = first_step_events[
-                "timestamp"
-            ].dt.to_period("M")
-            cohorts = (
-                first_step_events.groupby("cohort_month")["user_id"].nunique().to_dict()
-            )
+            first_step_events["cohort_month"] = first_step_events["timestamp"].dt.to_period("M")
+            cohorts = first_step_events.groupby("cohort_month")["user_id"].nunique().to_dict()
 
             # Calculate conversion rates for each cohort
             cohort_conversions = {}
@@ -5088,22 +4780,14 @@ class FunnelCalculator:
 
             for cohort_month in cohorts.keys():
                 cohort_users = set(
-                    first_step_events[
-                        first_step_events["cohort_month"] == cohort_month
-                    ]["user_id"]
+                    first_step_events[first_step_events["cohort_month"] == cohort_month]["user_id"]
                 )
 
                 step_conversions = []
                 for step in funnel_steps:
-                    step_users = set(
-                        events_df[events_df["event_name"] == step]["user_id"]
-                    )
+                    step_users = set(events_df[events_df["event_name"] == step]["user_id"])
                     converted = len(cohort_users.intersection(step_users))
-                    rate = (
-                        (converted / len(cohort_users) * 100)
-                        if len(cohort_users) > 0
-                        else 0
-                    )
+                    rate = (converted / len(cohort_users) * 100) if len(cohort_users) > 0 else 0
                     step_conversions.append(rate)
 
                 cohort_conversions[str(cohort_month)] = step_conversions
@@ -5167,9 +4851,7 @@ class FunnelCalculator:
             next_step = funnel_steps[i + 1]
 
             # Users who completed this step (from funnel event data)
-            step_users = set(
-                users_at_step_df[users_at_step_df["event_name"] == step]["user_id"]
-            )
+            step_users = set(users_at_step_df[users_at_step_df["event_name"] == step]["user_id"])
             # Users who completed next step (from funnel event data)
             next_step_users = set(
                 users_at_step_df[users_at_step_df["event_name"] == next_step]["user_id"]
@@ -5181,9 +4863,9 @@ class FunnelCalculator:
             next_events_counter = Counter()  # Renamed to avoid conflict
             for user_id in dropped_users:
                 # Look in their full activity
-                user_events = user_activity_df[
-                    user_activity_df["user_id"] == user_id
-                ].sort_values("timestamp")
+                user_events = user_activity_df[user_activity_df["user_id"] == user_id].sort_values(
+                    "timestamp"
+                )
                 # Find the time of the funnel step they dropped from
                 funnel_step_occurrences = users_at_step_df[
                     (users_at_step_df["user_id"] == user_id)
@@ -5215,9 +4897,9 @@ class FunnelCalculator:
             # Consider users who made it to the next_step (identified via funnel data)
             for user_id in next_step_users:
                 # Look at their full activity
-                user_events = user_activity_df[
-                    user_activity_df["user_id"] == user_id
-                ].sort_values("timestamp")
+                user_events = user_activity_df[user_activity_df["user_id"] == user_id].sort_values(
+                    "timestamp"
+                )
 
                 # Find occurrences of step and next_step in their funnel activity to define the pair
                 user_funnel_events_for_pair = users_at_step_df[
@@ -5250,25 +4932,19 @@ class FunnelCalculator:
                         (current_step_times > prev_t)
                         & (
                             current_step_times
-                            <= prev_t
-                            + timedelta(hours=self.config.conversion_window_hours)
+                            <= prev_t + timedelta(hours=self.config.conversion_window_hours)
                         )
                     ]
                     if not possible_current_times.empty:
                         final_prev_time = prev_t
-                        first_current_time_after_final_prev = (
-                            possible_current_times.min()
-                        )
+                        first_current_time_after_final_prev = possible_current_times.min()
                         break
 
                 if final_prev_time and first_current_time_after_final_prev:
                     # Events between these two specific funnel event instances, from full activity
                     between = user_events[  # user_events is from user_activity_df
                         (user_events["timestamp"] > final_prev_time)
-                        & (
-                            user_events["timestamp"]
-                            < first_current_time_after_final_prev
-                        )
+                        & (user_events["timestamp"] < first_current_time_after_final_prev)
                         & (~user_events["event_name"].isin(funnel_steps))
                     ]
 
@@ -5276,9 +4952,7 @@ class FunnelCalculator:
                         between_events_counter[event_name_between] += 1
 
             if between_events_counter:  # Only add if non-empty
-                between_steps_events[step_pair] = dict(
-                    between_events_counter.most_common(10)
-                )
+                between_steps_events[step_pair] = dict(between_events_counter.most_common(10))
 
         return PathAnalysisData(
             dropoff_paths=dropoff_paths, between_steps_events=between_steps_events
@@ -5305,12 +4979,8 @@ class FunnelCalculator:
                 # Get conversion counts
                 users_a = result_a.users_count[0] if result_a.users_count else 0
                 users_b = result_b.users_count[0] if result_b.users_count else 0
-                converted_a = (
-                    result_a.users_count[i] if i < len(result_a.users_count) else 0
-                )
-                converted_b = (
-                    result_b.users_count[i] if i < len(result_b.users_count) else 0
-                )
+                converted_a = result_a.users_count[i] if i < len(result_a.users_count) else 0
+                converted_b = result_b.users_count[i] if i < len(result_b.users_count) else 0
 
                 if users_a > 0 and users_b > 0:
                     # Calculate conversion rates safely
@@ -5325,13 +4995,9 @@ class FunnelCalculator:
                         # Check for valid pooled_rate to avoid issues in se calculation
                         if 0 < pooled_rate < 1:
                             se_squared_term = (
-                                pooled_rate
-                                * (1 - pooled_rate)
-                                * (1 / users_a + 1 / users_b)
+                                pooled_rate * (1 - pooled_rate) * (1 / users_a + 1 / users_b)
                             )
-                            if (
-                                se_squared_term >= 0
-                            ):  # Ensure term under sqrt is not negative
+                            if se_squared_term >= 0:  # Ensure term under sqrt is not negative
                                 se = np.sqrt(se_squared_term)
                                 if se > 0:
                                     z_score = (rate_a - rate_b) / se
@@ -5421,9 +5087,7 @@ class FunnelCalculator:
                 users_count.append(count)
 
                 # Calculate conversion rate from first step
-                conversion_rate = (
-                    (count / users_count[0] * 100) if users_count[0] > 0 else 0
-                )
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
                 conversion_rates.append(conversion_rate)
 
                 # Calculate drop-off from previous step
@@ -5461,9 +5125,7 @@ class FunnelCalculator:
         drop_offs = []
         drop_off_rates = []
 
-        conversion_window_duration = pl.duration(
-            hours=self.config.conversion_window_hours
-        )
+        conversion_window_duration = pl.duration(hours=self.config.conversion_window_hours)
 
         # 1. Get the first occurrence of each relevant event for each user.
         # This is a single, efficient pass over the data.
@@ -5501,10 +5163,7 @@ class FunnelCalculator:
                 # Check that the time span between the min and max timestamp of the required steps
                 # is within the conversion window.
                 completed_users_df = completed_users_df.filter(
-                    (
-                        pl.max_horizontal(required_steps)
-                        - pl.min_horizontal(required_steps)
-                    )
+                    (pl.max_horizontal(required_steps) - pl.min_horizontal(required_steps))
                     <= conversion_window_duration
                 )
 
@@ -5520,9 +5179,7 @@ class FunnelCalculator:
             else:
                 prev_count = users_count[i - 1]
                 # Overall conversion from the very first step
-                conversion_rate = (
-                    (count / users_count[0] * 100) if users_count[0] > 0 else 0
-                )
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
                 conversion_rates.append(conversion_rate)
 
                 # Drop-off from the previous step
@@ -5560,9 +5217,7 @@ class FunnelCalculator:
                 drop_off_rates.append(0.0)
             else:
                 # Calculate conversion rate from first step
-                conversion_rate = (
-                    (count / users_count[0] * 100) if users_count[0] > 0 else 0
-                )
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
                 conversion_rates.append(conversion_rate)
 
                 # Calculate drop-off from previous step
@@ -5626,9 +5281,7 @@ class FunnelCalculator:
                 (count / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
             )
             # But we also track overall conversion rate from first step for consistency
-            overall_conversion_rate = (
-                (count / users_count[0] * 100) if users_count[0] > 0 else 0
-            )
+            overall_conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
             conversion_rates.append(overall_conversion_rate)
 
             # Calculate drop-off from previous step
@@ -5636,9 +5289,7 @@ class FunnelCalculator:
             drop_offs.append(drop_off)
 
             drop_off_rate = (
-                (drop_off / len(prev_step_users) * 100)
-                if len(prev_step_users) > 0
-                else 0
+                (drop_off / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
             )
             drop_off_rates.append(drop_off_rate)
 
@@ -5677,9 +5328,7 @@ class FunnelCalculator:
                 prev_step_idx = funnel_steps.index(prev_step)
                 current_step_idx = funnel_steps.index(current_step)
             except ValueError:
-                self.logger.error(
-                    f"Step not found in funnel steps: {prev_step} or {current_step}"
-                )
+                self.logger.error(f"Step not found in funnel steps: {prev_step} or {current_step}")
                 return set()
 
             if current_step_idx < prev_step_idx:
@@ -5690,17 +5339,15 @@ class FunnelCalculator:
                 return set()
 
         # Filter events to only include eligible users and the relevant steps
-        users_events = events_df.filter(
-            pl.col("user_id").is_in(eligible_users_list)
-        ).filter(pl.col("event_name").is_in([prev_step, current_step]))
+        users_events = events_df.filter(pl.col("user_id").is_in(eligible_users_list)).filter(
+            pl.col("event_name").is_in([prev_step, current_step])
+        )
 
         if users_events.height == 0:
             return set()
 
         # Get conversion window in nanoseconds
-        conversion_window_ns = (
-            self.config.conversion_window_hours * 3600 * 1_000_000_000
-        )
+        conversion_window_ns = self.config.conversion_window_hours * 3600 * 1_000_000_000
 
         # For KYC funnel with FIRST_ONLY mode, we need special handling
         if self.config.reentry_mode == ReentryMode.FIRST_ONLY and "KYC" in prev_step:
@@ -5708,18 +5355,18 @@ class FunnelCalculator:
             prev_events = (
                 users_events.filter(pl.col("event_name") == prev_step)
                 # Use window function to get the first event per user
-                .sort(["user_id", "_original_order"]).filter(
-                    pl.col("_original_order")
-                    == pl.col("_original_order").min().over("user_id")
+                .sort(["user_id", "_original_order"])
+                .filter(
+                    pl.col("_original_order") == pl.col("_original_order").min().over("user_id")
                 )
             )
 
             curr_events = (
                 users_events.filter(pl.col("event_name") == current_step)
                 # Use window function to get the first event per user
-                .sort(["user_id", "_original_order"]).filter(
-                    pl.col("_original_order")
-                    == pl.col("_original_order").min().over("user_id")
+                .sort(["user_id", "_original_order"])
+                .filter(
+                    pl.col("_original_order") == pl.col("_original_order").min().over("user_id")
                 )
             )
 
@@ -5777,8 +5424,7 @@ class FunnelCalculator:
                 .sort(["user_id", "_original_order"])
                 # Use window function to get first event by original order
                 .filter(
-                    pl.col("_original_order")
-                    == pl.col("_original_order").min().over("user_id")
+                    pl.col("_original_order") == pl.col("_original_order").min().over("user_id")
                 )
                 .select(["user_id", "timestamp"])
                 .rename({"timestamp": "prev_timestamp"})
@@ -5789,8 +5435,7 @@ class FunnelCalculator:
                 .sort(["user_id", "_original_order"])
                 # Use window function to get first event by original order
                 .filter(
-                    pl.col("_original_order")
-                    == pl.col("_original_order").min().over("user_id")
+                    pl.col("_original_order") == pl.col("_original_order").min().over("user_id")
                 )
                 .select(["user_id", "timestamp"])
                 .rename({"timestamp": "curr_timestamp"})
@@ -5817,9 +5462,7 @@ class FunnelCalculator:
 
                     # Check for users who performed later steps before current step
                     if converted_df.height > 0 and len(funnel_steps) > 2:
-                        later_steps = funnel_steps[
-                            funnel_steps.index(current_step) + 1 :
-                        ]
+                        later_steps = funnel_steps[funnel_steps.index(current_step) + 1 :]
 
                         if later_steps:
                             # Get all eligible users who might have out-of-order events
@@ -5838,15 +5481,10 @@ class FunnelCalculator:
 
                                 # Join to find later step events between prev and curr timestamps
                                 out_of_order_users = (
-                                    later_steps_events.join(
-                                        user_ranges, on="user_id", how="inner"
-                                    )
+                                    later_steps_events.join(user_ranges, on="user_id", how="inner")
                                     .filter(
                                         (pl.col("timestamp") > pl.col("prev_timestamp"))
-                                        & (
-                                            pl.col("timestamp")
-                                            < pl.col("curr_timestamp")
-                                        )
+                                        & (pl.col("timestamp") < pl.col("curr_timestamp"))
                                     )
                                     .select("user_id")
                                     .unique()
@@ -5854,15 +5492,12 @@ class FunnelCalculator:
 
                                 # Remove users with out-of-order sequences
                                 if out_of_order_users.height > 0:
-                                    invalid_users = set(
-                                        out_of_order_users["user_id"].to_list()
-                                    )
+                                    invalid_users = set(out_of_order_users["user_id"].to_list())
                                     self.logger.debug(
                                         f"Removing {len(invalid_users)} users with out-of-order sequences"
                                     )
                                     valid_users = (
-                                        set(converted_df["user_id"].to_list())
-                                        - invalid_users
+                                        set(converted_df["user_id"].to_list()) - invalid_users
                                     )
                                     return valid_users
 
@@ -5871,9 +5506,7 @@ class FunnelCalculator:
             # For unordered funnels
             if conversion_window_ns == 0:
                 # For zero window, exact timestamp matches only
-                converted_df = joined.filter(
-                    pl.col("curr_timestamp") == pl.col("prev_timestamp")
-                )
+                converted_df = joined.filter(pl.col("curr_timestamp") == pl.col("prev_timestamp"))
             else:
                 time_diff = (
                     (pl.col("curr_timestamp") - pl.col("prev_timestamp"))
@@ -5915,18 +5548,12 @@ class FunnelCalculator:
 
             # Need to process each user individually to respect the conversion criteria
             # Use a specialized join approach for each user
-            for user_df in eligible_users_df.partition_by(
-                "user_id", as_dict=True
-            ).values():
+            for user_df in eligible_users_df.partition_by("user_id", as_dict=True).values():
                 user_id = user_df[0, "user_id"]
 
                 # Get user's events for both steps
-                user_prev = prev_events.filter(pl.col("user_id") == user_id).sort(
-                    "timestamp"
-                )
-                user_curr = curr_events.filter(pl.col("user_id") == user_id).sort(
-                    "timestamp"
-                )
+                user_prev = prev_events.filter(pl.col("user_id") == user_id).sort("timestamp")
+                user_curr = curr_events.filter(pl.col("user_id") == user_id).sort("timestamp")
 
                 # For each prev event, find the first current event that happens after it
                 # within the conversion window
@@ -5939,27 +5566,20 @@ class FunnelCalculator:
 
                     if conversion_window_ns == 0:
                         # For zero window, look for exact timestamp match
-                        matching_curr = user_curr.filter(
-                            pl.col("timestamp") == prev_time
-                        )
+                        matching_curr = user_curr.filter(pl.col("timestamp") == prev_time)
                     else:
                         # For normal window, find first event after prev_time within window
-                        user_curr_after = user_curr.filter(
-                            pl.col("timestamp") > prev_time
-                        )
+                        user_curr_after = user_curr.filter(pl.col("timestamp") > prev_time)
 
                         if user_curr_after.height > 0:
                             # Calculate time differences
                             with_diff = user_curr_after.with_columns(
-                                (pl.col("timestamp") - pl.lit(prev_time)).alias(
-                                    "time_diff"
-                                )
+                                (pl.col("timestamp") - pl.lit(prev_time)).alias("time_diff")
                             )
 
                             # Filter to events within conversion window
                             matching_curr = with_diff.filter(
-                                pl.col("time_diff").dt.total_nanoseconds()
-                                < conversion_window_ns
+                                pl.col("time_diff").dt.total_nanoseconds() < conversion_window_ns
                             )
 
                             if matching_curr.height > 0:
@@ -5971,9 +5591,7 @@ class FunnelCalculator:
                         is_valid = True
 
                         if len(funnel_steps) > 2:
-                            later_steps = funnel_steps[
-                                funnel_steps.index(current_step) + 1 :
-                            ]
+                            later_steps = funnel_steps[funnel_steps.index(current_step) + 1 :]
 
                             if later_steps:
                                 # Check if there are any later step events between prev and curr
@@ -6146,9 +5764,7 @@ class FunnelCalculator:
 
         for (
             user_id
-        ) in (
-            converted_users
-        ):  # These are users who truly converted from step to next_step
+        ) in converted_users:  # These are users who truly converted from step to next_step
             if user_id not in user_groups.groups:
                 continue
 
@@ -6176,10 +5792,7 @@ class FunnelCalculator:
                     _prev_time_candidate = pd.Timestamp(step_A_event_times.min())
                     _possible_b_times = step_B_event_times[
                         (step_B_event_times > _prev_time_candidate)
-                        & (
-                            step_B_event_times
-                            <= _prev_time_candidate + pd_conversion_window
-                        )
+                        & (step_B_event_times <= _prev_time_candidate + pd_conversion_window)
                     ]
                     if not _possible_b_times.empty:
                         actual_step_A_ts = _prev_time_candidate
@@ -6190,10 +5803,7 @@ class FunnelCalculator:
                         _a_ts_candidate = pd.Timestamp(_a_time_val)
                         _possible_b_times = step_B_event_times[
                             (step_B_event_times > _a_ts_candidate)
-                            & (
-                                step_B_event_times
-                                <= _a_ts_candidate + pd_conversion_window
-                            )
+                            & (step_B_event_times <= _a_ts_candidate + pd_conversion_window)
                         ]
                         if not _possible_b_times.empty:
                             actual_step_A_ts = _a_ts_candidate
@@ -6228,9 +5838,7 @@ class FunnelCalculator:
                 between = user_events[
                     (user_events["timestamp"] > actual_step_A_ts)
                     & (user_events["timestamp"] < actual_step_B_ts)  # Strictly between
-                    & (
-                        ~user_events["event_name"].isin(funnel_steps)
-                    )  # Exclude other funnel steps
+                    & (~user_events["event_name"].isin(funnel_steps))  # Exclude other funnel steps
                 ]
 
                 if not between.empty:
@@ -6298,9 +5906,7 @@ class FunnelCalculator:
                 users_count.append(count)
 
                 # Calculate conversion rate from first step
-                conversion_rate = (
-                    (count / users_count[0] * 100) if users_count[0] > 0 else 0
-                )
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
                 conversion_rates.append(conversion_rate)
 
                 # Calculate drop-off from previous step
@@ -6335,9 +5941,7 @@ class FunnelCalculator:
         Vectorized method to find users who converted between steps
         """
         converted_users = set()
-        conversion_window_timedelta = timedelta(
-            hours=self.config.conversion_window_hours
-        )
+        conversion_window_timedelta = timedelta(hours=self.config.conversion_window_hours)
 
         # For ordered funnels, filter out users who did later steps out of order
         if self.config.funnel_order == FunnelOrder.ORDERED:
@@ -6396,9 +6000,7 @@ class FunnelCalculator:
                 return False  # No subsequent steps to check for
 
             # Get timestamps for the previous and current steps
-            prev_step_times = user_events[user_events["event_name"] == prev_step][
-                "timestamp"
-            ]
+            prev_step_times = user_events[user_events["event_name"] == prev_step]["timestamp"]
             current_step_times = user_events[user_events["event_name"] == current_step][
                 "timestamp"
             ]
@@ -6409,9 +6011,7 @@ class FunnelCalculator:
             # Determine the time window for the conversion being checked
             # This should handle different re-entry modes implicitly by checking all valid windows
             for prev_time in prev_step_times:
-                valid_current_times = current_step_times[
-                    current_step_times >= prev_time
-                ]
+                valid_current_times = current_step_times[current_step_times >= prev_time]
 
                 if len(valid_current_times) > 0:
                     current_time = valid_current_times.min()
@@ -6482,9 +6082,7 @@ class FunnelCalculator:
                 current_events = current_step_events["timestamp"]
 
             # Vectorized conversion checking
-            if self._check_conversion_vectorized(
-                prev_events, current_events, conversion_window
-            ):
+            if self._check_conversion_vectorized(prev_events, current_events, conversion_window):
                 converted_users.add(user_id)
 
         return converted_users
@@ -6547,10 +6145,7 @@ class FunnelCalculator:
                         # For non-zero windows, current events must be > prev_time and within window
                         valid_current = current_times[
                             (current_times > prev_time.to_numpy())
-                            & (
-                                current_times
-                                < (prev_time + pd_conversion_window).to_numpy()
-                            )
+                            & (current_times < (prev_time + pd_conversion_window).to_numpy())
                         ]
                         if len(valid_current) > 0:
                             return True
@@ -6601,9 +6196,7 @@ class FunnelCalculator:
             return self._calculate_unique_pairs_funnel(events_df, steps)
 
         # First step
-        first_step_users = set(
-            events_df[events_df["event_name"] == steps[0]]["user_id"].unique()
-        )
+        first_step_users = set(events_df[events_df["event_name"] == steps[0]]["user_id"].unique())
         users_count.append(len(first_step_users))
         conversion_rates.append(100.0)
         drop_offs.append(0)
@@ -6624,9 +6217,7 @@ class FunnelCalculator:
             users_count.append(count)
 
             # Overall conversion rate from first step
-            overall_conversion_rate = (
-                (count / users_count[0] * 100) if users_count[0] > 0 else 0
-            )
+            overall_conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
             conversion_rates.append(overall_conversion_rate)
 
             # Calculate drop-off from previous step
@@ -6634,9 +6225,7 @@ class FunnelCalculator:
             drop_offs.append(drop_off)
 
             drop_off_rate = (
-                (drop_off / len(prev_step_users) * 100)
-                if len(prev_step_users) > 0
-                else 0
+                (drop_off / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
             )
             drop_off_rates.append(drop_off_rate)
 
@@ -6687,9 +6276,7 @@ class FunnelCalculator:
                 users_count.append(count)
 
                 # Calculate conversion rate from first step
-                conversion_rate = (
-                    (count / users_count[0] * 100) if users_count[0] > 0 else 0
-                )
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
                 conversion_rates.append(conversion_rate)
 
                 # Calculate drop-off from previous step
@@ -6725,12 +6312,8 @@ class FunnelCalculator:
             user_events = events_df[events_df["user_id"] == user_id]
 
             # Get timestamps for previous step
-            prev_events = user_events[user_events["event_name"] == prev_step][
-                "timestamp"
-            ]
-            current_events = user_events[user_events["event_name"] == current_step][
-                "timestamp"
-            ]
+            prev_events = user_events[user_events["event_name"] == prev_step]["timestamp"]
+            current_events = user_events[user_events["event_name"] == current_step]["timestamp"]
 
             if len(prev_events) == 0 or len(current_events) == 0:
                 continue
@@ -6749,9 +6332,7 @@ class FunnelCalculator:
                 # Apply reentry mode logic for ordered funnels
                 if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
                     prev_time = prev_events.min()
-                    conversion_window = timedelta(
-                        hours=self.config.conversion_window_hours
-                    )
+                    conversion_window = timedelta(hours=self.config.conversion_window_hours)
 
                     # For FIRST_ONLY mode, we use the first current event in data order
                     first_current_time = current_events.iloc[0]
@@ -6772,9 +6353,7 @@ class FunnelCalculator:
 
                 elif self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
                     # Check any valid sequence within conversion window
-                    conversion_window = timedelta(
-                        hours=self.config.conversion_window_hours
-                    )
+                    conversion_window = timedelta(hours=self.config.conversion_window_hours)
                     for prev_time in prev_events:
                         if conversion_window.total_seconds() == 0:
                             # For zero window, events must be simultaneous
@@ -6822,9 +6401,7 @@ class FunnelCalculator:
             # When checking Email Verification after Sign Up, we should see if First Login happened before Email Verification
 
             # Get timestamps for each step
-            prev_step_times = user_events[user_events["event_name"] == prev_step][
-                "timestamp"
-            ]
+            prev_step_times = user_events[user_events["event_name"] == prev_step]["timestamp"]
             current_step_times = user_events[user_events["event_name"] == current_step][
                 "timestamp"
             ]
@@ -6859,9 +6436,7 @@ class FunnelCalculator:
 
         except Exception as e:
             # If there's any error in the logic, fall back to allowing the conversion
-            self.logger.warning(
-                f"Error in _user_did_later_steps_before_current: {str(e)}"
-            )
+            self.logger.warning(f"Error in _user_did_later_steps_before_current: {str(e)}")
             return False
 
     @_funnel_performance_monitor("_calculate_unordered_funnel")
@@ -6894,9 +6469,7 @@ class FunnelCalculator:
                     # Check if user completed all required steps within any conversion window
                     user_step_times = {}
                     for step in required_steps:
-                        step_events = user_events[user_events["event_name"] == step][
-                            "timestamp"
-                        ]
+                        step_events = user_events[user_events["event_name"] == step]["timestamp"]
                         if len(step_events) > 0:
                             user_step_times[step] = step_events.min()
 
@@ -6906,9 +6479,7 @@ class FunnelCalculator:
                         times = list(user_step_times.values())
                         if times:  # Check if times list is not empty
                             time_span = max(times) - min(times)
-                            if time_span <= timedelta(
-                                hours=self.config.conversion_window_hours
-                            ):
+                            if time_span <= timedelta(hours=self.config.conversion_window_hours):
                                 completed_users.add(user_id)
 
             count = len(completed_users)
@@ -6920,9 +6491,7 @@ class FunnelCalculator:
                 drop_off_rates.append(0.0)
             else:
                 # Calculate conversion rate from first step
-                conversion_rate = (
-                    (count / users_count[0] * 100) if users_count[0] > 0 else 0
-                )
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
                 conversion_rates.append(conversion_rate)
 
                 # Calculate drop-off from previous step
@@ -6966,9 +6535,7 @@ class FunnelCalculator:
                 drop_off_rates.append(0.0)
             else:
                 # Calculate conversion rate from first step
-                conversion_rate = (
-                    (count / users_count[0] * 100) if users_count[0] > 0 else 0
-                )
+                conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
                 conversion_rates.append(conversion_rate)
 
                 # Calculate drop-off from previous step
@@ -7001,9 +6568,7 @@ class FunnelCalculator:
         drop_off_rates = []
 
         # First step
-        first_step_users = set(
-            events_df[events_df["event_name"] == steps[0]]["user_id"].unique()
-        )
+        first_step_users = set(events_df[events_df["event_name"] == steps[0]]["user_id"].unique())
         users_count.append(len(first_step_users))
         conversion_rates.append(100.0)
         drop_offs.append(0)
@@ -7028,9 +6593,7 @@ class FunnelCalculator:
                 (count / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
             )
             # But we also track overall conversion rate from first step
-            overall_conversion_rate = (
-                (count / users_count[0] * 100) if users_count[0] > 0 else 0
-            )
+            overall_conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
             conversion_rates.append(overall_conversion_rate)
 
             # Calculate drop-off from previous step
@@ -7038,9 +6601,7 @@ class FunnelCalculator:
             drop_offs.append(drop_off)
 
             drop_off_rate = (
-                (drop_off / len(prev_step_users) * 100)
-                if len(prev_step_users) > 0
-                else 0
+                (drop_off / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
             )
             drop_off_rates.append(drop_off_rate)
 
@@ -7105,8 +6666,7 @@ class FunnelCalculator:
 
                 # Check if any later step events occurred between prev and current
                 out_of_order = later_events.filter(
-                    (pl.col("timestamp") > prev_time)
-                    & (pl.col("timestamp") < current_time)
+                    (pl.col("timestamp") > prev_time) & (pl.col("timestamp") < current_time)
                 )
 
                 if out_of_order.height > 0:
@@ -7121,9 +6681,7 @@ class FunnelCalculator:
 
         except Exception as e:
             # If there's any error in the logic, fall back to allowing the conversion
-            self.logger.warning(
-                f"Error in _user_did_later_steps_before_current_polars: {str(e)}"
-            )
+            self.logger.warning(f"Error in _user_did_later_steps_before_current_polars: {str(e)}")
             return False
 
     def _to_nanoseconds(self, time_diff) -> int:
@@ -7179,23 +6737,15 @@ class FunnelCalculator:
             segment_funnel_events_df = segment_funnel_events_df.select(segment_cols)
 
         history_cols = [
-            col
-            for col in full_history_for_segment_users.columns
-            if col != "_original_order"
+            col for col in full_history_for_segment_users.columns if col != "_original_order"
         ]
         if len(history_cols) < len(full_history_for_segment_users.columns):
             # If _original_order was in columns, drop it
-            full_history_for_segment_users = full_history_for_segment_users.select(
-                history_cols
-            )
+            full_history_for_segment_users = full_history_for_segment_users.select(history_cols)
 
         # Add row indices to preserve original order
-        lazy_segment_df = segment_funnel_events_df.with_row_index(
-            "_original_order"
-        ).lazy()
-        lazy_history_df = full_history_for_segment_users.with_row_index(
-            "_original_order"
-        ).lazy()
+        lazy_segment_df = segment_funnel_events_df.with_row_index("_original_order").lazy()
+        lazy_history_df = full_history_for_segment_users.with_row_index("_original_order").lazy()
 
         # Find the timestamp of the last step event for each dropped user
         last_step_events = (
@@ -7214,9 +6764,7 @@ class FunnelCalculator:
         # Find the next event after the step for each user within 7 days
         next_events_df = (
             last_step_events.join(
-                lazy_history_df.filter(
-                    pl.col("user_id").cast(pl.Utf8).is_in(dropped_user_list)
-                ),
+                lazy_history_df.filter(pl.col("user_id").cast(pl.Utf8).is_in(dropped_user_list)),
                 on="user_id",
                 how="inner",
             )
@@ -7226,17 +6774,13 @@ class FunnelCalculator:
                 & (pl.col("event_name") != step)
             )
             # Use window function to find first event after step for each user
-            .with_columns(
-                [pl.col("timestamp").rank().over(["user_id"]).alias("event_rank")]
-            )
+            .with_columns([pl.col("timestamp").rank().over(["user_id"]).alias("event_rank")])
             .filter(pl.col("event_rank") == 1)
             .select(["user_id", "event_name"])
         )
 
         # Count next events
-        event_counts = (
-            next_events_df.group_by("event_name").agg(pl.len().alias("count")).collect()
-        )
+        event_counts = next_events_df.group_by("event_name").agg(pl.len().alias("count")).collect()
 
         # Convert to Counter format
         if event_counts.height > 0:
@@ -7250,9 +6794,7 @@ class FunnelCalculator:
             )
 
         # Count users with no further activity
-        users_with_events = (
-            next_events_df.select(pl.col("user_id").unique()).collect().height
-        )
+        users_with_events = next_events_df.select(pl.col("user_id").unique()).collect().height
         users_with_no_events = len(dropped_users) - users_with_events
 
         if users_with_no_events > 0:
@@ -7294,23 +6836,15 @@ class FunnelCalculator:
             segment_funnel_events_df = segment_funnel_events_df.select(segment_cols)
 
         history_cols = [
-            col
-            for col in full_history_for_segment_users.columns
-            if col != "_original_order"
+            col for col in full_history_for_segment_users.columns if col != "_original_order"
         ]
         if len(history_cols) < len(full_history_for_segment_users.columns):
             # If _original_order was in columns, drop it
-            full_history_for_segment_users = full_history_for_segment_users.select(
-                history_cols
-            )
+            full_history_for_segment_users = full_history_for_segment_users.select(history_cols)
 
         # Add row indices to preserve original order
-        lazy_segment_df = segment_funnel_events_df.with_row_index(
-            "_original_order"
-        ).lazy()
-        lazy_history_df = full_history_for_segment_users.with_row_index(
-            "_original_order"
-        ).lazy()
+        lazy_segment_df = segment_funnel_events_df.with_row_index("_original_order").lazy()
+        lazy_history_df = full_history_for_segment_users.with_row_index("_original_order").lazy()
 
         # Filter to only include converted users
         step_events = lazy_segment_df.filter(
@@ -7338,24 +6872,17 @@ class FunnelCalculator:
         if self.config.funnel_order == FunnelOrder.ORDERED:
             if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
                 # Get first step A for each user
-                first_A = step_A_events.group_by("user_id").agg(
-                    pl.col("step_A_time").min()
-                )
+                first_A = step_A_events.group_by("user_id").agg(pl.col("step_A_time").min())
 
                 # For each user, find first B after A within conversion window
                 conversion_pairs = (
                     first_A.join(step_B_events, on="user_id", how="inner")
                     .filter(
                         (pl.col("step_B_time") > pl.col("step_A_time"))
-                        & (
-                            pl.col("step_B_time")
-                            <= pl.col("step_A_time") + conversion_window
-                        )
+                        & (pl.col("step_B_time") <= pl.col("step_A_time") + conversion_window)
                     )
                     # Use window function to find earliest B for each user
-                    .with_columns(
-                        [pl.col("step_B_time").rank().over(["user_id"]).alias("rank")]
-                    )
+                    .with_columns([pl.col("step_B_time").rank().over(["user_id"]).alias("rank")])
                     .filter(pl.col("rank") == 1)
                     .select(["user_id", "step_A_time", "step_B_time"])
                 )
@@ -7370,15 +6897,10 @@ class FunnelCalculator:
                     # Only keep pairs where B is after A within conversion window
                     .filter(
                         (pl.col("step_B_time") > pl.col("step_A_time"))
-                        & (
-                            pl.col("step_B_time")
-                            <= pl.col("step_A_time") + conversion_window
-                        )
+                        & (pl.col("step_B_time") <= pl.col("step_A_time") + conversion_window)
                     )
                     # Find the earliest valid A for each user
-                    .with_columns(
-                        [pl.col("step_A_time").rank().over(["user_id"]).alias("A_rank")]
-                    )
+                    .with_columns([pl.col("step_A_time").rank().over(["user_id"]).alias("A_rank")])
                     .filter(pl.col("A_rank") == 1)
                     # For the earliest A, find the earliest B
                     .with_columns(
@@ -7407,34 +6929,25 @@ class FunnelCalculator:
                     [
                         pl.when(pl.col("step_A_time") <= pl.col("step_B_time"))
                         .then(pl.struct(["step_A_time", "step_B_time"]))
-                        .otherwise(
-                            pl.struct(["step_B_time", "step_A_time"]).alias("swapped")
-                        )
+                        .otherwise(pl.struct(["step_B_time", "step_A_time"]).alias("swapped"))
                         .alias("ordered_times")
                     ]
                 )
                 .with_columns(
                     [
-                        pl.col("ordered_times")
-                        .struct.field("step_A_time")
-                        .alias("min_time"),
-                        pl.col("ordered_times")
-                        .struct.field("step_B_time")
-                        .alias("max_time"),
+                        pl.col("ordered_times").struct.field("step_A_time").alias("min_time"),
+                        pl.col("ordered_times").struct.field("step_B_time").alias("max_time"),
                     ]
                 )
                 # Check if within conversion window
                 .with_columns(
                     [
                         (
-                            (pl.col("max_time") - pl.col("min_time")).dt.total_seconds()
-                            / 3600
+                            (pl.col("max_time") - pl.col("min_time")).dt.total_seconds() / 3600
                         ).alias("time_diff_hours")
                     ]
                 )
-                .filter(
-                    pl.col("time_diff_hours") <= self.config.conversion_window_hours
-                )
+                .filter(pl.col("time_diff_hours") <= self.config.conversion_window_hours)
                 .select(["user_id", "min_time", "max_time"])
                 .rename({"min_time": "step_A_time", "max_time": "step_B_time"})
             )
@@ -7446,9 +6959,7 @@ class FunnelCalculator:
         # Find events between steps for all users in one go
         between_steps_events = (
             conversion_pairs.join(
-                lazy_history_df.filter(
-                    pl.col("user_id").cast(pl.Utf8).is_in(converted_user_list)
-                ),
+                lazy_history_df.filter(pl.col("user_id").cast(pl.Utf8).is_in(converted_user_list)),
                 on="user_id",
                 how="inner",
             )
@@ -7876,7 +7387,9 @@ class FunnelVisualizer:
             "level": (
                 "Simple"
                 if complexity_score < 30
-                else "Moderate" if complexity_score < 60 else "Complex"
+                else "Moderate"
+                if complexity_score < 60
+                else "Complex"
             ),
             "recommendations": self._get_complexity_recommendations(complexity_score),
         }
@@ -8071,9 +7584,7 @@ class FunnelVisualizer:
                 marker=dict(
                     color=self.color_palette.SEMANTIC["success"],
                     size=8,
-                    line=dict(
-                        color=self.color_palette.DARK_MODE["background"], width=2
-                    ),
+                    line=dict(color=self.color_palette.DARK_MODE["background"], width=2),
                 ),
                 hovertemplate=(
                     f"<b>%{{x}}</b><br>"
@@ -8118,9 +7629,7 @@ class FunnelVisualizer:
 
         # Apply theme and return with dynamic title
         if primary_metric_display and secondary_metric_display:
-            title = (
-                f"Time Series: {primary_metric_display} vs {secondary_metric_display}"
-            )
+            title = f"Time Series: {primary_metric_display} vs {secondary_metric_display}"
         else:
             title = "Time Series Analysis"
         subtitle = f"Tracking {self._format_metric_name(primary_metric)} and {self._format_metric_name(secondary_metric)} over time"
@@ -8190,9 +7699,7 @@ class FunnelVisualizer:
         return format_map.get(metric_name, metric_name.replace("_", " ").title())
 
     # Enhanced visualization methods
-    def create_enhanced_conversion_flow_sankey(
-        self, results: FunnelResults
-    ) -> go.Figure:
+    def create_enhanced_conversion_flow_sankey(self, results: FunnelResults) -> go.Figure:
         """Create enhanced Sankey diagram with accessibility and progressive disclosure"""
 
         if len(results.steps) < 2:
@@ -8228,9 +7735,7 @@ class FunnelVisualizer:
                 colors.append(self.color_palette.SEMANTIC["success"])
 
             # Drop-off flow
-            drop_off_users = (
-                results.drop_offs[i + 1] if i + 1 < len(results.drop_offs) else 0
-            )
+            drop_off_users = results.drop_offs[i + 1] if i + 1 < len(results.drop_offs) else 0
             if drop_off_users > 0:
                 # Add drop-off destination node
                 drop_off_label = f"🚪 Drop-off after {results.steps[i]}"
@@ -8242,9 +7747,7 @@ class FunnelVisualizer:
 
                 # Color based on drop-off severity
                 drop_off_rate = (
-                    results.drop_off_rates[i + 1]
-                    if i + 1 < len(results.drop_off_rates)
-                    else 0
+                    results.drop_off_rates[i + 1] if i + 1 < len(results.drop_off_rates) else 0
                 )
                 if drop_off_rate > 50:
                     colors.append(self.color_palette.SEMANTIC["error"])
@@ -8260,9 +7763,7 @@ class FunnelVisualizer:
                     node=dict(
                         pad=self.layout.SPACING["md"],
                         thickness=25,
-                        line=dict(
-                            color=self.color_palette.DARK_MODE["border"], width=1
-                        ),
+                        line=dict(color=self.color_palette.DARK_MODE["border"], width=1),
                         label=labels,
                         color=[
                             (
@@ -8348,9 +7849,7 @@ class FunnelVisualizer:
                                     font=dict(
                                         size=10,
                                         color=text_color,
-                                        family=self.typography.get_font_config()[
-                                            "family"
-                                        ],
+                                        family=self.typography.get_font_config()["family"],
                                     ),
                                 )
                             )
@@ -8359,11 +7858,7 @@ class FunnelVisualizer:
         fig = go.Figure(
             data=go.Heatmap(
                 z=z_data,
-                x=[
-                    f"Step {i + 1}"
-                    for i in range(len(z_data[0]))
-                    if z_data and z_data[0]
-                ],
+                x=[f"Step {i + 1}" for i in range(len(z_data[0])) if z_data and z_data[0]],
                 y=y_labels,
                 colorscale="Viridis",  # Accessible colorscale
                 text=[[f"{val:.1f}%" for val in row] for row in z_data],
@@ -8400,15 +7895,11 @@ class FunnelVisualizer:
 
         # Apply theme with insights
         title = "Cohort Performance Analysis"
-        subtitle = (
-            f"Conversion patterns across {len(cohort_data.cohort_labels)} cohorts"
-        )
+        subtitle = f"Conversion patterns across {len(cohort_data.cohort_labels)} cohorts"
 
         return self.apply_theme(fig, title, subtitle, height)
 
-    def create_comprehensive_dashboard(
-        self, results: FunnelResults
-    ) -> dict[str, go.Figure]:
+    def create_comprehensive_dashboard(self, results: FunnelResults) -> dict[str, go.Figure]:
         """Create a comprehensive dashboard with all enhanced visualizations"""
 
         dashboard = {}
@@ -8425,9 +7916,7 @@ class FunnelVisualizer:
             )
 
         # Conversion flow
-        dashboard["conversion_flow"] = self.create_enhanced_conversion_flow_sankey(
-            results
-        )
+        dashboard["conversion_flow"] = self.create_enhanced_conversion_flow_sankey(results)
 
         # Time to convert analysis
         if results.time_to_convert:
@@ -8437,9 +7926,7 @@ class FunnelVisualizer:
 
         # Cohort analysis
         if results.cohort_data and results.cohort_data.cohort_labels:
-            dashboard["cohort_analysis"] = self.create_enhanced_cohort_heatmap(
-                results.cohort_data
-            )
+            dashboard["cohort_analysis"] = self.create_enhanced_cohort_heatmap(results.cohort_data)
 
         # Path analysis
         if results.path_analysis:
@@ -8465,9 +7952,7 @@ class FunnelVisualizer:
             height = self.layout.CHART_DIMENSIONS["medium"]["height"]
 
         # Get typography configuration
-        title_font = self.typography.get_font_config(
-            "2xl", "bold", color=self.text_color
-        )
+        title_font = self.typography.get_font_config("2xl", "bold", color=self.text_color)
         body_font = self.typography.get_font_config(
             "base", "normal", color=self.secondary_text_color
         )
@@ -8583,9 +8068,7 @@ class FunnelVisualizer:
     ) -> go.Figure:
         """Static version of enhanced funnel chart for backward compatibility"""
         visualizer = FunnelVisualizer()
-        return visualizer.create_enhanced_funnel_chart(
-            results, show_segments, show_insights
-        )
+        return visualizer.create_enhanced_funnel_chart(results, show_segments, show_insights)
 
     @staticmethod
     def create_enhanced_conversion_flow_sankey_static(
@@ -8720,18 +8203,14 @@ class FunnelVisualizer:
         # Get appropriate colors
         if self.colorblind_friendly:
             colors = self.color_palette.get_colorblind_scale(
-                len(results.segment_data)
-                if show_segments and results.segment_data
-                else 1
+                len(results.segment_data) if show_segments and results.segment_data else 1
             )
         else:
             colors = [self.color_palette.SEMANTIC["info"]]
 
         if show_segments and results.segment_data:
             # Enhanced segmented funnel
-            for seg_idx, (segment_name, segment_counts) in enumerate(
-                results.segment_data.items()
-            ):
+            for seg_idx, (segment_name, segment_counts) in enumerate(results.segment_data.items()):
                 color = colors[seg_idx % len(colors)]
 
                 # Calculate step-by-step conversion rates
@@ -8770,9 +8249,7 @@ class FunnelVisualizer:
                             "color": color,
                             "line": {
                                 "width": 2,
-                                "color": self.color_palette.get_color_with_opacity(
-                                    color, 0.8
-                                ),
+                                "color": self.color_palette.get_color_with_opacity(color, 0.8),
                             },
                         },
                         connector={
@@ -8791,9 +8268,7 @@ class FunnelVisualizer:
             for i in range(len(results.steps)):
                 opacity = 0.9 - (i * 0.1)  # Decreasing opacity for visual hierarchy
                 gradient_colors.append(
-                    self.color_palette.get_color_with_opacity(
-                        colors[0], max(0.3, opacity)
-                    )
+                    self.color_palette.get_color_with_opacity(colors[0], max(0.3, opacity))
                 )
 
             # Calculate step-by-step metrics for enhanced hover
@@ -8827,9 +8302,7 @@ class FunnelVisualizer:
             for metric in step_metrics:
                 hover_text = f"<b>{metric['step']}</b><br>"
                 hover_text += f"👥 Users: {metric['count']:,}<br>"
-                hover_text += (
-                    f"📊 Overall conversion: {metric['overall_rate']:.1f}%<br>"
-                )
+                hover_text += f"📊 Overall conversion: {metric['overall_rate']:.1f}%<br>"
                 if metric["step_rate"] < 100:
                     hover_text += f"⬇️ From previous: {metric['step_rate']:.1f}%<br>"
                     hover_text += f"🚪 Drop-off: {metric['drop_off']:,} users"
@@ -8887,14 +8360,10 @@ class FunnelVisualizer:
         return fig
 
     @staticmethod
-    def create_funnel_chart(
-        results: FunnelResults, show_segments: bool = False
-    ) -> go.Figure:
+    def create_funnel_chart(results: FunnelResults, show_segments: bool = False) -> go.Figure:
         """Legacy method - maintained for backward compatibility"""
         visualizer = FunnelVisualizer()
-        return visualizer.create_enhanced_funnel_chart(
-            results, show_segments, show_insights=True
-        )
+        return visualizer.create_enhanced_funnel_chart(results, show_segments, show_insights=True)
 
     @staticmethod
     def create_conversion_flow_sankey(results: FunnelResults) -> go.Figure:
@@ -9258,11 +8727,7 @@ class FunnelVisualizer:
         fig = go.Figure(
             data=go.Heatmap(
                 z=z_data,
-                x=[
-                    f"Step {i + 1}"
-                    for i in range(len(z_data[0]))
-                    if z_data and z_data[0]
-                ],
+                x=[f"Step {i + 1}" for i in range(len(z_data[0])) if z_data and z_data[0]],
                 y=y_labels,
                 colorscale="Viridis",  # Better colorscale for dark mode
                 text=[[f"{val:.1f}%" for val in row] for row in z_data],
@@ -9287,13 +8752,9 @@ class FunnelVisualizer:
         )
 
         # Apply dark theme
-        return visualizer.apply_dark_theme(
-            fig, "How do different cohorts perform in the funnel?"
-        )
+        return visualizer.apply_dark_theme(fig, "How do different cohorts perform in the funnel?")
 
-    def create_enhanced_path_analysis_chart(
-        self, path_data: PathAnalysisData
-    ) -> go.Figure:
+    def create_enhanced_path_analysis_chart(self, path_data: PathAnalysisData) -> go.Figure:
         """Create enhanced path analysis with progressive disclosure and guided discovery"""
 
         fig = go.Figure()
@@ -9313,9 +8774,7 @@ class FunnelVisualizer:
         has_between_steps_data = any(
             events for events in path_data.between_steps_events.values() if events
         )
-        has_dropoff_data = any(
-            paths for paths in path_data.dropoff_paths.values() if paths
-        )
+        has_dropoff_data = any(paths for paths in path_data.dropoff_paths.values() if paths)
 
         if not has_between_steps_data and not has_dropoff_data:
             fig.add_annotation(
@@ -9367,9 +8826,7 @@ class FunnelVisualizer:
                     conversion_key in path_data.between_steps_events
                     and path_data.between_steps_events[conversion_key]
                 ):
-                    conversion_value = sum(
-                        path_data.between_steps_events[conversion_key].values()
-                    )
+                    conversion_value = sum(path_data.between_steps_events[conversion_key].values())
 
                     if conversion_value > 0:
                         # Direct conversion flow - always use success color
@@ -9488,16 +8945,11 @@ class FunnelVisualizer:
                     node=dict(
                         pad=self.layout.SPACING["md"],
                         thickness=20,
-                        line=dict(
-                            color=self.color_palette.DARK_MODE["border"], width=1
-                        ),
+                        line=dict(color=self.color_palette.DARK_MODE["border"], width=1),
                         label=labels,
                         color=node_colors,
                         hovertemplate="<b>%{label}</b><br>Category: %{customdata}<extra></extra>",
-                        customdata=[
-                            node_categories.get(i, "unknown")
-                            for i in range(len(labels))
-                        ],
+                        customdata=[node_categories.get(i, "unknown") for i in range(len(labels))],
                     ),
                     link=dict(
                         source=source,
@@ -9578,25 +9030,20 @@ class FunnelVisualizer:
             return f"⚠️ {event_name}"
         # View/navigation events
         if any(
-            word in lower_name
-            for word in ["view", "page", "screen", "visit", "navigate", "load"]
+            word in lower_name for word in ["view", "page", "screen", "visit", "navigate", "load"]
         ):
             return f"👁️ {event_name}"
         # Interaction events
         if any(
-            word in lower_name
-            for word in ["click", "tap", "press", "select", "choose", "button"]
+            word in lower_name for word in ["click", "tap", "press", "select", "choose", "button"]
         ):
             return f"👆 {event_name}"
         # Search/query events
-        if any(
-            word in lower_name for word in ["search", "query", "find", "filter", "sort"]
-        ):
+        if any(word in lower_name for word in ["search", "query", "find", "filter", "sort"]):
             return f"🔍 {event_name}"
         # Form/input events
         if any(
-            word in lower_name
-            for word in ["input", "form", "submit", "enter", "type", "fill"]
+            word in lower_name for word in ["input", "form", "submit", "enter", "type", "fill"]
         ):
             return f"📝 {event_name}"
         # Purchase/conversion events
@@ -9606,10 +9053,7 @@ class FunnelVisualizer:
         ):
             return f"💰 {event_name}"
         # Social/sharing events
-        if any(
-            word in lower_name
-            for word in ["share", "like", "comment", "follow", "social"]
-        ):
+        if any(word in lower_name for word in ["share", "like", "comment", "follow", "social"]):
             return f"👥 {event_name}"
         # Default fallback
         return f"🔄 {event_name}"
@@ -9644,9 +9088,7 @@ class FunnelVisualizer:
 
         # Handle empty data
         if not process_data.activities and not process_data.transitions:
-            return self._create_empty_process_figure(
-                "No process data available for visualization"
-            )
+            return self._create_empty_process_figure("No process data available for visualization")
 
         # Filter transitions by frequency if specified
         transitions = process_data.transitions
@@ -9659,17 +9101,11 @@ class FunnelVisualizer:
 
         # Choose visualization method based on type
         if visualization_type == "sankey":
-            return self._create_process_sankey_diagram(
-                process_data, transitions, show_frequencies
-            )
+            return self._create_process_sankey_diagram(process_data, transitions, show_frequencies)
         if visualization_type == "funnel":
-            return self._create_process_funnel_diagram(
-                process_data, transitions, show_frequencies
-            )
+            return self._create_process_funnel_diagram(process_data, transitions, show_frequencies)
         if visualization_type == "journey":
-            return self._create_process_journey_map(
-                process_data, transitions, show_frequencies
-            )
+            return self._create_process_journey_map(process_data, transitions, show_frequencies)
         # network (legacy)
         return self._create_process_network_diagram(
             process_data, transitions, show_frequencies, show_statistics
@@ -9738,9 +9174,7 @@ class FunnelVisualizer:
             ]
 
             if next_transitions:
-                next_activity = max(next_transitions, key=lambda x: x[1]["frequency"])[
-                    0
-                ]
+                next_activity = max(next_transitions, key=lambda x: x[1]["frequency"])[0]
                 current_activity = next_activity
             else:
                 break
@@ -9757,9 +9191,7 @@ class FunnelVisualizer:
         Create Sankey diagram for process flow - most intuitive for understanding user journeys
         """
         if not transitions:
-            return self._create_empty_process_figure(
-                "No transitions found for Sankey diagram"
-            )
+            return self._create_empty_process_figure("No transitions found for Sankey diagram")
 
         # Build nodes and links for Sankey
         nodes = {}
@@ -9886,9 +9318,7 @@ class FunnelVisualizer:
         fig = go.Figure()
 
         # Add funnel bars
-        for i, (name, count, dropout) in enumerate(
-            zip(step_names, step_counts, dropout_rates)
-        ):
+        for i, (name, count, dropout) in enumerate(zip(step_names, step_counts, dropout_rates)):
             color = self.color_palette.COLORBLIND_FRIENDLY[
                 min(i, len(self.color_palette.COLORBLIND_FRIENDLY) - 1)
             ]
@@ -9901,9 +9331,7 @@ class FunnelVisualizer:
                     textinfo="value+percent initial",
                     opacity=0.8,
                     marker=dict(color=color, line=dict(width=2, color=self.text_color)),
-                    connector=dict(
-                        line=dict(color=self.grid_color, dash="dot", width=3)
-                    ),
+                    connector=dict(line=dict(color=self.grid_color, dash="dot", width=3)),
                     hovertemplate=(
                         "<b>%{label}</b><br>"
                         "👥 Users: %{value:,}<br>"
@@ -9988,9 +9416,7 @@ class FunnelVisualizer:
             # Add dropout information if not first step
             if i > 0:
                 prev_activity = main_path[i - 1]
-                prev_users = process_data.activities.get(prev_activity, {}).get(
-                    "unique_users", 0
-                )
+                prev_users = process_data.activities.get(prev_activity, {}).get("unique_users", 0)
                 if prev_users > 0:
                     dropout = (prev_users - user_count) / prev_users * 100
                     hover_text += f"<br>📉 Dropout: {dropout:.1f}%"
@@ -10033,9 +9459,7 @@ class FunnelVisualizer:
                     x=[0.5, 0.5],
                     y=[y_positions[i], y_positions[i + 1]],
                     mode="lines",
-                    line=dict(
-                        color=self.color_palette.SEMANTIC["info"], width=line_width
-                    ),
+                    line=dict(color=self.color_palette.SEMANTIC["info"], width=line_width),
                     showlegend=False,
                     hoverinfo="skip",
                 )
@@ -10061,9 +9485,7 @@ class FunnelVisualizer:
                 "x": 0.5,
                 "xanchor": "center",
             },
-            xaxis=dict(
-                showgrid=False, showticklabels=False, zeroline=False, range=[0, 1]
-            ),
+            xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, range=[0, 1]),
             yaxis=dict(showgrid=False, showticklabels=False, zeroline=False),
             height=max(400, len(main_path) * 80),
             margin=dict(l=50, r=200, t=80, b=50),
@@ -10107,9 +9529,7 @@ class FunnelVisualizer:
         self._draw_process_transitions(fig, G, pos, transitions, show_frequencies)
 
         # Draw nodes (activities)
-        self._draw_process_activities(
-            fig, G, pos, process_data.activities, show_statistics
-        )
+        self._draw_process_activities(fig, G, pos, process_data.activities, show_statistics)
 
         # Add cycle indicators if any
         if process_data.cycles:
@@ -10127,9 +9547,7 @@ class FunnelVisualizer:
             legend=dict(
                 x=1.02,
                 y=1,
-                bgcolor=self.color_palette.get_color_with_opacity(
-                    self.background_color, 0.8
-                ),
+                bgcolor=self.color_palette.get_color_with_opacity(self.background_color, 0.8),
                 bordercolor=self.grid_color,
                 borderwidth=1,
             ),
@@ -10410,9 +9828,7 @@ class FunnelVisualizer:
                 color=self.text_color,
                 family=self.typography.get_font_config()["family"],
             ),
-            bgcolor=self.color_palette.get_color_with_opacity(
-                self.background_color, 0.9
-            ),
+            bgcolor=self.color_palette.get_color_with_opacity(self.background_color, 0.9),
             bordercolor=self.grid_color,
             borderwidth=1,
             align="left",
@@ -10500,10 +9916,7 @@ def filter_events(
             continue
 
         # Frequency filter
-        if (
-            selected_frequencies
-            and metadata.get("frequency") not in selected_frequencies
-        ):
+        if selected_frequencies and metadata.get("frequency") not in selected_frequencies:
             continue
 
         filtered[event_name] = metadata
@@ -10539,9 +9952,7 @@ def get_comprehensive_performance_analysis() -> dict[str, Any]:
     if hasattr(st.session_state, "data_source_manager") and hasattr(
         st.session_state.data_source_manager, "_performance_metrics"
     ):
-        analysis["data_source_metrics"] = (
-            st.session_state.data_source_manager._performance_metrics
-        )
+        analysis["data_source_metrics"] = st.session_state.data_source_manager._performance_metrics
 
     # Get funnel calculator performance if available
     if hasattr(st.session_state, "last_calculator") and hasattr(
@@ -10612,9 +10023,7 @@ def get_event_statistics(events_data: pd.DataFrame) -> dict[str, dict[str, Any]]
             "user_coverage": (unique_event_users / unique_users) * 100,
             "frequency_level": frequency_level,
             "frequency_color": frequency_color,
-            "avg_per_user": (
-                event_count / unique_event_users if unique_event_users > 0 else 0
-            ),
+            "avg_per_user": (event_count / unique_event_users if unique_event_users > 0 else 0),
         }
 
     return event_stats
@@ -10625,10 +10034,7 @@ def create_simple_event_selector():
     Create simplified event selector with proper closure handling and improved architecture.
     Uses callback arguments to avoid closure issues in loops.
     """
-    if (
-        st.session_state.get("events_data") is None
-        or st.session_state.events_data.empty
-    ):
+    if st.session_state.get("events_data") is None or st.session_state.events_data.empty:
         st.warning("Please load data first to see available events.")
         return
 
@@ -10705,9 +10111,9 @@ def create_simple_event_selector():
 
                 # Keep only last 10 calculations
                 if len(st.session_state.performance_history) > 10:
-                    st.session_state.performance_history = (
-                        st.session_state.performance_history[-10:]
-                    )
+                    st.session_state.performance_history = st.session_state.performance_history[
+                        -10:
+                    ]
 
                 st.toast(
                     f"✅ {engine_used} analysis completed in {calculation_time:.2f}s!",
@@ -10730,17 +10136,13 @@ def create_simple_event_selector():
         )
 
         if "event_statistics" not in st.session_state:
-            st.session_state.event_statistics = get_event_statistics(
-                st.session_state.events_data
-            )
+            st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
 
         available_events = sorted(st.session_state.events_data["event_name"].unique())
 
         if search_query:
             filtered_events = [
-                event
-                for event in available_events
-                if search_query.lower() in event.lower()
+                event for event in available_events if search_query.lower() in event.lower()
             ]
         else:
             filtered_events = available_events
@@ -10838,9 +10240,7 @@ def create_simple_event_selector():
                 )
 
             with action_col2:
-                st.button(
-                    "🗑️ Clear All", on_click=clear_all_steps, use_container_width=True
-                )
+                st.button("🗑️ Clear All", on_click=clear_all_steps, use_container_width=True)
 
 
 # Commented out original complex functions - keeping for reference but not using
@@ -10890,9 +10290,7 @@ def main():
             if uploaded_file is not None:
                 with st.spinner("Processing file..."):
                     st.session_state.events_data = (
-                        st.session_state.data_source_manager.load_from_file(
-                            uploaded_file
-                        )
+                        st.session_state.data_source_manager.load_from_file(uploaded_file)
                     )
                     if not st.session_state.events_data.empty:
                         # Refresh event statistics when new data is loaded
@@ -10939,9 +10337,7 @@ ORDER BY user_id, timestamp""",
             if st.button("Execute Query"):
                 with st.spinner("Executing query..."):
                     st.session_state.events_data = (
-                        st.session_state.data_source_manager.load_from_clickhouse(
-                            ch_query
-                        )
+                        st.session_state.data_source_manager.load_from_clickhouse(ch_query)
                     )
                     if not st.session_state.events_data.empty:
                         # Refresh event statistics when new data is loaded
@@ -10964,9 +10360,7 @@ ORDER BY user_id, timestamp""",
         elif window_unit == "Days":
             st.session_state.funnel_config.conversion_window_hours = window_value * 24
         elif window_unit == "Weeks":
-            st.session_state.funnel_config.conversion_window_hours = (
-                window_value * 24 * 7
-            )
+            st.session_state.funnel_config.conversion_window_hours = window_value * 24 * 7
 
         # Counting method
         counting_method = st.selectbox(
@@ -10997,10 +10391,7 @@ ORDER BY user_id, timestamp""",
         # Segmentation
         st.markdown("### 🎯 Segmentation")
 
-        if (
-            st.session_state.events_data is not None
-            and not st.session_state.events_data.empty
-        ):
+        if st.session_state.events_data is not None and not st.session_state.events_data.empty:
             # Update available properties
             st.session_state.available_properties = (
                 st.session_state.data_source_manager.get_segmentation_properties(
@@ -11027,10 +10418,8 @@ ORDER BY user_id, timestamp""",
                         st.session_state.funnel_config.segment_by = selected_property
 
                         # Get available values for this property
-                        prop_values = (
-                            st.session_state.data_source_manager.get_property_values(
-                                st.session_state.events_data, prop_name, prop_type
-                            )
+                        prop_values = st.session_state.data_source_manager.get_property_values(
+                            st.session_state.events_data, prop_name, prop_type
                         )
 
                         if prop_values:
@@ -11039,9 +10428,7 @@ ORDER BY user_id, timestamp""",
                                 prop_values,
                                 help="Choose specific values to compare",
                             )
-                            st.session_state.funnel_config.segment_values = (
-                                selected_values
-                            )
+                            st.session_state.funnel_config.segment_values = selected_values
                     else:
                         st.session_state.funnel_config.segment_by = None
                         st.session_state.funnel_config.segment_values = None
@@ -11060,17 +10447,13 @@ ORDER BY user_id, timestamp""",
         with col1:
             if st.button("💾 Save Config"):
                 if st.session_state.funnel_steps:
-                    config_name = (
-                        f"Funnel_{len(st.session_state.saved_configurations) + 1}"
-                    )
+                    config_name = f"Funnel_{len(st.session_state.saved_configurations) + 1}"
                     config_json = FunnelConfigManager.save_config(
                         st.session_state.funnel_config,
                         st.session_state.funnel_steps,
                         config_name,
                     )
-                    st.session_state.saved_configurations.append(
-                        (config_name, config_json)
-                    )
+                    st.session_state.saved_configurations.append((config_name, config_json))
                     st.success(f"Configuration saved as {config_name}")
 
         with col2:
@@ -11105,10 +10488,7 @@ ORDER BY user_id, timestamp""",
         # Performance Status
         st.markdown("### ⚡ Performance Status")
 
-        if (
-            "performance_history" in st.session_state
-            and st.session_state.performance_history
-        ):
+        if "performance_history" in st.session_state and st.session_state.performance_history:
             latest_calc = st.session_state.performance_history[-1]
 
             # Performance indicators
@@ -11161,9 +10541,7 @@ ORDER BY user_id, timestamp""",
         cache_col1, cache_col2 = st.columns(2)
 
         with cache_col1:
-            if st.button(
-                "🗑️ Clear Cache", help="Clear preprocessing and property caches"
-            ):
+            if st.button("🗑️ Clear Cache", help="Clear preprocessing and property caches"):
                 if "data_source_manager" in st.session_state:
                     # Clear any calculator caches that might exist
                     if (
@@ -11189,10 +10567,7 @@ ORDER BY user_id, timestamp""",
                     st.markdown("- User grouping optimizations")
 
     # Main content area
-    if (
-        st.session_state.events_data is not None
-        and not st.session_state.events_data.empty
-    ):
+    if st.session_state.events_data is not None and not st.session_state.events_data.empty:
         # Data overview
         st.markdown("## 📋 Data Overview")
         col1, col2, col3, col4 = st.columns(4)
@@ -11200,13 +10575,9 @@ ORDER BY user_id, timestamp""",
         with col1:
             st.metric("Total Events", f"{len(st.session_state.events_data):,}")
         with col2:
-            st.metric(
-                "Unique Users", f"{st.session_state.events_data['user_id'].nunique():,}"
-            )
+            st.metric("Unique Users", f"{st.session_state.events_data['user_id'].nunique():,}")
         with col3:
-            st.metric(
-                "Event Types", f"{st.session_state.events_data['event_name'].nunique()}"
-            )
+            st.metric("Event Types", f"{st.session_state.events_data['event_name'].nunique()}")
         with col4:
             date_range = (
                 st.session_state.events_data["timestamp"].max()
@@ -11260,10 +10631,7 @@ ORDER BY user_id, timestamp""",
             tabs.append("🔍 Process Mining")
 
             # Add performance monitoring tab
-            if (
-                "performance_history" in st.session_state
-                and st.session_state.performance_history
-            ):
+            if "performance_history" in st.session_state and st.session_state.performance_history:
                 tabs.append("⚡ Performance Monitor")
 
             tab_objects = st.tabs(tabs)
@@ -11285,13 +10653,9 @@ ORDER BY user_id, timestamp""",
                 # Initialize enhanced visualizer
                 visualizer = FunnelVisualizer(theme="dark", colorblind_friendly=True)
 
-                show_segments = (
-                    results.segment_data is not None and len(results.segment_data) > 1
-                )
+                show_segments = results.segment_data is not None and len(results.segment_data) > 1
                 if show_segments:
-                    chart_type = st.radio(
-                        "Chart Type", ["Overall", "Segmented"], horizontal=True
-                    )
+                    chart_type = st.radio("Chart Type", ["Overall", "Segmented"], horizontal=True)
                     show_segments = chart_type == "Segmented"
 
                 # Use enhanced funnel chart
@@ -11337,38 +10701,26 @@ ORDER BY user_id, timestamp""",
                     # Basic metrics
                     users = results.users_count[i]
                     conversion_rate = (
-                        results.conversion_rates[i]
-                        if i < len(results.conversion_rates)
-                        else 0
+                        results.conversion_rates[i] if i < len(results.conversion_rates) else 0
                     )
-                    drop_offs = (
-                        results.drop_offs[i] if i < len(results.drop_offs) else 0
-                    )
+                    drop_offs = results.drop_offs[i] if i < len(results.drop_offs) else 0
                     drop_off_rate = (
-                        results.drop_off_rates[i]
-                        if i < len(results.drop_off_rates)
-                        else 0
+                        results.drop_off_rates[i] if i < len(results.drop_off_rates) else 0
                     )
 
                     # Advanced analytics
                     # Average views per user (simulate realistic data)
-                    avg_views_per_user = round(
-                        1.2 + (i * 0.3) + (drop_off_rate / 100), 1
-                    )
+                    avg_views_per_user = round(1.2 + (i * 0.3) + (drop_off_rate / 100), 1)
 
                     # Enhanced time calculations with realistic distributions
                     # Base time varies by step complexity and user behavior patterns
                     base_time_minutes = 2 + (i * 3)  # 2, 5, 8, 11 minutes for steps 1-4
 
                     # Average time (affected by drop-off rate - higher drop-off = users spend more time struggling)
-                    avg_time_minutes = (
-                        base_time_minutes + (drop_off_rate * 0.1) + (i * 1.5)
-                    )
+                    avg_time_minutes = base_time_minutes + (drop_off_rate * 0.1) + (i * 1.5)
 
                     # Median time (typically lower than average due to power users)
-                    median_time_minutes = (
-                        avg_time_minutes * 0.7
-                    )  # Median is ~70% of average
+                    median_time_minutes = avg_time_minutes * 0.7  # Median is ~70% of average
 
                     # Format time based on duration for better readability
                     def format_time(minutes):
@@ -11425,25 +10777,19 @@ ORDER BY user_id, timestamp""",
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "Step": st.column_config.TextColumn(
-                            "🎯 Funnel Step", width="medium"
-                        ),
+                        "Step": st.column_config.TextColumn("🎯 Funnel Step", width="medium"),
                         "Users": st.column_config.TextColumn("👥 Users", width="small"),
                         "Conversion Rate": st.column_config.TextColumn(
                             "📈 Conv. Rate", width="small"
                         ),
-                        "Drop-offs": st.column_config.TextColumn(
-                            "🚪 Drop-offs", width="small"
-                        ),
+                        "Drop-offs": st.column_config.TextColumn("🚪 Drop-offs", width="small"),
                         "Drop-off Rate": st.column_config.TextColumn(
                             "📉 Drop Rate", width="small"
                         ),
                         "Avg Views/User": st.column_config.TextColumn(
                             "👁️ Avg Views", width="small"
                         ),
-                        "Avg Time": st.column_config.TextColumn(
-                            "⏱️ Avg Time", width="small"
-                        ),
+                        "Avg Time": st.column_config.TextColumn("⏱️ Avg Time", width="small"),
                         "Median Time": st.column_config.TextColumn(
                             "📊 Median Time", width="small"
                         ),
@@ -11601,9 +10947,7 @@ ORDER BY user_id, timestamp""",
 
             with tab_objects[2]:  # Time Series Analysis
                 st.markdown("### 🕒 Time Series Analysis")
-                st.markdown(
-                    "*Analyze funnel metrics trends over time with configurable periods*"
-                )
+                st.markdown("*Analyze funnel metrics trends over time with configurable periods*")
 
                 # Enhanced business explanation for Time Series Analysis
                 st.info(
@@ -11638,9 +10982,7 @@ ORDER BY user_id, timestamp""",
                 )
 
                 # Add metric interpretation guide
-                st.expander(
-                    "📖 **Metric Interpretation Guide**", expanded=False
-                ).markdown(
+                st.expander("📖 **Metric Interpretation Guide**", expanded=False).markdown(
                     """
                 **When to use COHORT metrics:**
                 - Evaluating marketing campaign effectiveness
@@ -11709,9 +11051,7 @@ ORDER BY user_id, timestamp""",
                 with col3:
                     # Secondary metric (right Y-axis) selection with clearer labeling
                     # Build dynamic options based on actual funnel steps
-                    secondary_options = {
-                        "Cohort Conversion Rate (%)": "conversion_rate"
-                    }
+                    secondary_options = {"Cohort Conversion Rate (%)": "conversion_rate"}
 
                     # Add step-by-step conversion options dynamically
                     if results and results.steps and len(results.steps) > 1:
@@ -11742,9 +11082,7 @@ ORDER BY user_id, timestamp""",
                             calculator = st.session_state.last_calculator
                         else:
                             # Create a new calculator with current config
-                            calculator = FunnelCalculator(
-                                st.session_state.funnel_config
-                            )
+                            calculator = FunnelCalculator(st.session_state.funnel_config)
 
                         # Calculate timeseries metrics
                         timeseries_data = calculator.calculate_timeseries_metrics(
@@ -11758,9 +11096,7 @@ ORDER BY user_id, timestamp""",
                                     f"⚠️ Metric '{secondary_metric_display}' not available for current funnel configuration."
                                 )
                                 available_metrics = [
-                                    col
-                                    for col in timeseries_data.columns
-                                    if col.endswith("_rate")
+                                    col for col in timeseries_data.columns if col.endswith("_rate")
                                 ]
                                 if available_metrics:
                                     st.info(
@@ -11775,9 +11111,7 @@ ORDER BY user_id, timestamp""",
                                     primary_metric_display,
                                     secondary_metric_display,
                                 )
-                                st.plotly_chart(
-                                    timeseries_chart, use_container_width=True
-                                )
+                                st.plotly_chart(timeseries_chart, use_container_width=True)
 
                                 # Show enhanced summary statistics with clear metric explanations
                                 st.markdown("#### 📊 Time Series Summary")
@@ -11829,9 +11163,7 @@ ORDER BY user_id, timestamp""",
                                         )
                                     else:
                                         # For other step-to-step metrics, use arithmetic mean
-                                        avg_secondary = timeseries_data[
-                                            secondary_metric
-                                        ].mean()
+                                        avg_secondary = timeseries_data[secondary_metric].mean()
                                         metric_name = secondary_metric_display.replace(
                                             " (%)", ""
                                         ).replace(" Rate", "")
@@ -11860,12 +11192,8 @@ ORDER BY user_id, timestamp""",
                                         if secondary_metric == "conversion_rate":
                                             # For conversion rate, compare recent vs earlier cohort performance
                                             mid_point = len(timeseries_data) // 2
-                                            recent_periods = timeseries_data.iloc[
-                                                mid_point:
-                                            ]
-                                            earlier_periods = timeseries_data.iloc[
-                                                :mid_point
-                                            ]
+                                            recent_periods = timeseries_data.iloc[mid_point:]
+                                            earlier_periods = timeseries_data.iloc[:mid_point]
 
                                             recent_total_started = recent_periods[
                                                 "started_funnel_users"
@@ -11911,14 +11239,10 @@ ORDER BY user_id, timestamp""",
                                         else:
                                             # For other metrics, use simple average comparison
                                             recent_avg = (
-                                                timeseries_data[secondary_metric]
-                                                .tail(3)
-                                                .mean()
+                                                timeseries_data[secondary_metric].tail(3).mean()
                                             )
                                             earlier_avg = (
-                                                timeseries_data[secondary_metric]
-                                                .head(3)
-                                                .mean()
+                                                timeseries_data[secondary_metric].head(3).mean()
                                             )
                                             trend = (
                                                 "📈 Improving"
@@ -12025,18 +11349,12 @@ ORDER BY user_id, timestamp""",
                         )
 
                     df_time_stats = pd.DataFrame(time_stats_data)
-                    st.dataframe(
-                        df_time_stats, use_container_width=True, hide_index=True
-                    )
+                    st.dataframe(df_time_stats, use_container_width=True, hide_index=True)
 
                     # Add timing insights
                     if st.checkbox("🔍 Show Timing Insights", key="timing_insights"):
-                        fastest_step = min(
-                            results.time_to_convert, key=lambda x: x.median_hours
-                        )
-                        slowest_step = max(
-                            results.time_to_convert, key=lambda x: x.median_hours
-                        )
+                        fastest_step = min(results.time_to_convert, key=lambda x: x.median_hours)
+                        slowest_step = max(results.time_to_convert, key=lambda x: x.median_hours)
 
                         col1, col2 = st.columns(2)
                         with col1:
@@ -12054,9 +11372,7 @@ ORDER BY user_id, timestamp""",
                     st.markdown("### 👥 Cohort Analysis")
 
                     # Use enhanced cohort heatmap
-                    cohort_chart = visualizer.create_enhanced_cohort_heatmap(
-                        results.cohort_data
-                    )
+                    cohort_chart = visualizer.create_enhanced_cohort_heatmap(results.cohort_data)
                     st.plotly_chart(cohort_chart, use_container_width=True)
 
                     # Enhanced cohort insights
@@ -12065,13 +11381,9 @@ ORDER BY user_id, timestamp""",
                         cohort_performance = []
                         for cohort_label in results.cohort_data.cohort_labels:
                             if cohort_label in results.cohort_data.conversion_rates:
-                                rates = results.cohort_data.conversion_rates[
-                                    cohort_label
-                                ]
+                                rates = results.cohort_data.conversion_rates[cohort_label]
                                 final_rate = rates[-1] if rates else 0
-                                cohort_size = results.cohort_data.cohort_sizes.get(
-                                    cohort_label, 0
-                                )
+                                cohort_size = results.cohort_data.cohort_sizes.get(cohort_label, 0)
 
                                 cohort_performance.append(
                                     {
@@ -12081,11 +11393,7 @@ ORDER BY user_id, timestamp""",
                                         "Performance": (
                                             "🏆 High"
                                             if final_rate > 50
-                                            else (
-                                                "📈 Medium"
-                                                if final_rate > 20
-                                                else "📉 Low"
-                                            )
+                                            else ("📈 Medium" if final_rate > 20 else "📉 Low")
                                         ),
                                     }
                                 )
@@ -12102,15 +11410,11 @@ ORDER BY user_id, timestamp""",
                             # Best/worst performing cohorts
                             best_cohort = max(
                                 cohort_performance,
-                                key=lambda x: float(
-                                    x["Final Conversion"].replace("%", "")
-                                ),
+                                key=lambda x: float(x["Final Conversion"].replace("%", "")),
                             )
                             worst_cohort = min(
                                 cohort_performance,
-                                key=lambda x: float(
-                                    x["Final Conversion"].replace("%", "")
-                                ),
+                                key=lambda x: float(x["Final Conversion"].replace("%", "")),
                             )
 
                             col1, col2 = st.columns(2)
@@ -12140,9 +11444,7 @@ ORDER BY user_id, timestamp""",
                     # Between-Steps Events section moved below for better layout
                     st.markdown("---")  # Visual separator
                     st.markdown("### 📊 Between-Steps Events Analysis")
-                    st.markdown(
-                        "*Events that occur as users progress through your funnel*"
-                    )
+                    st.markdown("*Events that occur as users progress through your funnel*")
 
                     # Check if we have between-steps events data
                     has_between_steps_data = any(
@@ -12198,11 +11500,7 @@ ORDER BY user_id, timestamp""",
                                                 "Impact": (
                                                     "🔥 High"
                                                     if count > 100
-                                                    else (
-                                                        "⚡ Medium"
-                                                        if count > 10
-                                                        else "💡 Low"
-                                                    )
+                                                    else ("⚡ Medium" if count > 10 else "💡 Low")
                                                 ),
                                             }
                                         )
@@ -12210,9 +11508,7 @@ ORDER BY user_id, timestamp""",
                                     if categorized_events:
                                         df_events = pd.DataFrame(categorized_events)
                                         # Sort by count for better insights
-                                        df_events = df_events.sort_values(
-                                            "Count", ascending=False
-                                        )
+                                        df_events = df_events.sort_values("Count", ascending=False)
                                         st.dataframe(
                                             df_events,
                                             use_container_width=True,
@@ -12287,9 +11583,7 @@ ORDER BY user_id, timestamp""",
                         )
 
                 # Process Mining Analysis
-                if st.button(
-                    "🚀 Discover Process", type="primary", use_container_width=True
-                ):
+                if st.button("🚀 Discover Process", type="primary", use_container_width=True):
                     with st.spinner("Analyzing user journeys..."):
                         try:
                             # Initialize path analyzer
@@ -12297,12 +11591,10 @@ ORDER BY user_id, timestamp""",
                             path_analyzer = PathAnalyzer(config)
 
                             # Discover process structure
-                            process_data = (
-                                path_analyzer.discover_process_mining_structure(
-                                    st.session_state.events_data,
-                                    min_frequency=min_frequency,
-                                    include_cycles=include_cycles,
-                                )
+                            process_data = path_analyzer.discover_process_mining_structure(
+                                st.session_state.events_data,
+                                min_frequency=min_frequency,
+                                include_cycles=include_cycles,
                             )
 
                             # Store in session state
@@ -12336,9 +11628,7 @@ ORDER BY user_id, timestamp""",
                     with col4:
                         st.metric("Variants", len(process_data.variants))
                     with col5:
-                        completion_rate = process_data.statistics.get(
-                            "completion_rate", 0
-                        )
+                        completion_rate = process_data.statistics.get("completion_rate", 0)
                         st.metric("Completion Rate", f"{completion_rate:.1f}%")
 
                     # Process Mining Visualization
@@ -12373,9 +11663,7 @@ ORDER BY user_id, timestamp""",
 
                     try:
                         # Create process mining diagram
-                        visualizer = FunnelVisualizer(
-                            theme="dark", colorblind_friendly=True
-                        )
+                        visualizer = FunnelVisualizer(theme="dark", colorblind_friendly=True)
 
                         process_fig = visualizer.create_process_mining_diagram(
                             process_data,
@@ -12383,9 +11671,7 @@ ORDER BY user_id, timestamp""",
                             show_frequencies=show_frequencies,
                             show_statistics=True,
                             filter_min_frequency=(
-                                min_frequency_filter
-                                if min_frequency_filter > 0
-                                else None
+                                min_frequency_filter if min_frequency_filter > 0 else None
                             ),
                         )
 
@@ -12442,9 +11728,7 @@ ORDER BY user_id, timestamp""",
 
                         if activity_data:
                             activity_df = pd.DataFrame(activity_data)
-                            st.dataframe(
-                                activity_df, use_container_width=True, hide_index=True
-                            )
+                            st.dataframe(activity_df, use_container_width=True, hide_index=True)
 
                     with col2:
                         st.markdown("#### 🔄 Top Transitions")
@@ -12457,9 +11741,7 @@ ORDER BY user_id, timestamp""",
                         )
 
                         transition_data = []
-                        for (from_act, to_act), data in sorted_transitions[
-                            :10
-                        ]:  # Top 10
+                        for (from_act, to_act), data in sorted_transitions[:10]:  # Top 10
                             transition_data.append(
                                 {
                                     "From": from_act,
@@ -12473,9 +11755,7 @@ ORDER BY user_id, timestamp""",
 
                         if transition_data:
                             transition_df = pd.DataFrame(transition_data)
-                            st.dataframe(
-                                transition_df, use_container_width=True, hide_index=True
-                            )
+                            st.dataframe(transition_df, use_container_width=True, hide_index=True)
 
                     # Cycle Analysis
                     if process_data.cycles:
@@ -12495,9 +11775,7 @@ ORDER BY user_id, timestamp""",
 
                         if cycle_data:
                             cycle_df = pd.DataFrame(cycle_data)
-                            st.dataframe(
-                                cycle_df, use_container_width=True, hide_index=True
-                            )
+                            st.dataframe(cycle_df, use_container_width=True, hide_index=True)
 
                     # Process Variants
                     if process_data.variants:
@@ -12517,27 +11795,19 @@ ORDER BY user_id, timestamp""",
 
                         if variant_data:
                             variant_df = pd.DataFrame(variant_data)
-                            st.dataframe(
-                                variant_df, use_container_width=True, hide_index=True
-                            )
+                            st.dataframe(variant_df, use_container_width=True, hide_index=True)
 
             tab_idx += 1
 
             # Performance Monitor Tab
-            if (
-                "performance_history" in st.session_state
-                and st.session_state.performance_history
-            ):
+            if "performance_history" in st.session_state and st.session_state.performance_history:
                 with tab_objects[tab_idx]:  # Performance Monitor
                     st.markdown("### ⚡ Performance Monitoring")
 
                     # Show comprehensive performance analysis
                     comprehensive_analysis = get_comprehensive_performance_analysis()
 
-                    if (
-                        comprehensive_analysis["overall_summary"]["functions_monitored"]
-                        > 0
-                    ):
+                    if comprehensive_analysis["overall_summary"]["functions_monitored"] > 0:
                         st.markdown("#### 🎯 System Performance Overview")
 
                         col1, col2, col3, col4 = st.columns(4)
@@ -12550,9 +11820,7 @@ ORDER BY user_id, timestamp""",
                         with col2:
                             st.metric(
                                 "Total Function Calls",
-                                comprehensive_analysis["overall_summary"][
-                                    "total_function_calls"
-                                ],
+                                comprehensive_analysis["overall_summary"]["total_function_calls"],
                             )
                         with col3:
                             st.metric(
@@ -12562,9 +11830,7 @@ ORDER BY user_id, timestamp""",
                         with col4:
                             st.metric(
                                 "Functions Monitored",
-                                comprehensive_analysis["overall_summary"][
-                                    "functions_monitored"
-                                ],
+                                comprehensive_analysis["overall_summary"]["functions_monitored"],
                             )
 
                         # Show data source performance if available
@@ -12621,9 +11887,9 @@ ORDER BY user_id, timestamp""",
                                     summary["total_functions_monitored"],
                                 )
                             with col3:
-                                top_function_dominance = summary[
-                                    "performance_distribution"
-                                ]["top_function_dominance"]
+                                top_function_dominance = summary["performance_distribution"][
+                                    "top_function_dominance"
+                                ]
                                 st.metric(
                                     "Top Function Dominance",
                                     f"{top_function_dominance:.1f}%",
@@ -12661,8 +11927,7 @@ ORDER BY user_id, timestamp""",
                                         "Max Time (s)": f"{func_data['max_time']:.4f}",
                                         "Consistency": (
                                             f"{1 / func_data['time_per_call_consistency']:.1f}x"
-                                            if func_data["time_per_call_consistency"]
-                                            > 0
+                                            if func_data["time_per_call_consistency"] > 0
                                             else "Perfect"
                                         ),
                                     }
@@ -12739,9 +12004,7 @@ ORDER BY user_id, timestamp""",
                             fig_time = go.Figure()
                             fig_time.add_trace(
                                 go.Scatter(
-                                    x=list(
-                                        range(len(st.session_state.performance_history))
-                                    ),
+                                    x=list(range(len(st.session_state.performance_history))),
                                     y=[
                                         entry["calculation_time"]
                                         for entry in st.session_state.performance_history
@@ -12768,9 +12031,7 @@ ORDER BY user_id, timestamp""",
                             ]
                             fig_throughput.add_trace(
                                 go.Scatter(
-                                    x=list(
-                                        range(len(st.session_state.performance_history))
-                                    ),
+                                    x=list(range(len(st.session_state.performance_history))),
                                     y=throughput,
                                     mode="lines+markers",
                                     name="Events/Second",
@@ -12799,29 +12060,21 @@ ORDER BY user_id, timestamp""",
                         with col_perf1:
                             st.metric("Average Calculation Time", f"{avg_time:.3f}s")
                         with col_perf2:
-                            st.metric(
-                                "Max Throughput", f"{max_throughput:,.0f} events/s"
-                            )
+                            st.metric("Max Throughput", f"{max_throughput:,.0f} events/s")
                         with col_perf3:
                             recent_improvement = 0.0
                             if len(st.session_state.performance_history) >= 2:
-                                prev_calc_time = st.session_state.performance_history[
-                                    -2
-                                ]["calculation_time"]
-                                current_calc_time = (
-                                    st.session_state.performance_history[-1][
-                                        "calculation_time"
-                                    ]
-                                )
+                                prev_calc_time = st.session_state.performance_history[-2][
+                                    "calculation_time"
+                                ]
+                                current_calc_time = st.session_state.performance_history[-1][
+                                    "calculation_time"
+                                ]
                                 if prev_calc_time > 0:  # Avoid division by zero
                                     recent_improvement = (
-                                        (prev_calc_time - current_calc_time)
-                                        / prev_calc_time
-                                        * 100
+                                        (prev_calc_time - current_calc_time) / prev_calc_time * 100
                                     )
-                            st.metric(
-                                "Latest Improvement", f"{recent_improvement:+.1f}%"
-                            )
+                            st.metric("Latest Improvement", f"{recent_improvement:+.1f}%")
 
                 tab_idx += 1
 
@@ -12950,9 +12203,7 @@ def test_visualizations():
         try:
             # Check if we have session state and if we're in the Streamlit context
             has_session = (
-                "session_state" in globals()
-                or "st" in globals()
-                and hasattr(st, "session_state")
+                "session_state" in globals() or "st" in globals() and hasattr(st, "session_state")
             )
 
             if has_session and hasattr(st.session_state, "analysis_results"):
@@ -13014,9 +12265,7 @@ def test_visualizations():
 
         # Test 3: Conversion Flow Sankey
         try:
-            flow_chart = FunnelVisualizer.create_conversion_flow_sankey(
-                data["funnel_results"]
-            )
+            flow_chart = FunnelVisualizer.create_conversion_flow_sankey(data["funnel_results"])
             test_results["passed"].append("Conversion Flow Sankey")
             st.success("✅ Conversion Flow Sankey")
         except Exception as e:
@@ -13025,9 +12274,7 @@ def test_visualizations():
 
         # Test 4: Time to Convert Chart
         try:
-            time_chart = FunnelVisualizer.create_time_to_convert_chart(
-                data["time_stats"]
-            )
+            time_chart = FunnelVisualizer.create_time_to_convert_chart(data["time_stats"])
             test_results["passed"].append("Time to Convert Chart")
             st.success("✅ Time to Convert Chart")
         except Exception as e:
@@ -13054,9 +12301,7 @@ def test_visualizations():
 
         # Test 7: Statistical Significance Table
         try:
-            stat_table = FunnelVisualizer.create_statistical_significance_table(
-                data["stat_tests"]
-            )
+            stat_table = FunnelVisualizer.create_statistical_significance_table(data["stat_tests"])
             test_results["passed"].append("Statistical Significance Table")
             st.success("✅ Statistical Significance Table")
         except Exception as e:

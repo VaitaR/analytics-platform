@@ -188,9 +188,7 @@ class TestFunnelVisualizerChartCreation:
         for trace in chart.data:
             if hasattr(trace.marker, "color"):
                 if isinstance(trace.marker.color, list):
-                    colors.append(
-                        trace.marker.color[0] if trace.marker.color else "#000000"
-                    )
+                    colors.append(trace.marker.color[0] if trace.marker.color else "#000000")
                 else:
                     colors.append(trace.marker.color)
             else:
@@ -232,9 +230,7 @@ class TestFunnelVisualizerChartCreation:
 
         # Validate chart structure
         assert chart is not None, "Time chart should be created"
-        assert len(chart.data) == len(
-            sample_time_stats
-        ), "Should have trace per transition"
+        assert len(chart.data) == len(sample_time_stats), "Should have trace per transition"
 
         # Validate log scale
         assert chart.layout.yaxis.type == "log", "Should use log scale for time"
@@ -245,9 +241,7 @@ class TestFunnelVisualizerChartCreation:
             assert trace.type in valid_types, f"Invalid trace type: {trace.type}"
 
         # Validate enhanced annotations
-        assert (
-            chart.layout.annotations is not None
-        ), "Should have reference time annotations"
+        assert chart.layout.annotations is not None, "Should have reference time annotations"
 
         print("✅ Enhanced time-to-convert chart creation test passed")
 
@@ -264,9 +258,7 @@ class TestFunnelVisualizerChartCreation:
 
         # Validate data structure
         assert len(heatmap_trace.z) == len(sample_cohort_data.cohort_labels)
-        assert all(
-            len(row) == 4 for row in heatmap_trace.z
-        ), "Should have 4 steps per cohort"
+        assert all(len(row) == 4 for row in heatmap_trace.z), "Should have 4 steps per cohort"
 
         # Validate enhanced features
         assert heatmap_trace.colorscale is not None, "Should have accessible colorscale"
@@ -290,9 +282,7 @@ class TestFunnelVisualizerChartCreation:
 
         # Validate drop-off destinations
         dropoff_nodes = [
-            label
-            for label in sankey_trace.node.label
-            if "Exit" in label or "Support" in label
+            label for label in sankey_trace.node.label if "Exit" in label or "Support" in label
         ]
         assert len(dropoff_nodes) > 0, "Should have drop-off destination nodes"
 
@@ -327,9 +317,7 @@ class TestFunnelVisualizerThemeAndAccessibility:
         # Validate dark theme colors
         layout = chart.layout
         assert layout.plot_bgcolor.startswith("rgb"), "Should have dark plot background"
-        assert layout.paper_bgcolor.startswith(
-            "rgb"
-        ), "Should have dark paper background"
+        assert layout.paper_bgcolor.startswith("rgb"), "Should have dark paper background"
 
         # Validate text colors
         assert layout.font.color is not None, "Should have light text color"
@@ -346,18 +334,14 @@ class TestFunnelVisualizerThemeAndAccessibility:
             "Segment B": [40, 30, 20],
         }
 
-        chart = visualizer.create_enhanced_funnel_chart(
-            sample_results, show_segments=True
-        )
+        chart = visualizer.create_enhanced_funnel_chart(sample_results, show_segments=True)
 
         # Validate colorblind accessibility
         assert visualizer.colorblind_friendly == True
 
         # Verify distinct colors for segments
         colors = [trace.marker.color for trace in chart.data]
-        assert len(set(colors)) == len(
-            chart.data
-        ), "Segments should have distinct colors"
+        assert len(set(colors)) == len(chart.data), "Segments should have distinct colors"
 
         print("✅ Colorblind accessibility test passed")
 
@@ -412,20 +396,18 @@ class TestFunnelVisualizerThemeAndAccessibility:
             sample_results.users_count = [100 - i * 10 for i in range(len(steps))]
             sample_results.drop_offs = [10] * len(steps)  # Consistent drop-offs
             sample_results.drop_off_rates = [10.0] * len(steps)  # Consistent rates
-            sample_results.conversion_rates = [
-                100.0 - i * 10 for i in range(len(steps))
-            ]
+            sample_results.conversion_rates = [100.0 - i * 10 for i in range(len(steps))]
 
             chart = visualizer.create_enhanced_funnel_chart(sample_results)
 
             # Validate responsive height with universal standards
             actual_height = chart.layout.height
-            assert (
-                actual_height >= expected_min_height
-            ), f"Height {actual_height} too small for {len(steps)} steps"
-            assert (
-                actual_height <= 800
-            ), f"Height {actual_height} exceeds universal maximum of 800px"
+            assert actual_height >= expected_min_height, (
+                f"Height {actual_height} too small for {len(steps)} steps"
+            )
+            assert actual_height <= 800, (
+                f"Height {actual_height} exceeds universal maximum of 800px"
+            )
 
         print("✅ Responsive height calculation test passed")
 
@@ -480,13 +462,9 @@ class TestFunnelVisualizerEdgeCases:
         assert funnel_chart is not None
 
         # Sankey should show helpful message
-        sankey_chart = visualizer.create_enhanced_conversion_flow_sankey(
-            single_step_results
-        )
+        sankey_chart = visualizer.create_enhanced_conversion_flow_sankey(single_step_results)
         assert sankey_chart is not None
-        assert (
-            len(sankey_chart.layout.annotations) > 0
-        ), "Should explain insufficient steps"
+        assert len(sankey_chart.layout.annotations) > 0, "Should explain insufficient steps"
 
         print("✅ Single step funnel test passed")
 
@@ -631,16 +609,12 @@ class TestFunnelVisualizerPerformance:
         visualizer = FunnelVisualizer(theme="dark", colorblind_friendly=False)
 
         start_time = time.time()
-        chart = visualizer.create_enhanced_funnel_chart(
-            large_funnel_results, show_segments=True
-        )
+        chart = visualizer.create_enhanced_funnel_chart(large_funnel_results, show_segments=True)
         end_time = time.time()
 
         # Validate performance
         execution_time = end_time - start_time
-        assert (
-            execution_time < 10.0
-        ), f"Chart creation took too long: {execution_time:.2f}s"
+        assert execution_time < 10.0, f"Chart creation took too long: {execution_time:.2f}s"
 
         # Validate chart was created
         assert chart is not None
@@ -660,9 +634,7 @@ class TestFunnelVisualizerPerformance:
 
         # Validate performance
         execution_time = end_time - start_time
-        assert (
-            execution_time < 15.0
-        ), f"Time chart creation took too long: {execution_time:.2f}s"
+        assert execution_time < 15.0, f"Time chart creation took too long: {execution_time:.2f}s"
 
         # Validate chart was created
         assert chart is not None
@@ -728,15 +700,9 @@ class TestFunnelVisualizerAPIConsistency:
 
         for method, args in chart_methods:
             chart = method(*args)
-            assert isinstance(
-                chart, go.Figure
-            ), f"{method.__name__} should return plotly Figure"
-            assert hasattr(
-                chart, "data"
-            ), f"{method.__name__} should have data attribute"
-            assert hasattr(
-                chart, "layout"
-            ), f"{method.__name__} should have layout attribute"
+            assert isinstance(chart, go.Figure), f"{method.__name__} should return plotly Figure"
+            assert hasattr(chart, "data"), f"{method.__name__} should have data attribute"
+            assert hasattr(chart, "layout"), f"{method.__name__} should have layout attribute"
 
         print("✅ API consistency test passed")
 

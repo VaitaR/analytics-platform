@@ -101,22 +101,15 @@ class TestFunnelConfigManagerSaveLoad:
         )
 
         # Then load it back
-        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(
-            config_json
-        )
+        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(config_json)
 
         # Validate loaded configuration
-        assert isinstance(
-            loaded_config, FunnelConfig
-        ), "Should return FunnelConfig object"
+        assert isinstance(loaded_config, FunnelConfig), "Should return FunnelConfig object"
         assert loaded_steps == sample_steps, "Steps should match"
         assert loaded_name == sample_config_name, "Name should match"
 
         # Validate configuration values
-        assert (
-            loaded_config.conversion_window_hours
-            == sample_config.conversion_window_hours
-        )
+        assert loaded_config.conversion_window_hours == sample_config.conversion_window_hours
         assert loaded_config.counting_method == sample_config.counting_method
         assert loaded_config.reentry_mode == sample_config.reentry_mode
         assert loaded_config.funnel_order == sample_config.funnel_order
@@ -131,14 +124,10 @@ class TestFunnelConfigManagerSaveLoad:
         )
 
         # Load config
-        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(
-            saved_json
-        )
+        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(saved_json)
 
         # Save again
-        resaved_json = FunnelConfigManager.save_config(
-            loaded_config, loaded_steps, loaded_name
-        )
+        resaved_json = FunnelConfigManager.save_config(loaded_config, loaded_steps, loaded_name)
 
         # Parse both JSON strings for comparison (ignoring timestamps)
         original_data = json.loads(saved_json)
@@ -162,15 +151,13 @@ class TestFunnelConfigManagerSaveLoad:
             )
 
             # Save and load
-            saved_json = FunnelConfigManager.save_config(
-                config, sample_steps, sample_config_name
-            )
+            saved_json = FunnelConfigManager.save_config(config, sample_steps, sample_config_name)
             loaded_config, _, _ = FunnelConfigManager.load_config(saved_json)
 
             # Validate counting method preserved
-            assert (
-                loaded_config.counting_method == counting_method
-            ), f"Failed for {counting_method}"
+            assert loaded_config.counting_method == counting_method, (
+                f"Failed for {counting_method}"
+            )
 
         print("✅ All counting methods save/load test passed")
 
@@ -185,15 +172,11 @@ class TestFunnelConfigManagerSaveLoad:
             )
 
             # Save and load
-            saved_json = FunnelConfigManager.save_config(
-                config, sample_steps, sample_config_name
-            )
+            saved_json = FunnelConfigManager.save_config(config, sample_steps, sample_config_name)
             loaded_config, _, _ = FunnelConfigManager.load_config(saved_json)
 
             # Validate reentry mode preserved
-            assert (
-                loaded_config.reentry_mode == reentry_mode
-            ), f"Failed for {reentry_mode}"
+            assert loaded_config.reentry_mode == reentry_mode, f"Failed for {reentry_mode}"
 
         print("✅ All reentry modes save/load test passed")
 
@@ -208,15 +191,11 @@ class TestFunnelConfigManagerSaveLoad:
             )
 
             # Save and load
-            saved_json = FunnelConfigManager.save_config(
-                config, sample_steps, sample_config_name
-            )
+            saved_json = FunnelConfigManager.save_config(config, sample_steps, sample_config_name)
             loaded_config, _, _ = FunnelConfigManager.load_config(saved_json)
 
             # Validate funnel order preserved
-            assert (
-                loaded_config.funnel_order == funnel_order
-            ), f"Failed for {funnel_order}"
+            assert loaded_config.funnel_order == funnel_order, f"Failed for {funnel_order}"
 
         print("✅ All funnel orders save/load test passed")
 
@@ -235,9 +214,9 @@ class TestFunnelConfigManagerDownloadLinks:
         # Validate link structure
         assert download_link is not None, "Should return download link"
         assert isinstance(download_link, str), "Should return string"
-        assert (
-            'href="data:application/json;base64,' in download_link
-        ), "Should contain base64 data URL"
+        assert 'href="data:application/json;base64,' in download_link, (
+            "Should contain base64 data URL"
+        )
         assert f'download="{filename}"' in download_link, "Should contain filename"
 
         print("✅ Basic download link creation test passed")
@@ -260,9 +239,7 @@ class TestFunnelConfigManagerDownloadLinks:
 
         # Decode and verify
         decoded_data = base64.b64decode(base64_data).decode("utf-8")
-        assert (
-            decoded_data == test_json
-        ), "Base64 encoding/decoding should preserve data"
+        assert decoded_data == test_json, "Base64 encoding/decoding should preserve data"
 
         print("✅ Download link base64 encoding test passed")
 
@@ -278,18 +255,14 @@ class TestFunnelConfigManagerDownloadLinks:
         ]
 
         for filename in special_filenames:
-            download_link = FunnelConfigManager.create_download_link(
-                config_json, filename
-            )
+            download_link = FunnelConfigManager.create_download_link(config_json, filename)
 
             # Should create valid link
             assert download_link is not None, f"Should handle filename: {filename}"
-            assert (
-                'href="data:' in download_link
-            ), f"Should be valid data URL for: {filename}"
-            assert (
-                f'download="{filename}"' in download_link
-            ), f"Should preserve filename: {filename}"
+            assert 'href="data:' in download_link, f"Should be valid data URL for: {filename}"
+            assert f'download="{filename}"' in download_link, (
+                f"Should preserve filename: {filename}"
+            )
 
         print("✅ Download link special characters test passed")
 
@@ -314,16 +287,14 @@ class TestFunnelConfigManagerDownloadLinks:
 
         large_json = json.dumps(large_config, indent=2)
 
-        download_link = FunnelConfigManager.create_download_link(
-            large_json, "large_config.json"
-        )
+        download_link = FunnelConfigManager.create_download_link(large_json, "large_config.json")
 
         # Should handle large data
         assert download_link is not None, "Should handle large configurations"
         assert len(download_link) > 1000, "Link should contain substantial data"
-        assert (
-            "data:application/json;base64," in download_link
-        ), "Should use correct data URL format"
+        assert "data:application/json;base64," in download_link, (
+            "Should use correct data URL format"
+        )
 
         print("✅ Download link large config test passed")
 
@@ -344,9 +315,7 @@ class TestFunnelConfigManagerEdgeCases:
         assert config_json is not None, "Should handle empty steps"
 
         # Validate can be loaded back
-        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(
-            config_json
-        )
+        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(config_json)
         assert loaded_steps == [], "Empty steps should be preserved"
 
         print("✅ Save empty steps test passed")
@@ -363,9 +332,7 @@ class TestFunnelConfigManagerEdgeCases:
         assert config_json is not None, "Should handle long names"
 
         # Validate can be loaded back
-        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(
-            config_json
-        )
+        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(config_json)
         assert loaded_name == long_name, "Long name should be preserved"
 
         print("✅ Save long config name test passed")
@@ -382,16 +349,12 @@ class TestFunnelConfigManagerEdgeCases:
         unicode_name = "Funnel_配置_🚀"
 
         # Should handle Unicode
-        config_json = FunnelConfigManager.save_config(
-            config, unicode_steps, unicode_name
-        )
+        config_json = FunnelConfigManager.save_config(config, unicode_steps, unicode_name)
 
         assert config_json is not None, "Should handle Unicode characters"
 
         # Validate can be loaded back
-        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(
-            config_json
-        )
+        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(config_json)
         assert loaded_steps == unicode_steps, "Unicode steps should be preserved"
         assert loaded_name == unicode_name, "Unicode name should be preserved"
 
@@ -466,9 +429,7 @@ class TestFunnelConfigManagerEdgeCases:
             loaded_config, _, _ = FunnelConfigManager.load_config(saved_json)
 
             # Validate value preserved
-            assert (
-                loaded_config.conversion_window_hours == hours
-            ), f"Failed for {hours} hours"
+            assert loaded_config.conversion_window_hours == hours, f"Failed for {hours} hours"
 
         print("✅ Extreme conversion window values test passed")
 
@@ -492,14 +453,10 @@ class TestFunnelConfigManagerBackwardCompatibility:
         )
 
         # Should load with defaults for missing fields
-        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(
-            minimal_config
-        )
+        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(minimal_config)
 
         assert loaded_config is not None, "Should load minimal config"
-        assert (
-            loaded_config.conversion_window_hours == 24
-        ), "Should preserve specified value"
+        assert loaded_config.conversion_window_hours == 24, "Should preserve specified value"
         # Other fields should use FunnelConfig defaults
 
         print("✅ Load minimal config format test passed")
@@ -527,9 +484,7 @@ class TestFunnelConfigManagerBackwardCompatibility:
         )
 
         # Should load successfully, ignoring extra fields
-        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(
-            extended_config
-        )
+        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(extended_config)
 
         assert loaded_config is not None, "Should load config with extra fields"
         assert loaded_steps == ["A", "B", "C"], "Steps should be preserved"
@@ -567,14 +522,10 @@ class TestFunnelConfigManagerBackwardCompatibility:
         modified_json = json.dumps(config_data)
 
         # Should still load successfully
-        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(
-            modified_json
-        )
+        loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(modified_json)
 
         assert loaded_config is not None, "Should handle evolved format"
-        assert (
-            loaded_config.conversion_window_hours == 72
-        ), "Core config should be preserved"
+        assert loaded_config.conversion_window_hours == 72, "Core config should be preserved"
         assert loaded_steps == steps, "Steps should be preserved"
         assert loaded_name == name, "Name should be preserved"
 
@@ -612,14 +563,10 @@ class TestFunnelConfigManagerFileIntegration:
                 loaded_json = f.read()
 
             # Load config from file content
-            loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(
-                loaded_json
-            )
+            loaded_config, loaded_steps, loaded_name = FunnelConfigManager.load_config(loaded_json)
 
             # Validate file round-trip
-            assert (
-                loaded_config.conversion_window_hours == config.conversion_window_hours
-            )
+            assert loaded_config.conversion_window_hours == config.conversion_window_hours
             assert loaded_config.counting_method == config.counting_method
             assert loaded_config.reentry_mode == config.reentry_mode
             assert loaded_config.funnel_order == config.funnel_order

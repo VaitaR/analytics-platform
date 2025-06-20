@@ -14,9 +14,7 @@ from app import CountingMethod, FunnelConfig
 
 @pytest.mark.segmentation
 class TestSegmentation:
-    def test_segmentation_by_event_property(
-        self, calculator_factory, segmentation_test_data
-    ):
+    def test_segmentation_by_event_property(self, calculator_factory, segmentation_test_data):
         """
         Test segmentation by event properties (platform).
         Expected: Different conversion rates for mobile vs desktop users.
@@ -55,9 +53,7 @@ class TestSegmentation:
         assert desktop_counts[1] == 2  # Email Verification
         assert desktop_counts[2] == 0  # First Login (not in test data)
 
-    def test_segmentation_by_user_property(
-        self, calculator_factory, segmentation_test_data
-    ):
+    def test_segmentation_by_user_property(self, calculator_factory, segmentation_test_data):
         """
         Test segmentation by user properties (subscription type).
         Expected: Different conversion rates for free vs premium users.
@@ -97,9 +93,7 @@ class TestSegmentation:
         Test funnel without segmentation (all users together).
         Expected: Should return single aggregate result.
         """
-        config = FunnelConfig(
-            conversion_window_hours=24, segment_by=None, segment_values=None
-        )
+        config = FunnelConfig(conversion_window_hours=24, segment_by=None, segment_values=None)
         calculator = calculator_factory(config)
         steps = ["Sign Up", "Email Verification"]
 
@@ -140,9 +134,7 @@ class TestSegmentation:
         assert mobile_counts[1] == 3  # All complete email verification
         assert mobile_counts[2] == 3  # All complete first login
 
-    def test_nonexistent_segment_value(
-        self, calculator_factory, segmentation_test_data
-    ):
+    def test_nonexistent_segment_value(self, calculator_factory, segmentation_test_data):
         """
         Test segmentation with non-existent segment values.
         Expected: Should return empty segments for non-existent values.
@@ -163,9 +155,7 @@ class TestSegmentation:
             for segment_name, counts in results.segment_data.items():
                 assert all(count == 0 for count in counts)
 
-    def test_mixed_existing_nonexistent_segments(
-        self, calculator_factory, segmentation_test_data
-    ):
+    def test_mixed_existing_nonexistent_segments(self, calculator_factory, segmentation_test_data):
         """
         Test segmentation with mix of existing and non-existing segment values.
         Expected: Should include existing segments, ignore non-existing ones.
@@ -271,9 +261,7 @@ class TestSegmentation:
             # Event totals should count all events
             assert mobile_totals[0] == 6  # 6 total sign up events for mobile
 
-    def test_segmentation_property_not_in_data(
-        self, calculator_factory, segmentation_test_data
-    ):
+    def test_segmentation_property_not_in_data(self, calculator_factory, segmentation_test_data):
         """
         Test segmentation by property that doesn't exist in the data.
         Expected: Should handle gracefully, return no segments or empty segments.
@@ -367,9 +355,7 @@ class TestSegmentation:
                 assert facebook_counts[0] == 1  # user_002
                 assert facebook_counts[1] == 0  # user_002 doesn't complete verification
 
-    def test_statistical_significance_between_segments(
-        self, calculator_factory, base_timestamp
-    ):
+    def test_statistical_significance_between_segments(self, calculator_factory, base_timestamp):
         """
         Test that statistical significance is calculated between segments.
         Expected: Should return statistical test results for segment comparison.

@@ -52,9 +52,7 @@ calculator_pandas.clear_cache()
 
 # For polars, use pre-converted dataframe directly in the polars function to avoid conversion overhead
 # This bypasses the automatic conversion in calculate_funnel_metrics
-_ = calculator_polars._calculate_funnel_metrics_polars(
-    events_df_polars, funnel_steps, events_df
-)
+_ = calculator_polars._calculate_funnel_metrics_polars(events_df_polars, funnel_steps, events_df)
 calculator_polars.clear_cache()
 
 # Run a more comprehensive test with more iterations
@@ -106,9 +104,7 @@ for i in range(NUM_RUNS):
 
 avg_conversion_time = sum(conversion_times) / len(conversion_times)
 conversion_std = np.std(conversion_times)
-print(
-    f"Average conversion time: {avg_conversion_time:.6f} seconds (std: {conversion_std:.6f})\n"
-)
+print(f"Average conversion time: {avg_conversion_time:.6f} seconds (std: {conversion_std:.6f})\n")
 
 # Test with full pipeline including conversion
 print("Testing complete pipeline with conversion...")
@@ -117,9 +113,7 @@ for i in range(NUM_RUNS):
     start_time = time.time()
     # Simulate the full pipeline including conversion
     temp_polars_df = pl.from_pandas(events_df)
-    result = calculator_polars._calculate_unique_users_funnel_polars(
-        temp_polars_df, funnel_steps
-    )
+    result = calculator_polars._calculate_unique_users_funnel_polars(temp_polars_df, funnel_steps)
     total_time = time.time() - start_time
     complete_polars_times.append(total_time)
     print(f"  Run {i + 1}: {total_time:.6f} seconds")
@@ -149,9 +143,7 @@ print("\nComplete pipeline (with conversion):")
 print(f"  Pandas: {avg_pandas_time:.6f} seconds")
 print(f"  Polars: {avg_complete_time:.6f} seconds")
 
-complete_speedup = (
-    avg_pandas_time / avg_complete_time if avg_complete_time > 0 else float("inf")
-)
+complete_speedup = avg_pandas_time / avg_complete_time if avg_complete_time > 0 else float("inf")
 complete_improvement = (avg_pandas_time - avg_complete_time) / avg_pandas_time * 100
 print(f"  Speedup factor: {complete_speedup:.2f}x")
 print(f"  Performance: {complete_improvement:.1f}%")
@@ -178,6 +170,4 @@ if speedup > 1:
     else:
         print("\nEven with conversion overhead, Polars is still faster overall.")
 else:
-    print(
-        "The Pandas implementation is faster than Polars, even without conversion overhead."
-    )
+    print("The Pandas implementation is faster than Polars, even without conversion overhead.")

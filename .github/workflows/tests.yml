@@ -35,6 +35,12 @@ jobs:
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
 
+    - name: Generate test data
+      run: |
+        echo "🔄 Generating test data for CI environment..."
+        python tests/test_data_generator.py
+        echo "✅ Test data generated successfully"
+
     - name: Check test dependencies
       run: |
         python run_tests.py --check
@@ -61,6 +67,13 @@ jobs:
 
     - name: Generate test report with coverage
       run: |
+        echo "🔍 Debug: Python version and environment"
+        python --version
+        pip list | grep -E "(pytest|polars|pandas|streamlit|bokeh)" || echo "Some packages not found"
+        echo "🔍 Debug: Checking imports"
+        python -c "import app; print('✅ app imported successfully')" || echo "❌ app import failed"
+        python -c "import models; print('✅ models imported successfully')" || echo "❌ models import failed"
+        echo "🔍 Debug: Running test command with verbose output"
         python run_tests.py --coverage --report
 
     - name: Upload coverage reports to Codecov
@@ -106,6 +119,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
+
+    - name: Generate test data
+      run: |
+        echo "🔄 Generating test data for advanced tests..."
+        python tests/test_data_generator.py
+        echo "✅ Test data generated successfully"
 
     - name: Run comprehensive tests
       run: |

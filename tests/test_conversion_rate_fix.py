@@ -89,9 +89,7 @@ class TestConversionRateCalculationFix:
         print("\n=== WEIGHTED VS ARITHMETIC CONVERSION RATE TEST ===")
 
         # Calculate daily time series
-        daily_results = calculator.calculate_timeseries_metrics(
-            unbalanced_data, steps, "1d"
-        )
+        daily_results = calculator.calculate_timeseries_metrics(unbalanced_data, steps, "1d")
 
         print("Daily breakdown:")
         for idx, row in daily_results.iterrows():
@@ -106,9 +104,7 @@ class TestConversionRateCalculationFix:
 
         total_started = daily_results["started_funnel_users"].sum()
         total_completed = daily_results["completed_funnel_users"].sum()
-        weighted_average = (
-            (total_completed / total_started * 100) if total_started > 0 else 0
-        )
+        weighted_average = (total_completed / total_started * 100) if total_started > 0 else 0
 
         print("\nComparison:")
         print(f"  Arithmetic mean: {arithmetic_mean:.2f}%")
@@ -120,31 +116,27 @@ class TestConversionRateCalculationFix:
         overall_conversion = overall_results.conversion_rates[-1]
 
         print(f"  Overall funnel: {overall_conversion:.2f}%")
-        print(
-            f"  Weighted == Overall: {abs(weighted_average - overall_conversion) < 0.01}"
-        )
+        print(f"  Weighted == Overall: {abs(weighted_average - overall_conversion) < 0.01}")
 
         # Core assertions: weighted average should match overall conversion
-        assert (
-            abs(weighted_average - overall_conversion) < 0.01
-        ), "Weighted average should match overall conversion rate"
+        assert abs(weighted_average - overall_conversion) < 0.01, (
+            "Weighted average should match overall conversion rate"
+        )
 
         # Arithmetic mean should be significantly different in unbalanced data
-        assert (
-            abs(arithmetic_mean - weighted_average) > 5
-        ), "Arithmetic mean should be significantly different from weighted average in unbalanced data"
+        assert abs(arithmetic_mean - weighted_average) > 5, (
+            "Arithmetic mean should be significantly different from weighted average in unbalanced data"
+        )
 
         # The key insight: weighted average gives correct overall conversion
         assert total_started == 1010, f"Expected 1010 total users, got {total_started}"
-        assert (
-            total_completed == 18
-        ), f"Expected 18 total completions, got {total_completed}"
+        assert total_completed == 18, f"Expected 18 total completions, got {total_completed}"
 
         # Verify weighted calculation is correct
         expected_weighted = (18 / 1010) * 100  # ~1.78%
-        assert (
-            abs(weighted_average - expected_weighted) < 0.01
-        ), f"Weighted average calculation error: expected {expected_weighted:.2f}%, got {weighted_average:.2f}%"
+        assert abs(weighted_average - expected_weighted) < 0.01, (
+            f"Weighted average calculation error: expected {expected_weighted:.2f}%, got {weighted_average:.2f}%"
+        )
 
     def test_balanced_data_same_result(self):
         """Test that both methods give same result when data is balanced."""
@@ -169,8 +161,7 @@ class TestConversionRateCalculationFix:
                         {
                             "user_id": f"day{day}_user_{i}",
                             "event_name": "step2",
-                            "timestamp": base_time
-                            + timedelta(days=day, minutes=i + 30),
+                            "timestamp": base_time + timedelta(days=day, minutes=i + 30),
                             "event_properties": "{}",
                         }
                     )
@@ -184,33 +175,29 @@ class TestConversionRateCalculationFix:
         )
         calculator = FunnelCalculator(config)
 
-        daily_results = calculator.calculate_timeseries_metrics(
-            df, ["step1", "step2"], "1d"
-        )
+        daily_results = calculator.calculate_timeseries_metrics(df, ["step1", "step2"], "1d")
 
         arithmetic_mean = daily_results["conversion_rate"].mean()
         total_started = daily_results["started_funnel_users"].sum()
         total_completed = daily_results["completed_funnel_users"].sum()
-        weighted_average = (
-            (total_completed / total_started * 100) if total_started > 0 else 0
-        )
+        weighted_average = (total_completed / total_started * 100) if total_started > 0 else 0
 
         print("\nBalanced data test:")
         print(f"  Arithmetic mean: {arithmetic_mean:.2f}%")
         print(f"  Weighted average: {weighted_average:.2f}%")
 
         # With balanced data, both should be very close
-        assert (
-            abs(arithmetic_mean - weighted_average) < 0.1
-        ), "With balanced data, arithmetic mean and weighted average should be nearly identical"
+        assert abs(arithmetic_mean - weighted_average) < 0.1, (
+            "With balanced data, arithmetic mean and weighted average should be nearly identical"
+        )
 
         # Both should be close to 20%
-        assert (
-            abs(arithmetic_mean - 20.0) < 0.1
-        ), f"Expected ~20% arithmetic mean, got {arithmetic_mean:.2f}%"
-        assert (
-            abs(weighted_average - 20.0) < 0.1
-        ), f"Expected ~20% weighted average, got {weighted_average:.2f}%"
+        assert abs(arithmetic_mean - 20.0) < 0.1, (
+            f"Expected ~20% arithmetic mean, got {arithmetic_mean:.2f}%"
+        )
+        assert abs(weighted_average - 20.0) < 0.1, (
+            f"Expected ~20% weighted average, got {weighted_average:.2f}%"
+        )
 
 
 def test_conversion_rate_fix():

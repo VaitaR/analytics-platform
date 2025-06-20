@@ -95,8 +95,7 @@ def create_lazy_frame():
                 for i in range(n_rows)
             ],
             "timestamp": [
-                datetime(2023, 1, 1, 10, 0, 0) + timedelta(hours=i)
-                for i in range(n_rows)
+                datetime(2023, 1, 1, 10, 0, 0) + timedelta(hours=i) for i in range(n_rows)
             ],
             "properties": ["{}" for _ in range(n_rows)],
         }
@@ -196,9 +195,7 @@ def extract_full_error_contexts(log_output):
 
     for i, line in enumerate(lines):
         # Check if this line starts an error
-        if any(
-            re.search(pattern, line, re.IGNORECASE) for pattern in error_start_patterns
-        ):
+        if any(re.search(pattern, line, re.IGNORECASE) for pattern in error_start_patterns):
             # Get a few lines before and after for context
             start_idx = max(0, i - 2)
             end_idx = min(len(lines), i + 5)  # Get up to 5 lines after the error
@@ -240,12 +237,12 @@ class TestPolarsFallbackDetection:
 
         # Check logs for fallback messages
         log_output = log_capture.getvalue()
-        assert (
-            "falling back to pandas" not in log_output.lower()
-        ), "Detected fallback to Pandas in main funnel calculation"
-        assert (
-            "falling back to standard polars" not in log_output.lower()
-        ), "Detected fallback from optimized Polars to standard Polars"
+        assert "falling back to pandas" not in log_output.lower(), (
+            "Detected fallback to Pandas in main funnel calculation"
+        )
+        assert "falling back to standard polars" not in log_output.lower(), (
+            "Detected fallback from optimized Polars to standard Polars"
+        )
 
         # Make sure we got valid results
         assert results is not None
@@ -268,15 +265,11 @@ class TestPolarsFallbackDetection:
         calculator = FunnelCalculator(config=config, use_polars=True)
 
         # Run cohort analysis directly
-        cohort_data = calculator._calculate_cohort_analysis_optimized(
-            events_data_base, steps
-        )
+        cohort_data = calculator._calculate_cohort_analysis_optimized(events_data_base, steps)
 
         # Check logs for fallback messages
         log_output = log_capture.getvalue()
-        assert (
-            "falling back" not in log_output.lower()
-        ), "Detected fallback in cohort analysis"
+        assert "falling back" not in log_output.lower(), "Detected fallback in cohort analysis"
 
         # Verify we got valid results
         assert cohort_data is not None
@@ -321,9 +314,9 @@ class TestPolarsFallbackDetection:
 
             # Check logs for fallback messages
             log_output = log_capture.getvalue()
-            assert (
-                "falling back" not in log_output.lower()
-            ), "Detected fallback in path analysis with LazyFrame"
+            assert "falling back" not in log_output.lower(), (
+                "Detected fallback in path analysis with LazyFrame"
+            )
 
         except Exception as e:
             pytest.fail(f"Path analysis failed with LazyFrame: {str(e)}")
@@ -368,16 +361,13 @@ class TestPolarsFallbackDetection:
 
             # Look for specific error about using Python standard library functions
             if any(
-                "the truth value of an Expr is ambiguous" in pattern
-                for pattern, _ in errors_found
+                "the truth value of an Expr is ambiguous" in pattern for pattern, _ in errors_found
             ):
                 print("\n⚠️ WARNING: Polars expression ambiguity errors detected!")
                 print(
                     "These errors indicate Python standard library functions are being used instead of Polars native expressions."
                 )
-                print(
-                    "This may be causing fallbacks to less efficient implementation paths."
-                )
+                print("This may be causing fallbacks to less efficient implementation paths.")
 
                 # Print full error contexts for better diagnostics
                 if error_contexts:
@@ -386,9 +376,7 @@ class TestPolarsFallbackDetection:
                         print(f"\nError {i + 1}:\n{context}\n{'-' * 60}")
 
                 # Make the test fail if this critical error is found to ensure it's addressed
-                assert (
-                    False
-                ), "Polars expression ambiguity errors detected - fix required"
+                assert False, "Polars expression ambiguity errors detected - fix required"
         else:
             print("\n✅ No Polars expression ambiguity errors detected")
 
@@ -417,9 +405,7 @@ class TestPolarsFallbackDetection:
         log_capture.seek(0)
 
         # Execute
-        results = calculator.calculate_funnel_metrics(
-            events_data_with_object_columns, steps
-        )
+        results = calculator.calculate_funnel_metrics(events_data_with_object_columns, steps)
 
         # Check logs for specific dtype errors
         log_output = log_capture.getvalue()
@@ -433,19 +419,15 @@ class TestPolarsFallbackDetection:
         fallback_standard_join_pattern = r"falling back to standard join approach"
         vectorized_fallback_pattern = r"Detected Object dtype error in join_asof"
 
-        has_dtype_error = (
-            re.search(dtype_error_pattern, log_output, re.IGNORECASE) is not None
-        )
+        has_dtype_error = re.search(dtype_error_pattern, log_output, re.IGNORECASE) is not None
         has_expr_ambiguity = (
             re.search(expr_ambiguity_pattern, log_output, re.IGNORECASE) is not None
         )
         has_fallback_to_standard = (
-            re.search(fallback_standard_join_pattern, log_output, re.IGNORECASE)
-            is not None
+            re.search(fallback_standard_join_pattern, log_output, re.IGNORECASE) is not None
         )
         has_vectorized_fallback = (
-            re.search(vectorized_fallback_pattern, log_output, re.IGNORECASE)
-            is not None
+            re.search(vectorized_fallback_pattern, log_output, re.IGNORECASE) is not None
         )
 
         # Print diagnostic information
@@ -480,20 +462,14 @@ class TestPolarsFallbackDetection:
             assert False, "Found Polars expression ambiguity errors - fix required"
 
         # Check that if we have dtype errors, we're handling them properly with fallbacks
-        if has_dtype_error and not (
-            has_fallback_to_standard or has_vectorized_fallback
-        ):
-            assert (
-                False
-            ), "Found dtype errors but not properly falling back to handle them"
+        if has_dtype_error and not (has_fallback_to_standard or has_vectorized_fallback):
+            assert False, "Found dtype errors but not properly falling back to handle them"
 
         # Always ensure we got valid results
         assert results is not None, "No results returned from funnel calculation"
         assert len(results.steps) == len(steps), "Incorrect number of steps in results"
 
-    def test_comprehensive_error_detection(
-        self, events_data_with_object_columns, log_capture
-    ):
+    def test_comprehensive_error_detection(self, events_data_with_object_columns, log_capture):
         """
         A comprehensive test that runs various funnel configurations and
         detects all types of errors and warnings in the logs.
@@ -549,9 +525,7 @@ class TestPolarsFallbackDetection:
             calculator = FunnelCalculator(config=config, use_polars=True)
 
             # Execute
-            results = calculator.calculate_funnel_metrics(
-                events_data_with_object_columns, steps
-            )
+            results = calculator.calculate_funnel_metrics(events_data_with_object_columns, steps)
 
             # Check logs for error patterns
             log_output = log_capture.getvalue()
@@ -564,21 +538,16 @@ class TestPolarsFallbackDetection:
                 for pattern, _ in errors_found
             )
             has_expr_ambiguity = any(
-                "the truth value of an Expr is ambiguous" in pattern
-                for pattern, _ in errors_found
+                "the truth value of an Expr is ambiguous" in pattern for pattern, _ in errors_found
             )
-            has_fallback = any(
-                ("falling back" in pattern) for pattern, _ in errors_found
-            )
+            has_fallback = any(("falling back" in pattern) for pattern, _ in errors_found)
 
             # Track if this config has unhandled critical errors
             if has_expr_ambiguity or (has_dtype_error and not has_fallback):
                 unhandled_critical_errors_found = True
 
             # Store errors and contexts by config
-            config_key = (
-                f"{cfg['order'].value}, {cfg['reentry'].value}, {cfg['counting'].value}"
-            )
+            config_key = f"{cfg['order'].value}, {cfg['reentry'].value}, {cfg['counting'].value}"
             all_errors[config_key] = errors_found
             all_error_contexts[config_key] = error_contexts
 
@@ -616,10 +585,7 @@ class TestPolarsFallbackDetection:
         for config_key, errors in all_errors.items():
             for pattern, _ in errors:
                 # Check for critical errors that indicate actual code problems
-                if any(
-                    re.search(crit_pattern, pattern)
-                    for crit_pattern in critical_patterns
-                ):
+                if any(re.search(crit_pattern, pattern) for crit_pattern in critical_patterns):
                     unhandled_critical_errors_found = True
                     print(f"\n⚠️ CRITICAL ERROR found in config {config_key}: {pattern}")
 
@@ -631,9 +597,7 @@ class TestPolarsFallbackDetection:
                     )
                     if not has_fallback:
                         unhandled_critical_errors_found = True
-                        print(
-                            f"\n⚠️ UNHANDLED dtype error in config {config_key}: {pattern}"
-                        )
+                        print(f"\n⚠️ UNHANDLED dtype error in config {config_key}: {pattern}")
                     else:
                         print(
                             f"\n✅ Handled dtype error in config {config_key} with proper fallback"
@@ -652,9 +616,9 @@ class TestPolarsFallbackDetection:
                 "These errors indicate Python standard library functions being used instead of Polars native expressions."
             )
             # Make the test fail only when expression ambiguity errors are found
-            assert (
-                False
-            ), "Critical unhandled Polars expression ambiguity errors detected - fix required"
+            assert False, (
+                "Critical unhandled Polars expression ambiguity errors detected - fix required"
+            )
         elif unhandled_critical_errors_found:
             print(
                 "\n⚠️ WARNING: Some potential issues were detected, but they are properly handled with fallbacks"

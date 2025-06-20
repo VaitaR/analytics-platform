@@ -89,14 +89,10 @@ class TestConversionWindow:
         results = calculator.calculate_funnel_metrics(data, steps)
 
         assert results.users_count[0] == 1  # User completes first step
-        assert (
-            results.users_count[1] == 0
-        )  # User does not complete second step within window
+        assert results.users_count[1] == 0  # User does not complete second step within window
         assert results.conversion_rates[1] == 0.0
 
-    def test_events_at_conversion_window_boundary(
-        self, calculator_factory, base_timestamp
-    ):
+    def test_events_at_conversion_window_boundary(self, calculator_factory, base_timestamp):
         """
         Test boundary condition: event occurs exactly at the conversion window limit.
         Should be included (≤ boundary).
@@ -120,8 +116,7 @@ class TestConversionWindow:
             {
                 "user_id": "user_001",
                 "event_name": "Email Verification",
-                "timestamp": base_timestamp
-                + timedelta(hours=1),  # Exactly 1 hour later
+                "timestamp": base_timestamp + timedelta(hours=1),  # Exactly 1 hour later
                 "event_properties": json.dumps({}),
                 "user_properties": json.dumps({}),
             },
@@ -133,9 +128,7 @@ class TestConversionWindow:
         results = calculator.calculate_funnel_metrics(data, steps)
 
         assert results.users_count[0] == 1
-        assert (
-            results.users_count[1] == 0
-        )  # Should NOT be included at boundary (exclusive)
+        assert results.users_count[1] == 0  # Should NOT be included at boundary (exclusive)
         assert results.conversion_rates[1] == 0.0
 
     def test_sequential_conversion_windows(self, calculator_factory, base_timestamp):
@@ -208,9 +201,7 @@ class TestConversionWindow:
             results.users_count[2] == 1
         )  # Only user_001 completes Step C within window from Step B
 
-    def test_different_conversion_window_sizes(
-        self, calculator_factory, base_timestamp
-    ):
+    def test_different_conversion_window_sizes(self, calculator_factory, base_timestamp):
         """
         Test different conversion window sizes affect results correctly.
         """
@@ -258,9 +249,7 @@ class TestConversionWindow:
         # With 2-hour window: Both A->B and B->C should work
         assert results_2h.users_count == [1, 1, 1]
 
-    def test_multiple_events_first_within_window(
-        self, calculator_factory, base_timestamp
-    ):
+    def test_multiple_events_first_within_window(self, calculator_factory, base_timestamp):
         """
         Test when user has multiple events of same type, first one is within window.
         Should count the user based on first valid occurrence.
@@ -283,16 +272,14 @@ class TestConversionWindow:
             {
                 "user_id": "user_001",
                 "event_name": "Step B",
-                "timestamp": base_timestamp
-                + timedelta(minutes=30),  # First B within window
+                "timestamp": base_timestamp + timedelta(minutes=30),  # First B within window
                 "event_properties": json.dumps({}),
                 "user_properties": json.dumps({}),
             },
             {
                 "user_id": "user_001",
                 "event_name": "Step B",
-                "timestamp": base_timestamp
-                + timedelta(minutes=90),  # Second B outside window
+                "timestamp": base_timestamp + timedelta(minutes=90),  # Second B outside window
                 "event_properties": json.dumps({}),
                 "user_properties": json.dumps({}),
             },
@@ -306,9 +293,7 @@ class TestConversionWindow:
         assert results.users_count[0] == 1
         assert results.users_count[1] == 1  # Should count based on first occurrence
 
-    def test_multiple_events_first_outside_window(
-        self, calculator_factory, base_timestamp
-    ):
+    def test_multiple_events_first_outside_window(self, calculator_factory, base_timestamp):
         """
         Test when user has multiple events of same type, first one is outside window.
         With FIRST_ONLY mode, should not count the user.
@@ -331,8 +316,7 @@ class TestConversionWindow:
             {
                 "user_id": "user_001",
                 "event_name": "Step B",
-                "timestamp": base_timestamp
-                + timedelta(minutes=90),  # First B outside window
+                "timestamp": base_timestamp + timedelta(minutes=90),  # First B outside window
                 "event_properties": json.dumps({}),
                 "user_properties": json.dumps({}),
             },

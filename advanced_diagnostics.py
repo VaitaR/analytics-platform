@@ -23,18 +23,14 @@ class DiagnosticContext:
         self.performance_metrics: dict[str, float] = {}
         self.failure_points: list[dict[str, Any]] = []
 
-    def capture_call(
-        self, func_name: str, args: tuple, kwargs: dict, locals_dict: dict = None
-    ):
+    def capture_call(self, func_name: str, args: tuple, kwargs: dict, locals_dict: dict = None):
         """Capture function call with full context"""
         call_info = {
             "timestamp": datetime.now().isoformat(),
             "function": func_name,
             "args_summary": self._summarize_args(args),
             "kwargs_summary": self._summarize_kwargs(kwargs),
-            "locals_summary": (
-                self._summarize_locals(locals_dict) if locals_dict else {}
-            ),
+            "locals_summary": (self._summarize_locals(locals_dict) if locals_dict else {}),
             "call_id": self._generate_call_id(func_name, args, kwargs),
         }
         self.call_stack.append(call_info)
@@ -69,9 +65,7 @@ class DiagnosticContext:
             "exception_type": type(exception).__name__,
             "exception_message": str(exception),
             "traceback": traceback.format_exc(),
-            "locals_at_failure": (
-                self._summarize_locals(locals_dict) if locals_dict else {}
-            ),
+            "locals_at_failure": (self._summarize_locals(locals_dict) if locals_dict else {}),
             "data_context": data_context or {},
             "suggested_fixes": self._analyze_failure_pattern(exception, func_name),
         }
@@ -145,9 +139,7 @@ class DiagnosticContext:
             if isinstance(obj, (list, tuple, set)):
                 return {
                     "length": len(obj),
-                    "sample_items": (
-                        list(obj)[:3] if len(obj) <= 3 else list(obj)[:2] + ["..."]
-                    ),
+                    "sample_items": (list(obj)[:3] if len(obj) <= 3 else list(obj)[:2] + ["..."]),
                     "item_types": list(set(type(item).__name__ for item in obj)),
                 }
 
@@ -161,15 +153,11 @@ class DiagnosticContext:
 
             # Handle basic types
             if isinstance(obj, (str, int, float, bool)):
-                return {
-                    "value": str(obj)[:100] + "..." if len(str(obj)) > 100 else str(obj)
-                }
+                return {"value": str(obj)[:100] + "..." if len(str(obj)) > 100 else str(obj)}
 
             # Handle other objects
             return {
-                "attributes": [attr for attr in dir(obj) if not attr.startswith("_")][
-                    :10
-                ],
+                "attributes": [attr for attr in dir(obj) if not attr.startswith("_")][:10],
                 "str_repr": str(obj)[:100] + "..." if len(str(obj)) > 100 else str(obj),
             }
 
@@ -194,9 +182,7 @@ class DiagnosticContext:
                 null_counts = obj.isnull().sum()
                 return {
                     "total_nulls": (
-                        int(null_counts.sum())
-                        if hasattr(null_counts, "sum")
-                        else int(null_counts)
+                        int(null_counts.sum()) if hasattr(null_counts, "sum") else int(null_counts)
                     )
                 }
             if hasattr(obj, "null_count"):
@@ -224,9 +210,7 @@ class DiagnosticContext:
         content = f"{func_name}_{len(args)}_{len(kwargs)}_{datetime.now().timestamp()}"
         return hashlib.md5(content.encode()).hexdigest()[:8]
 
-    def _analyze_failure_pattern(
-        self, exception: Exception, func_name: str
-    ) -> list[str]:
+    def _analyze_failure_pattern(self, exception: Exception, func_name: str) -> list[str]:
         """Analyze failure pattern and suggest fixes"""
         suggestions = []
         error_msg = str(exception).lower()
@@ -307,9 +291,7 @@ class SmartDiagnosticLogger:
         # Log critical data objects
         for i, arg in enumerate(args):
             if self._is_critical_data_object(arg):
-                data_key = self.context.capture_data_state(
-                    f"arg_{i}", arg, f"call_{call_id}"
-                )
+                data_key = self.context.capture_data_state(f"arg_{i}", arg, f"call_{call_id}")
                 self.logger.debug(
                     f"   📊 Arg[{i}]: {self.context.data_snapshots[data_key]['summary']}"
                 )
@@ -320,12 +302,8 @@ class SmartDiagnosticLogger:
         """Log successful function completion"""
         self.logger.debug(f"✅ CALL_SUCCESS [{call_id}] {func_name}")
         if result is not None and self._is_critical_data_object(result):
-            data_key = self.context.capture_data_state(
-                "result", result, f"success_{call_id}"
-            )
-            self.logger.debug(
-                f"   📈 Result: {self.context.data_snapshots[data_key]['summary']}"
-            )
+            data_key = self.context.capture_data_state("result", result, f"success_{call_id}")
+            self.logger.debug(f"   📈 Result: {self.context.data_snapshots[data_key]['summary']}")
 
     def log_function_failure(
         self,
@@ -410,9 +388,7 @@ class SmartDiagnosticLogger:
 
         # Check for data-related issues
         polars_issues = sum(
-            1
-            for f in self.context.failure_points
-            if "struct" in f["exception_message"].lower()
+            1 for f in self.context.failure_points if "struct" in f["exception_message"].lower()
         )
         if polars_issues > 0:
             recommendations.append(

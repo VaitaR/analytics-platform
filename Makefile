@@ -25,7 +25,7 @@ help:
 	@echo ""
 	@echo "🔍 Code Quality & Formatting:"
 	@echo "  lint         - Run ruff and mypy to check for errors"
-	@echo "  format       - Auto-format code with ruff and black"
+	@echo "  format       - Auto-format code with ruff (replaces black)"
 	@echo "  check        - Format code and run all quality checks (recommended)"
 	@echo ""
 	@echo "🧪 Testing:"
@@ -73,10 +73,10 @@ clean:
 # =====================================================================
 format:
 	@echo "🎨 Auto-formatting code..."
-	@echo "  📋 Sorting imports and fixing auto-fixable issues with ruff..."
+	@echo "  📋 Fixing auto-fixable issues with ruff..."
 	ruff check . --fix --exit-zero
-	@echo "  ⚫ Formatting code with black..."
-	black .
+	@echo "  🎨 Formatting code with ruff..."
+	ruff format .
 	@echo "✅ Code formatting complete!"
 
 lint:
@@ -94,17 +94,24 @@ check: format lint
 # =====================================================================
 # Testing Commands
 # =====================================================================
-test:
+
+# Generate test data (automatically called by other test commands)
+generate-test-data:
+	@echo "🔄 Ensuring test data is available..."
+	@python tests/test_data_generator.py
+	@echo "✅ Test data ready!"
+
+test: generate-test-data
 	@echo "🧪 Running full test suite with coverage..."
 	python run_tests.py --coverage
 	@echo "✅ All tests completed!"
 
-test-fast:
+test-fast: generate-test-data
 	@echo "⚡ Running basic tests (quick validation)..."
 	python run_tests.py --basic-all
 	@echo "✅ Basic tests completed!"
 
-test-coverage:
+test-coverage: generate-test-data
 	@echo "📊 Generating HTML coverage report..."
 	python run_tests.py --coverage
 	@echo "📋 Coverage report generated in htmlcov/index.html"

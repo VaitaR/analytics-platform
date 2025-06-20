@@ -136,9 +136,7 @@ df_funnel = pd.DataFrame(
     {
         "step": list(sample_funnel_data.keys()),
         "users": [data["users"] for data in sample_funnel_data.values()],
-        "conversion_rate": [
-            data["conversion_rate"] for data in sample_funnel_data.values()
-        ],
+        "conversion_rate": [data["conversion_rate"] for data in sample_funnel_data.values()],
     }
 )
 print("\nSample Funnel Data:")
@@ -182,9 +180,7 @@ for segment in segments:
     base_value = 1000 if segment == "Mobile" else (800 if segment == "Desktop" else 400)
     for i, step in enumerate(steps):
         # Each step drops by a percentage, different for each segment
-        drop_rate = (
-            0.75 if segment == "Mobile" else (0.85 if segment == "Desktop" else 0.70)
-        )
+        drop_rate = 0.75 if segment == "Mobile" else (0.85 if segment == "Desktop" else 0.70)
         segment_data[segment][step] = int(base_value * (drop_rate**i))
 
 # Convert to DataFrame

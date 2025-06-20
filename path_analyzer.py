@@ -123,9 +123,7 @@ class PathAnalyzer:
                 )
                 step_pair = f"{step} → {next_step}"
                 if between_events:  # Only add if non-empty
-                    between_steps_events[step_pair] = dict(
-                        between_events.most_common(10)
-                    )
+                    between_steps_events[step_pair] = dict(between_events.most_common(10))
 
         return PathAnalysisData(
             dropoff_paths=dropoff_paths, between_steps_events=between_steps_events
@@ -205,9 +203,7 @@ class PathAnalyzer:
         # Find the next event after the step for each user within 7 days
         next_events_df = (
             last_step_events.join(
-                lazy_history_df.filter(
-                    pl.col("user_id").cast(pl.Utf8).is_in(dropped_user_list)
-                ),
+                lazy_history_df.filter(pl.col("user_id").cast(pl.Utf8).is_in(dropped_user_list)),
                 on="user_id",
                 how="inner",
             )
@@ -217,17 +213,13 @@ class PathAnalyzer:
                 & (pl.col("event_name") != step)
             )
             # Use window function to find first event after step for each user
-            .with_columns(
-                [pl.col("timestamp").rank().over(["user_id"]).alias("event_rank")]
-            )
+            .with_columns([pl.col("timestamp").rank().over(["user_id"]).alias("event_rank")])
             .filter(pl.col("event_rank") == 1)
             .select(["user_id", "event_name"])
         )
 
         # Count next events
-        event_counts = (
-            next_events_df.group_by("event_name").agg(pl.len().alias("count")).collect()
-        )
+        event_counts = next_events_df.group_by("event_name").agg(pl.len().alias("count")).collect()
 
         # Convert to Counter format
         if event_counts.height > 0:
@@ -241,9 +233,7 @@ class PathAnalyzer:
             )
 
         # Count users with no further activity
-        users_with_events = (
-            next_events_df.select(pl.col("user_id").unique()).collect().height
-        )
+        users_with_events = next_events_df.select(pl.col("user_id").unique()).collect().height
         users_with_no_events = len(dropped_users) - users_with_events
 
         if users_with_no_events > 0:
@@ -313,19 +303,12 @@ class PathAnalyzer:
                     first_A.join(step_B_df, on="user_id", how="inner")
                     .filter(
                         (pl.col("step_B_time") > pl.col("step_A_time"))
-                        & (
-                            pl.col("step_B_time")
-                            <= pl.col("step_A_time") + conversion_window
-                        )
+                        & (pl.col("step_B_time") <= pl.col("step_A_time") + conversion_window)
                     )
                     # Use window function to find earliest B for each user
-                    .with_columns(
-                        [pl.col("step_B_time").rank().over(["user_id"]).alias("rank")]
-                    )
+                    .with_columns([pl.col("step_B_time").rank().over(["user_id"]).alias("rank")])
                     .filter(pl.col("rank") == 1)
-                    .select(
-                        ["user_id", "step", "step_name", "step_A_time", "step_B_time"]
-                    )
+                    .select(["user_id", "step", "step_name", "step_A_time", "step_B_time"])
                     .rename({"step_name": "next_step"})
                 )
 
@@ -340,9 +323,9 @@ class PathAnalyzer:
                     # This avoids the "join explosion" problem
                     conversion_pairs = pl.join_asof(
                         step_A_df.select(["user_id", "step", "step_A_time"]),
-                        step_B_df.select(
-                            ["user_id", "step_name", "step_B_time"]
-                        ).rename({"step_name": "next_step"}),
+                        step_B_df.select(["user_id", "step_name", "step_B_time"]).rename(
+                            {"step_name": "next_step"}
+                        ),
                         left_on="step_A_time",
                         right_on="step_B_time",
                         by="user_id",
@@ -350,10 +333,7 @@ class PathAnalyzer:
                     ).filter(
                         # Keep only pairs within conversion window
                         (pl.col("step_B_time") > pl.col("step_A_time"))
-                        & (
-                            pl.col("step_B_time")
-                            <= pl.col("step_A_time") + conversion_window
-                        )
+                        & (pl.col("step_B_time") <= pl.col("step_A_time") + conversion_window)
                     )
 
                 except Exception as e:
@@ -361,9 +341,7 @@ class PathAnalyzer:
                         f"join_asof failed: {str(e)}, falling back to optimal_step_pairs"
                     )
                     # Fall back to the optimal step pairs method
-                    conversion_pairs = self._find_optimal_step_pairs(
-                        step_A_df, step_B_df
-                    )
+                    conversion_pairs = self._find_optimal_step_pairs(step_A_df, step_B_df)
         else:  # UNORDERED funnel
             if self.config.reentry_mode == ReentryMode.FIRST_ONLY:
                 # For unordered funnels, we just need the first occurrence of each step
@@ -391,9 +369,7 @@ class PathAnalyzer:
                             ).alias("time_diff_hours")
                         ]
                     )
-                    .filter(
-                        pl.col("time_diff_hours") <= self.config.conversion_window_hours
-                    )
+                    .filter(pl.col("time_diff_hours") <= self.config.conversion_window_hours)
                     .drop("time_diff_hours")
                 )
 
@@ -403,9 +379,9 @@ class PathAnalyzer:
                 joined = (
                     step_A_df.select(["user_id", "step", "step_A_time"])
                     .join(
-                        step_B_df.select(
-                            ["user_id", "step_name", "step_B_time"]
-                        ).rename({"step_name": "next_step"}),
+                        step_B_df.select(["user_id", "step_name", "step_B_time"]).rename(
+                            {"step_name": "next_step"}
+                        ),
                         on="user_id",
                         how="inner",
                     )
@@ -419,9 +395,7 @@ class PathAnalyzer:
                             ).alias("time_diff_hours")
                         ]
                     )
-                    .filter(
-                        pl.col("time_diff_hours") <= self.config.conversion_window_hours
-                    )
+                    .filter(pl.col("time_diff_hours") <= self.config.conversion_window_hours)
                     .drop("time_diff_hours")
                 )
 
@@ -470,13 +444,8 @@ class PathAnalyzer:
 
         try:
             # Ensure we have step_A_time column
-            if (
-                "step_A_time" not in step_A_df.columns
-                and "timestamp" in step_A_df.columns
-            ):
-                step_A_df = step_A_df.with_columns(
-                    pl.col("timestamp").alias("step_A_time")
-                )
+            if "step_A_time" not in step_A_df.columns and "timestamp" in step_A_df.columns:
+                step_A_df = step_A_df.with_columns(pl.col("timestamp").alias("step_A_time"))
 
             # Get step names for labels
             step_name = "Step A"
@@ -510,10 +479,7 @@ class PathAnalyzer:
                 # Use only native Polars expressions for the filter condition
                 .filter(
                     (pl.col("step_B_time") > pl.col("step_A_time"))
-                    & (
-                        pl.col("step_B_time")
-                        <= pl.col("step_A_time") + conversion_window
-                    )
+                    & (pl.col("step_B_time") <= pl.col("step_A_time") + conversion_window)
                 )
                 # For each step_A_time, find the earliest valid step_B_time
                 .sort(["user_id", "step_A_time", "step_B_time"])
@@ -543,9 +509,7 @@ class PathAnalyzer:
             return valid_conversions
 
         except Exception as e:
-            self.logger.error(
-                f"Fully vectorized approach for finding step pairs failed: {e}"
-            )
+            self.logger.error(f"Fully vectorized approach for finding step pairs failed: {e}")
 
             # Final fallback with empty DataFrame with correct structure
             return pl.DataFrame(
@@ -603,9 +567,7 @@ class PathAnalyzer:
         between_steps_df = (
             conversion_pairs.lazy()
             .join(
-                lazy_history_df.filter(
-                    pl.col("user_id").cast(pl.Utf8).is_in(converted_user_list)
-                ),
+                lazy_history_df.filter(pl.col("user_id").cast(pl.Utf8).is_in(converted_user_list)),
                 on="user_id",
                 how="inner",
             )
@@ -622,9 +584,7 @@ class PathAnalyzer:
 
         # Count events
         event_counts = (
-            between_steps_df.group_by("event_name")
-            .agg(pl.len().alias("count"))
-            .collect()
+            between_steps_df.group_by("event_name").agg(pl.len().alias("count")).collect()
         )
 
         # Convert to Counter format
@@ -639,9 +599,7 @@ class PathAnalyzer:
             )
 
         # Add special entry for users with no intermediate events
-        users_with_events = (
-            between_steps_df.select(pl.col("user_id").unique()).collect().height
-        )
+        users_with_events = between_steps_df.select(pl.col("user_id").unique()).collect().height
         users_with_no_events = len(converted_users) - users_with_events
 
         if users_with_no_events > 0:
@@ -697,9 +655,7 @@ class PathAnalyzer:
         journey_df = self._build_user_journeys_optimized(events_pl)
 
         # Discover activities and their characteristics (optimized)
-        activities = self._discover_activities(
-            events_pl, None
-        )  # Pass None to use optimized path
+        activities = self._discover_activities(events_pl, None)  # Pass None to use optimized path
 
         # Discover transitions between activities (optimized)
         transitions = self._discover_transitions_optimized(journey_df, min_frequency)
@@ -708,8 +664,8 @@ class PathAnalyzer:
         variants = self._identify_process_variants_optimized(journey_df)
 
         # Find start and end activities (optimized)
-        start_activities, end_activities = (
-            self._identify_start_end_activities_optimized(journey_df)
+        start_activities, end_activities = self._identify_start_end_activities_optimized(
+            journey_df
         )
 
         # Detect cycles and loops if requested (use optimized method first)
@@ -764,18 +720,15 @@ class PathAnalyzer:
                 .alias("duration_to_next"),
                 # Mark start and end events
                 (pl.int_range(pl.len()).over("user_id") == 0).alias("is_start"),
-                (
-                    pl.int_range(pl.len()).over("user_id")
-                    == (pl.len().over("user_id") - 1)
-                ).alias("is_end"),
+                (pl.int_range(pl.len()).over("user_id") == (pl.len().over("user_id") - 1)).alias(
+                    "is_end"
+                ),
             ]
         )
 
         return journey_df
 
-    def _build_user_journeys(
-        self, events_pl: pl.DataFrame
-    ) -> dict[str, list[dict[str, Any]]]:
+    def _build_user_journeys(self, events_pl: pl.DataFrame) -> dict[str, list[dict[str, Any]]]:
         """Build user journeys from events - optimized version"""
         # Use optimized Polars implementation
         journey_df = self._build_user_journeys_optimized(events_pl)
@@ -785,9 +738,7 @@ class PathAnalyzer:
 
         # Group by user_id and iterate
         for user_id, user_df in journey_df.group_by("user_id"):
-            user_id = (
-                user_id[0] if isinstance(user_id, tuple) else user_id
-            )  # Handle group key
+            user_id = user_id[0] if isinstance(user_id, tuple) else user_id  # Handle group key
 
             journey = []
             for row in user_df.iter_rows(named=True):
@@ -876,9 +827,7 @@ class PathAnalyzer:
                 transition_users[transition].add(user_id)
 
                 if journey[i]["duration_to_next"]:
-                    transition_durations[transition].append(
-                        journey[i]["duration_to_next"]
-                    )
+                    transition_durations[transition].append(journey[i]["duration_to_next"])
 
         # Filter by minimum frequency and build transition data
         transitions = {}
@@ -921,9 +870,7 @@ class PathAnalyzer:
             for cycle_path in simple_cycles:
                 if len(cycle_path) <= 5:  # Focus on short cycles
                     # Calculate cycle statistics
-                    cycle_frequency = self._calculate_cycle_frequency(
-                        cycle_path, user_journeys
-                    )
+                    cycle_frequency = self._calculate_cycle_frequency(cycle_path, user_journeys)
                     cycle_impact = self._assess_cycle_impact(cycle_path, user_journeys)
 
                     cycles.append(
@@ -975,9 +922,9 @@ class PathAnalyzer:
             transitions_df = pl.DataFrame(transition_data)
 
             # 1. Find self-loops (most common cycles)
-            self_loops = transitions_df.filter(
-                pl.col("from_event") == pl.col("to_event")
-            ).sort("frequency", descending=True)
+            self_loops = transitions_df.filter(pl.col("from_event") == pl.col("to_event")).sort(
+                "frequency", descending=True
+            )
 
             for row in self_loops.iter_rows(named=True):
                 event = row["from_event"]
@@ -986,10 +933,7 @@ class PathAnalyzer:
                 # Calculate impact based on frequency
                 impact = (
                     "negative"
-                    if any(
-                        keyword in event.lower()
-                        for keyword in ["error", "fail", "timeout"]
-                    )
+                    if any(keyword in event.lower() for keyword in ["error", "fail", "timeout"])
                     else "positive"
                 )
 
@@ -1014,16 +958,10 @@ class PathAnalyzer:
                     how="inner",
                     suffix="_right",
                 )
-                .filter(
-                    pl.col("from_event") == pl.col("to_event_right")
-                )  # Forms a cycle
+                .filter(pl.col("from_event") == pl.col("to_event_right"))  # Forms a cycle
                 .filter(pl.col("from_event") != pl.col("to_event"))  # Not self-loops
                 .with_columns(
-                    [
-                        pl.min_horizontal(["frequency", "frequency_right"]).alias(
-                            "cycle_frequency"
-                        )
-                    ]
+                    [pl.min_horizontal(["frequency", "frequency_right"]).alias("cycle_frequency")]
                 )
                 .select(
                     [
@@ -1043,10 +981,7 @@ class PathAnalyzer:
                 # Assess impact
                 impact = (
                     "negative"
-                    if any(
-                        "error" in event.lower() or "fail" in event.lower()
-                        for event in path
-                    )
+                    if any("error" in event.lower() or "fail" in event.lower() for event in path)
                     else "positive"
                 )
 
@@ -1063,12 +998,8 @@ class PathAnalyzer:
                 )
 
             # 3. Find 3-step cycles using path extension (limited for performance)
-            if (
-                len(transitions_df) < 50
-            ):  # Only for smaller datasets to avoid complexity explosion
-                three_step_cycles = self._find_three_step_cycles_optimized(
-                    transitions_df
-                )
+            if len(transitions_df) < 50:  # Only for smaller datasets to avoid complexity explosion
+                three_step_cycles = self._find_three_step_cycles_optimized(transitions_df)
                 cycles.extend(three_step_cycles[:3])  # Top 3 three-step cycles
 
         except Exception as e:
@@ -1084,9 +1015,7 @@ class PathAnalyzer:
                             "frequency": data["frequency"],
                             "type": "loop",
                             "impact": (
-                                "negative"
-                                if "error" in from_event.lower()
-                                else "positive"
+                                "negative" if "error" in from_event.lower() else "positive"
                             ),
                             "avg_cycle_time": 0,
                         }
@@ -1127,9 +1056,9 @@ class PathAnalyzer:
                 )  # Ensure all different steps
                 .with_columns(
                     [
-                        pl.min_horizontal(
-                            ["frequency", "frequency_2", "frequency_3"]
-                        ).alias("cycle_frequency")
+                        pl.min_horizontal(["frequency", "frequency_2", "frequency_3"]).alias(
+                            "cycle_frequency"
+                        )
                     ]
                 )
                 .select(
@@ -1151,10 +1080,7 @@ class PathAnalyzer:
                 # Assess impact
                 impact = (
                     "negative"
-                    if any(
-                        "error" in event.lower() or "fail" in event.lower()
-                        for event in path
-                    )
+                    if any("error" in event.lower() or "fail" in event.lower() for event in path)
                     else "positive"
                 )
 
@@ -1187,12 +1113,7 @@ class PathAnalyzer:
                     journey_df.filter(pl.col("event_name") == event)
                     .sort(["user_id", "timestamp"])
                     .with_columns(
-                        [
-                            pl.col("timestamp")
-                            .shift(-1)
-                            .over("user_id")
-                            .alias("next_timestamp")
-                        ]
+                        [pl.col("timestamp").shift(-1).over("user_id").alias("next_timestamp")]
                     )
                     .filter(pl.col("next_timestamp").is_not_null())
                     .with_columns(
@@ -1202,18 +1123,11 @@ class PathAnalyzer:
                             .alias("cycle_time_hours")
                         ]
                     )
-                    .filter(
-                        pl.col("cycle_time_hours") > 0
-                    )  # Positive time differences only
+                    .filter(pl.col("cycle_time_hours") > 0)  # Positive time differences only
                 )
 
                 if consecutive_times.height > 0:
-                    return (
-                        consecutive_times.select(
-                            pl.col("cycle_time_hours").mean()
-                        ).item()
-                        or 0
-                    )
+                    return consecutive_times.select(pl.col("cycle_time_hours").mean()).item() or 0
 
             else:
                 # Multi-step cycle: simplified estimation
@@ -1222,9 +1136,7 @@ class PathAnalyzer:
                 last_event = cycle_path[-1]
 
                 cycle_times = (
-                    journey_df.filter(
-                        pl.col("event_name").is_in([first_event, last_event])
-                    )
+                    journey_df.filter(pl.col("event_name").is_in([first_event, last_event]))
                     .sort(["user_id", "timestamp"])
                     .group_by("user_id")
                     .agg(
@@ -1244,10 +1156,7 @@ class PathAnalyzer:
                 )
 
                 if cycle_times.height > 0:
-                    return (
-                        cycle_times.select(pl.col("cycle_time_hours").mean()).item()
-                        or 0
-                    )
+                    return cycle_times.select(pl.col("cycle_time_hours").mean()).item() or 0
 
         except Exception as e:
             self.logger.warning(f"Cycle time estimation failed: {str(e)}")
@@ -1263,10 +1172,7 @@ class PathAnalyzer:
 
         if any(word in name_lower for word in ["login", "signup", "register", "start"]):
             return "entry"
-        if any(
-            word in name_lower
-            for word in ["purchase", "checkout", "complete", "finish"]
-        ):
+        if any(word in name_lower for word in ["purchase", "checkout", "complete", "finish"]):
             return "conversion"
         if any(word in name_lower for word in ["error", "fail", "timeout"]):
             return "error"
@@ -1278,9 +1184,7 @@ class PathAnalyzer:
             return "exit"
         return "process"
 
-    def _classify_transition_type(
-        self, from_event: str, to_event: str, frequency: int
-    ) -> str:
+    def _classify_transition_type(self, from_event: str, to_event: str, frequency: int) -> str:
         """Classify transition type"""
         if from_event == to_event:
             return "loop"
@@ -1323,9 +1227,7 @@ class PathAnalyzer:
 
         # Count users who had this activity and later had a success event
         users_with_activity = (
-            journey_df.filter(pl.col("event_name") == activity_name)
-            .select("user_id")
-            .unique()
+            journey_df.filter(pl.col("event_name") == activity_name).select("user_id").unique()
         )
 
         if users_with_activity.height == 0:
@@ -1335,9 +1237,7 @@ class PathAnalyzer:
         users_with_success = (
             journey_df.filter(
                 pl.col("user_id").is_in(users_with_activity.get_column("user_id"))
-                & pl.col("event_name")
-                .str.to_lowercase()
-                .str.contains_any(success_events)
+                & pl.col("event_name").str.to_lowercase().str.contains_any(success_events)
             )
             .select("user_id")
             .unique()
@@ -1357,9 +1257,7 @@ class PathAnalyzer:
                 pl.col("event_name").shift(-1).over("user_id").alias("next_event"),
                 pl.col("timestamp").shift(-1).over("user_id").alias("next_timestamp"),
             ]
-        ).filter(
-            pl.col("next_event").is_not_null()
-        )  # Remove last events that have no next
+        ).filter(pl.col("next_event").is_not_null())  # Remove last events that have no next
 
         # Calculate transition statistics
         transition_stats = (
@@ -1391,9 +1289,7 @@ class PathAnalyzer:
                 "unique_users": row["unique_users"],
                 "avg_duration": row["avg_duration"] or 0,
                 "probability": (
-                    (row["frequency"] / total_transitions) * 100
-                    if total_transitions > 0
-                    else 0
+                    (row["frequency"] / total_transitions) * 100 if total_transitions > 0 else 0
                 ),
                 "transition_type": self._classify_transition_type(
                     from_event, to_event, row["frequency"]
@@ -1422,11 +1318,8 @@ class PathAnalyzer:
     ) -> str:
         """Assess whether a cycle has positive or negative impact"""
         # Simple heuristic: cycles involving error events are negative
-        if any(
-            "error" in event.lower() or "fail" in event.lower() for event in cycle_path
-        ) or any(
-            "retry" in event.lower() or "repeat" in event.lower()
-            for event in cycle_path
+        if any("error" in event.lower() or "fail" in event.lower() for event in cycle_path) or any(
+            "retry" in event.lower() or "repeat" in event.lower() for event in cycle_path
         ):
             return "negative"
         return "positive"
@@ -1438,14 +1331,10 @@ class PathAnalyzer:
         cycle_times = []
 
         for journey in user_journeys.values():
-            events = [
-                (step["event"], step.get("duration_to_next", 0)) for step in journey
-            ]
+            events = [(step["event"], step.get("duration_to_next", 0)) for step in journey]
 
             for i in range(len(events) - len(cycle_path) + 1):
-                if [
-                    event for event, _ in events[i : i + len(cycle_path)]
-                ] == cycle_path:
+                if [event for event, _ in events[i : i + len(cycle_path)]] == cycle_path:
                     cycle_time = sum(
                         duration for _, duration in events[i : i + len(cycle_path) - 1]
                     )
@@ -1630,9 +1519,7 @@ class PathAnalyzer:
                 .filter(pl.col("total_duration").is_not_null())
             )
 
-            avg_duration = (
-                journey_durations.select(pl.col("total_duration").mean()).item() or 0
-            )
+            avg_duration = journey_durations.select(pl.col("total_duration").mean()).item() or 0
 
             # Calculate completion rate (journeys that end with success events)
             success_events = [
@@ -1646,18 +1533,12 @@ class PathAnalyzer:
 
             completed_journeys = (
                 journey_df.filter(pl.col("is_end"))  # Only look at end events
-                .filter(
-                    pl.col("event_name")
-                    .str.to_lowercase()
-                    .str.contains_any(success_events)
-                )
+                .filter(pl.col("event_name").str.to_lowercase().str.contains_any(success_events))
                 .select("user_id")
                 .n_unique()
             )
 
-            completion_rate = (
-                (completed_journeys / total_cases) * 100 if total_cases > 0 else 0
-            )
+            completion_rate = (completed_journeys / total_cases) * 100 if total_cases > 0 else 0
 
             # Count unique paths
             unique_paths = (
@@ -1747,8 +1628,6 @@ class PathAnalyzer:
 
         except Exception as e:
             self.logger.warning(f"Insight generation failed: {str(e)}")
-            insights.append(
-                "⚠️ Unable to generate insights due to data processing error"
-            )
+            insights.append("⚠️ Unable to generate insights due to data processing error")
 
         return insights

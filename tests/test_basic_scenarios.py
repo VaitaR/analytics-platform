@@ -147,9 +147,7 @@ class TestBasicScenarios:
         calculator = calculator_factory()
         single_step = ["Sign Up"]
 
-        results = calculator.calculate_funnel_metrics(
-            simple_linear_funnel_data, single_step
-        )
+        results = calculator.calculate_funnel_metrics(simple_linear_funnel_data, single_step)
 
         # Single step should return empty results (funnel needs at least 2 steps)
         assert results.steps == []
@@ -235,14 +233,10 @@ class TestBasicScenarios:
 
         # Combine original data with noise
         noise_df = pd.DataFrame(noise_events)
-        combined_data = pd.concat(
-            [simple_linear_funnel_data, noise_df], ignore_index=True
-        )
+        combined_data = pd.concat([simple_linear_funnel_data, noise_df], ignore_index=True)
 
         calculator = calculator_factory()
-        results = calculator.calculate_funnel_metrics(
-            combined_data, standard_funnel_steps
-        )
+        results = calculator.calculate_funnel_metrics(combined_data, standard_funnel_steps)
 
         # Results should be identical to original test
         assert results.users_count[0] == 1000
@@ -250,9 +244,7 @@ class TestBasicScenarios:
         assert results.users_count[2] == 600
         assert results.users_count[3] == 400
 
-    def test_funnel_steps_not_in_data(
-        self, calculator_factory, simple_linear_funnel_data
-    ):
+    def test_funnel_steps_not_in_data(self, calculator_factory, simple_linear_funnel_data):
         """
         Test behavior when funnel steps don't exist in the data.
         Expected: Should return zero counts for non-existent steps.
@@ -273,9 +265,7 @@ class TestBasicScenarios:
         )  # First step is always 100% (standard funnel convention)
         assert results.conversion_rates[1] == 0.0  # And subsequent steps are also 0%
 
-    def test_partial_funnel_steps_in_data(
-        self, calculator_factory, simple_linear_funnel_data
-    ):
+    def test_partial_funnel_steps_in_data(self, calculator_factory, simple_linear_funnel_data):
         """
         Test behavior when only some funnel steps exist in the data.
         Expected: Should calculate for existing steps, zero for non-existing.
@@ -284,9 +274,7 @@ class TestBasicScenarios:
         mixed_steps = ["Sign Up", "Nonexistent Step", "Email Verification"]
 
         calculator = calculator_factory()
-        results = calculator.calculate_funnel_metrics(
-            simple_linear_funnel_data, mixed_steps
-        )
+        results = calculator.calculate_funnel_metrics(simple_linear_funnel_data, mixed_steps)
 
         # First step should have normal count
         assert results.users_count[0] == 1000

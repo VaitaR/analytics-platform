@@ -72,9 +72,7 @@ class TestConversionRateLogicBug:
         )
 
         # 2. Calculate daily timeseries metrics
-        daily_results = calculator.calculate_timeseries_metrics(
-            test_data, funnel_steps, "1d"
-        )
+        daily_results = calculator.calculate_timeseries_metrics(test_data, funnel_steps, "1d")
 
         print("\n2. DAILY TIMESERIES RESULTS:")
         print(f"   Shape: {daily_results.shape}")
@@ -90,9 +88,7 @@ class TestConversionRateLogicBug:
             print("\n   TIMESERIES AGGREGATION:")
             print(f"   Total started (sum): {total_ts_started}")
             print(f"   Total completed (sum): {total_ts_completed}")
-            print(
-                f"   Aggregate conversion: {(total_ts_completed / total_ts_started * 100):.2f}%"
-            )
+            print(f"   Aggregate conversion: {(total_ts_completed / total_ts_started * 100):.2f}%")
             print(f"   Average conversion rate: {weighted_avg_conversion:.2f}%")
 
             # Show daily breakdown
@@ -111,9 +107,7 @@ class TestConversionRateLogicBug:
             total_ts_started = daily_results["started_funnel_users"].sum()
             total_ts_completed = daily_results["completed_funnel_users"].sum()
 
-            print(
-                f"   Overall funnel:  {overall_started} started, {overall_completed} completed"
-            )
+            print(f"   Overall funnel:  {overall_started} started, {overall_completed} completed")
             print(
                 f"   Timeseries sum:  {total_ts_started} started, {total_ts_completed} completed"
             )
@@ -129,9 +123,7 @@ class TestConversionRateLogicBug:
                 print("   This suggests the two methods are counting different users!")
 
                 # Let's investigate WHY they differ
-                self._investigate_counting_difference(
-                    test_data, funnel_steps, calculator
-                )
+                self._investigate_counting_difference(test_data, funnel_steps, calculator)
 
         # 4. Test the actual user's scenario
         self._test_user_reported_scenario()
@@ -141,21 +133,15 @@ class TestConversionRateLogicBug:
         print("\n=== INVESTIGATING COUNTING DIFFERENCE ===")
 
         # Manual calculation for overall
-        step1_users = set(
-            test_data[test_data["event_name"] == funnel_steps[0]]["user_id"]
-        )
-        step2_users = set(
-            test_data[test_data["event_name"] == funnel_steps[1]]["user_id"]
-        )
+        step1_users = set(test_data[test_data["event_name"] == funnel_steps[0]]["user_id"])
+        step2_users = set(test_data[test_data["event_name"] == funnel_steps[1]]["user_id"])
         step2_who_did_step1 = step2_users.intersection(step1_users)
 
         print("MANUAL OVERALL CALCULATION:")
         print(f"  Users who did step1: {len(step1_users)}")
         print(f"  Users who did step2: {len(step2_users)}")
         print(f"  Users who did both: {len(step2_who_did_step1)}")
-        print(
-            f"  Manual conversion: {len(step2_who_did_step1) / len(step1_users) * 100:.2f}%"
-        )
+        print(f"  Manual conversion: {len(step2_who_did_step1) / len(step1_users) * 100:.2f}%")
 
         # Check timeseries cohort logic
         print("\nCOHORT LOGIC INVESTIGATION:")
@@ -168,16 +154,12 @@ class TestConversionRateLogicBug:
             day_data = test_data[test_data["date"] == date]
 
             # Users who STARTED on this day
-            day_starters = set(
-                day_data[day_data["event_name"] == funnel_steps[0]]["user_id"]
-            )
+            day_starters = set(day_data[day_data["event_name"] == funnel_steps[0]]["user_id"])
 
             # Of those starters, who completed step2 ever (within window)?
             day_completers = set()
             for user in day_starters:
-                user_events = test_data[test_data["user_id"] == user].sort_values(
-                    "timestamp"
-                )
+                user_events = test_data[test_data["user_id"] == user].sort_values("timestamp")
                 step1_events = user_events[user_events["event_name"] == funnel_steps[0]]
                 step2_events = user_events[user_events["event_name"] == funnel_steps[1]]
 

@@ -49,8 +49,7 @@ class TestProcessMiningDiscovery:
                     {
                         "user_id": user_id,
                         "event_name": step,
-                        "timestamp": base_time
-                        + timedelta(hours=i, minutes=int(user_id[-1]) * 10),
+                        "timestamp": base_time + timedelta(hours=i, minutes=int(user_id[-1]) * 10),
                     }
                 )
 
@@ -62,8 +61,7 @@ class TestProcessMiningDiscovery:
                     {
                         "user_id": user_id,
                         "event_name": step,
-                        "timestamp": base_time
-                        + timedelta(hours=i, minutes=int(user_id[-1]) * 10),
+                        "timestamp": base_time + timedelta(hours=i, minutes=int(user_id[-1]) * 10),
                     }
                 )
 
@@ -75,8 +73,7 @@ class TestProcessMiningDiscovery:
                     {
                         "user_id": user_id,
                         "event_name": step,
-                        "timestamp": base_time
-                        + timedelta(hours=i, minutes=int(user_id[-1]) * 10),
+                        "timestamp": base_time + timedelta(hours=i, minutes=int(user_id[-1]) * 10),
                     }
                 )
 
@@ -146,9 +143,7 @@ class TestProcessMiningDiscovery:
 
         # Check for Browse -> Cart -> Browse cycle
         cycle_paths = [cycle["path"] for cycle in process_data.cycles]
-        has_browse_cart_cycle = any(
-            "Browse" in path and "Cart" in path for path in cycle_paths
-        )
+        has_browse_cart_cycle = any("Browse" in path and "Cart" in path for path in cycle_paths)
         assert has_browse_cart_cycle
 
         # Verify process variants
@@ -188,9 +183,7 @@ class TestProcessMiningDiscovery:
         )
 
         # Recent data should have fewer activities/transitions
-        assert (
-            recent_data.statistics["total_cases"] <= all_data.statistics["total_cases"]
-        )
+        assert recent_data.statistics["total_cases"] <= all_data.statistics["total_cases"]
 
     def test_cycle_detection_accuracy(self, path_analyzer, complex_process_data):
         """Test accuracy of cycle detection"""
@@ -236,8 +229,7 @@ class TestProcessMiningInsights:
                     {
                         "user_id": f"user_{user_id}",
                         "event_name": "End",
-                        "timestamp": base_time
-                        + timedelta(hours=48),  # Very long duration
+                        "timestamp": base_time + timedelta(hours=48),  # Very long duration
                     },
                 ]
             )
@@ -489,8 +481,7 @@ class TestProcessMiningPerformance:
                     {
                         "user_id": f"user_{user_id}",
                         "event_name": step,
-                        "timestamp": base_time
-                        + timedelta(hours=i, minutes=user_id % 60),
+                        "timestamp": base_time + timedelta(hours=i, minutes=user_id % 60),
                     }
                 )
 
@@ -512,9 +503,7 @@ class TestProcessMiningPerformance:
         execution_time = time.time() - start_time
 
         # Should complete in reasonable time (less than 30 seconds)
-        assert (
-            execution_time < 30.0
-        ), f"Process discovery took too long: {execution_time:.2f}s"
+        assert execution_time < 30.0, f"Process discovery took too long: {execution_time:.2f}s"
 
         # Should discover meaningful structure
         assert len(process_data.activities) > 0
@@ -541,17 +530,11 @@ class TestProcessMiningPerformance:
 
         # Memory should not have grown excessively
         ref_growth = final_refs - initial_refs
-        assert (
-            ref_growth < 100
-        ), f"Excessive memory growth detected: {ref_growth} new references"
+        assert ref_growth < 100, f"Excessive memory growth detected: {ref_growth} new references"
 
         # Process data should be reasonable size
-        assert (
-            len(process_data.activities) < 100
-        )  # Should not have excessive activities
-        assert (
-            len(process_data.transitions) < 500
-        )  # Should not have excessive transitions
+        assert len(process_data.activities) < 100  # Should not have excessive activities
+        assert len(process_data.transitions) < 500  # Should not have excessive transitions
 
 
 class TestProcessMiningEdgeCases:
@@ -704,8 +687,7 @@ class TestProcessMiningIntegration:
                     {
                         "user_id": f"user_{user_id}",
                         "event_name": event,
-                        "timestamp": base_time
-                        + timedelta(hours=i, minutes=user_id % 60),
+                        "timestamp": base_time + timedelta(hours=i, minutes=user_id % 60),
                     }
                 )
 
@@ -743,10 +725,7 @@ class TestProcessMiningIntegration:
 
         # Should contain meaningful insights about e-commerce flow
         insight_text = " ".join(process_data.insights).lower()
-        assert any(
-            keyword in insight_text
-            for keyword in ["conversion", "path", "rate", "users"]
-        )
+        assert any(keyword in insight_text for keyword in ["conversion", "path", "rate", "users"])
 
     def test_integration_with_existing_funnel_analysis(self):
         """Test that process mining integrates well with existing funnel analysis"""

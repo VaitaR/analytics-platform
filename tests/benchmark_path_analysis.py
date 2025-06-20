@@ -88,9 +88,7 @@ def benchmark_path_analysis():
     """Benchmark path analysis functions"""
     print("Generating test data...")
     df = generate_test_data(num_users=5000, events_per_user=30)
-    print(
-        f"Generated dataset with {len(df)} events for {df['user_id'].nunique()} users"
-    )
+    print(f"Generated dataset with {len(df)} events for {df['user_id'].nunique()} users")
 
     # Create calculator instances
     config = FunnelConfig(
@@ -141,9 +139,7 @@ def benchmark_path_analysis():
         polars_df, polars_df, dropped_users, step
     )
     optimized_time = time.time() - start_time
-    print(
-        f"Optimized _analyze_dropoff_paths_polars_optimized: {optimized_time:.6f} seconds"
-    )
+    print(f"Optimized _analyze_dropoff_paths_polars_optimized: {optimized_time:.6f} seconds")
 
     # Calculate improvement
     improvement = (original_time - optimized_time) / original_time * 100
@@ -173,9 +169,7 @@ def benchmark_path_analysis():
         polars_df, polars_df, converted_users, step, next_step, funnel_steps
     )
     optimized_time = time.time() - start_time
-    print(
-        f"Optimized _analyze_between_steps_polars_optimized: {optimized_time:.6f} seconds"
-    )
+    print(f"Optimized _analyze_between_steps_polars_optimized: {optimized_time:.6f} seconds")
 
     # Calculate improvement
     improvement = (original_time - optimized_time) / original_time * 100

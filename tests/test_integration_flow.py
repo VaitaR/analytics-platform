@@ -88,9 +88,7 @@ class TestCompleteIntegrationFlow:
                         "user_id": user_id,
                         "event_name": "First Login",
                         "timestamp": base_timestamp + timedelta(minutes=i + 45),
-                        "event_properties": json.dumps(
-                            {"device": "desktop", "browser": "chrome"}
-                        ),
+                        "event_properties": json.dumps({"device": "desktop", "browser": "chrome"}),
                         "user_properties": json.dumps(
                             {
                                 "segment": "premium",
@@ -130,9 +128,7 @@ class TestCompleteIntegrationFlow:
                     "user_id": user_id,
                     "event_name": "Sign Up",
                     "timestamp": base_timestamp + timedelta(minutes=i + 200),
-                    "event_properties": json.dumps(
-                        {"source": "paid", "campaign": "summer_2024"}
-                    ),
+                    "event_properties": json.dumps({"source": "paid", "campaign": "summer_2024"}),
                     "user_properties": json.dumps(
                         {"segment": "basic", "country": "UK", "age": 30 + (i % 15)}
                     ),
@@ -162,9 +158,7 @@ class TestCompleteIntegrationFlow:
                         "user_id": user_id,
                         "event_name": "First Login",
                         "timestamp": base_timestamp + timedelta(minutes=i + 280),
-                        "event_properties": json.dumps(
-                            {"device": "mobile", "browser": "safari"}
-                        ),
+                        "event_properties": json.dumps({"device": "mobile", "browser": "safari"}),
                         "user_properties": json.dumps(
                             {"segment": "basic", "country": "UK", "age": 30 + (i % 15)}
                         ),
@@ -264,9 +258,7 @@ class TestCompleteIntegrationFlow:
         is_valid, validation_message = data_manager.validate_event_data(loaded_data)
         assert is_valid, f"Data validation failed: {validation_message}"
         assert len(loaded_data) == len(integration_test_data)
-        assert all(
-            col in loaded_data.columns for col in ["user_id", "event_name", "timestamp"]
-        )
+        assert all(col in loaded_data.columns for col in ["user_id", "event_name", "timestamp"])
 
         # Step 4: Verify event discovery directly from the data
         # Since get_event_metadata loads demo data, we'll verify events directly
@@ -280,9 +272,9 @@ class TestCompleteIntegrationFlow:
 
         # Check that our expected events are present in the loaded data
         for event in expected_events:
-            assert (
-                event in actual_events
-            ), f"Event '{event}' not found in loaded data. Found: {actual_events}"
+            assert event in actual_events, (
+                f"Event '{event}' not found in loaded data. Found: {actual_events}"
+            )
 
         # Step 5: Configure and run funnel analysis
         funnel_steps = [
@@ -308,18 +300,18 @@ class TestCompleteIntegrationFlow:
         # Verify user counts match expected
         expected = expected_integration_results["total_users"]
         for i, step in enumerate(funnel_steps):
-            assert (
-                results.users_count[i] == expected[step]
-            ), f"User count mismatch for {step}: expected {expected[step]}, got {results.users_count[i]}"
+            assert results.users_count[i] == expected[step], (
+                f"User count mismatch for {step}: expected {expected[step]}, got {results.users_count[i]}"
+            )
 
         # Verify conversion rates
         expected_rates = expected_integration_results["conversion_rates"]
         for i, step in enumerate(funnel_steps):
             expected_rate = expected_rates[step]
             actual_rate = results.conversion_rates[i]
-            assert (
-                abs(actual_rate - expected_rate) < 0.1
-            ), f"Conversion rate mismatch for {step}: expected {expected_rate}%, got {actual_rate}%"
+            assert abs(actual_rate - expected_rate) < 0.1, (
+                f"Conversion rate mismatch for {step}: expected {expected_rate}%, got {actual_rate}%"
+            )
 
     def test_all_counting_methods_integration(self, integration_test_data):
         """
@@ -331,9 +323,7 @@ class TestCompleteIntegrationFlow:
             "First Login",
             "First Purchase",
         ]
-        base_config = FunnelConfig(
-            conversion_window_hours=24, reentry_mode=ReentryMode.FIRST_ONLY
-        )
+        base_config = FunnelConfig(conversion_window_hours=24, reentry_mode=ReentryMode.FIRST_ONLY)
 
         results = {}
 
@@ -347,9 +337,7 @@ class TestCompleteIntegrationFlow:
             )
 
             calculator = FunnelCalculator(config)
-            result = calculator.calculate_funnel_metrics(
-                integration_test_data, funnel_steps
-            )
+            result = calculator.calculate_funnel_metrics(integration_test_data, funnel_steps)
             results[method.value] = result
 
             # Basic validation for each method
@@ -360,18 +348,18 @@ class TestCompleteIntegrationFlow:
 
             # Ensure counts are monotonically decreasing for ordered funnel
             for i in range(1, len(result.users_count)):
-                assert (
-                    result.users_count[i] <= result.users_count[i - 1]
-                ), f"User count should decrease at each step for {method.value}"
+                assert result.users_count[i] <= result.users_count[i - 1], (
+                    f"User count should decrease at each step for {method.value}"
+                )
 
         # Compare methods - unique_users should generally have lower counts than event_totals
         unique_users_result = results["unique_users"]
         event_totals_result = results["event_totals"]
 
         # For the last step, unique_users should be <= event_totals
-        assert (
-            unique_users_result.users_count[-1] <= event_totals_result.users_count[-1]
-        ), "Unique users count should be <= event totals count"
+        assert unique_users_result.users_count[-1] <= event_totals_result.users_count[-1], (
+            "Unique users count should be <= event totals count"
+        )
 
     def test_segmentation_integration_flow(
         self, integration_test_data, expected_integration_results
@@ -381,9 +369,7 @@ class TestCompleteIntegrationFlow:
         """
         # Step 1: Load data and get segmentation properties
         data_manager = DataSourceManager()
-        segmentation_props = data_manager.get_segmentation_properties(
-            integration_test_data
-        )
+        segmentation_props = data_manager.get_segmentation_properties(integration_test_data)
 
         # Verify segmentation properties are discovered
         assert "user_properties" in segmentation_props
@@ -407,9 +393,7 @@ class TestCompleteIntegrationFlow:
         calculator = FunnelCalculator(config)
 
         # Step 3: Execute segmented calculation
-        results = calculator.calculate_funnel_metrics(
-            integration_test_data, funnel_steps
-        )
+        results = calculator.calculate_funnel_metrics(integration_test_data, funnel_steps)
 
         # Step 4: Validate segmented results
         assert results.segment_data is not None
@@ -427,18 +411,18 @@ class TestCompleteIntegrationFlow:
         expected_premium = expected_integration_results["segment_a"]
 
         for i, step in enumerate(funnel_steps):
-            assert (
-                premium_counts[i] == expected_premium[step]
-            ), f"Premium segment count mismatch for {step}: expected {expected_premium[step]}, got {premium_counts[i]}"
+            assert premium_counts[i] == expected_premium[step], (
+                f"Premium segment count mismatch for {step}: expected {expected_premium[step]}, got {premium_counts[i]}"
+            )
 
         # Verify segment B (basic) results
         basic_counts = results.segment_data[basic_key]
         expected_basic = expected_integration_results["segment_b"]
 
         for i, step in enumerate(funnel_steps):
-            assert (
-                basic_counts[i] == expected_basic[step]
-            ), f"Basic segment count mismatch for {step}: expected {expected_basic[step]}, got {basic_counts[i]}"
+            assert basic_counts[i] == expected_basic[step], (
+                f"Basic segment count mismatch for {step}: expected {expected_basic[step]}, got {basic_counts[i]}"
+            )
 
     def test_conversion_window_integration(self, base_timestamp):
         """
@@ -527,16 +511,12 @@ class TestCompleteIntegrationFlow:
         # Test FIRST_ONLY mode
         config_first = FunnelConfig(reentry_mode=ReentryMode.FIRST_ONLY)
         calculator_first = FunnelCalculator(config_first)
-        results_first = calculator_first.calculate_funnel_metrics(
-            test_data, funnel_steps
-        )
+        results_first = calculator_first.calculate_funnel_metrics(test_data, funnel_steps)
 
         # Test OPTIMIZED_REENTRY mode
         config_reentry = FunnelConfig(reentry_mode=ReentryMode.OPTIMIZED_REENTRY)
         calculator_reentry = FunnelCalculator(config_reentry)
-        results_reentry = calculator_reentry.calculate_funnel_metrics(
-            test_data, funnel_steps
-        )
+        results_reentry = calculator_reentry.calculate_funnel_metrics(test_data, funnel_steps)
 
         # Both should start with 1 user
         assert results_first.users_count[0] == 1
@@ -592,9 +572,7 @@ class TestCompleteIntegrationFlow:
         ]
         config = FunnelConfig()
         calculator = FunnelCalculator(config)
-        results = calculator.calculate_funnel_metrics(
-            integration_test_data, funnel_steps
-        )
+        results = calculator.calculate_funnel_metrics(integration_test_data, funnel_steps)
 
         # Step 2: Generate visualizations
         visualizer = FunnelVisualizer()
@@ -681,8 +659,7 @@ class TestCompleteIntegrationFlow:
                         {
                             "user_id": user_id,
                             "event_name": event_name,
-                            "timestamp": base_timestamp
-                            + timedelta(minutes=user_i + event_i * 30),
+                            "timestamp": base_timestamp + timedelta(minutes=user_i + event_i * 30),
                             "event_properties": json.dumps({"step": event_i}),
                             "user_properties": json.dumps({"cohort": user_i % 10}),
                         }
@@ -717,9 +694,7 @@ class TestCompleteIntegrationFlow:
 
         # Validate results make sense for large dataset
         assert results.users_count[0] == 1000  # All users should start
-        assert (
-            results.users_count[-1] < results.users_count[0]
-        )  # Some attrition should occur
+        assert results.users_count[-1] < results.users_count[0]  # Some attrition should occur
 
         # Verify that the calculation completed successfully
         assert len(results.users_count) == len(event_names)
@@ -868,9 +843,7 @@ class TestDataSourceIntegration:
         # Run funnel analysis with two steps
         config = FunnelConfig(
             segment_by=(
-                "country"
-                if "country" in segmentation_props.get("user_properties", [])
-                else None
+                "country" if "country" in segmentation_props.get("user_properties", []) else None
             )
         )
         calculator = FunnelCalculator(config)
