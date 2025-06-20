@@ -7890,8 +7890,10 @@ class FunnelVisualizer:
                 },
                 hovertemplate="<b>%{y}</b><br>Step %{x}: %{z:.1f}%<extra></extra>",
                 colorbar=dict(
-                    title="Conversion Rate (%)",
-                    titleside="right",
+                    title=dict(
+                        text="Conversion Rate (%)",
+                        side="right"
+                    ),
                     titlefont=dict(
                         size=self.typography.SCALE["sm"],
                         color=self.text_color,
@@ -8754,8 +8756,10 @@ class FunnelVisualizer:
                 texttemplate="%{text}",
                 textfont={"size": 10, "color": "white"},
                 colorbar=dict(
-                    title="Conversion Rate (%)",
-                    titleside="right",
+                    title=dict(
+                        text="Conversion Rate (%)",
+                        side="right"
+                    ),
                     titlefont=dict(size=12, color=visualizer.TEXT_COLOR),
                     tickfont=dict(color=visualizer.TEXT_COLOR),
                     ticks="outside",
