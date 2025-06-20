@@ -8,7 +8,8 @@ from datetime import timedelta
 
 import pandas as pd
 
-from app import CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder, ReentryMode
+from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
+                 ReentryMode)
 
 
 class TestConversionRateLogicBug:

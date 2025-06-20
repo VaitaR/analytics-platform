@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 import polars as pl
 
-from app import CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder, ReentryMode
+from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
+                 ReentryMode)
 
 
 def generate_test_data(num_users=1000, events_per_user=20):

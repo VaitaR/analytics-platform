@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytest
 
-from app import CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder, ReentryMode
+from app import (CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder,
+                 ReentryMode)
 
 
 class TestConversionRateCalculationFix:

@@ -21,15 +21,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app import (
-    CountingMethod,
-    DataSourceManager,
-    FunnelCalculator,
-    FunnelConfig,
-    FunnelOrder,
-    FunnelVisualizer,
-    ReentryMode,
-)
+from app import (CountingMethod, DataSourceManager, FunnelCalculator,
+                 FunnelConfig, FunnelOrder, FunnelVisualizer, ReentryMode)
 
 
 class TestCompleteIntegrationFlow:
