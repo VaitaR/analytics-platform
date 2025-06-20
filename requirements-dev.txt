@@ -3,8 +3,7 @@
 # =====================================================================
 
 # Modern Python Linting & Formatting Stack
-ruff>=0.1.0              # Ultra-fast linter and import sorter
-black>=23.0.0            # Uncompromising code formatter
+ruff>=0.1.0              # Ultra-fast linter, import sorter AND formatter (replaces Black)
 mypy>=1.7.0              # Static type checker
 
 # Type Stubs for Static Analysis
