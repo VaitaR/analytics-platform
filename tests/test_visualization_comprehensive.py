@@ -25,7 +25,13 @@ import numpy as np
 import plotly.graph_objects as go
 import pytest
 
-from app import CohortData, FunnelResults, FunnelVisualizer, PathAnalysisData, TimeToConvertStats
+from app import (
+    CohortData,
+    FunnelResults,
+    FunnelVisualizer,
+    PathAnalysisData,
+    TimeToConvertStats,
+)
 
 
 @pytest.mark.visualization
@@ -52,7 +58,10 @@ class TestFunnelVisualizerChartCreation:
             drop_offs=[0, 250, 150, 200],
             drop_off_rates=[0.0, 25.0, 20.0, 33.3],
         )
-        results.segment_data = {"Premium": [400, 350, 320, 280], "Basic": [600, 400, 280, 120]}
+        results.segment_data = {
+            "Premium": [400, 350, 320, 280],
+            "Basic": [600, 400, 280, 120],
+        }
         return results
 
     @pytest.fixture
@@ -87,7 +96,12 @@ class TestFunnelVisualizerChartCreation:
         cohort_data = CohortData(
             cohort_period="monthly",
             cohort_labels=["2024-01", "2024-02", "2024-03", "2024-04"],
-            cohort_sizes={"2024-01": 300, "2024-02": 250, "2024-03": 400, "2024-04": 350},
+            cohort_sizes={
+                "2024-01": 300,
+                "2024-02": 250,
+                "2024-03": 400,
+                "2024-04": 350,
+            },
             conversion_rates={
                 "2024-01": [100.0, 80.0, 65.0, 45.0],
                 "2024-02": [100.0, 85.0, 70.0, 50.0],
@@ -108,7 +122,11 @@ class TestFunnelVisualizerChartCreation:
                     "Contact Support": 30,
                     "Session Timeout": 20,
                 },
-                "Email Verification": {"Account Settings": 80, "Profile Page": 40, "Logout": 30},
+                "Email Verification": {
+                    "Account Settings": 80,
+                    "Profile Page": 40,
+                    "Logout": 30,
+                },
                 "First Login": {"Dashboard": 120, "Tutorial Skip": 50, "Settings": 30},
             },
             between_steps_events={
@@ -116,7 +134,10 @@ class TestFunnelVisualizerChartCreation:
                     "Welcome Email Sent": 750,
                     "Verification Link Clicked": 680,
                 },
-                "Email Verification → First Login": {"Login Attempt": 600, "Password Reset": 30},
+                "Email Verification → First Login": {
+                    "Login Attempt": 600,
+                    "Password Reset": 30,
+                },
             },
         )
         return path_data
@@ -308,7 +329,10 @@ class TestFunnelVisualizerThemeAndAccessibility:
         visualizer = FunnelVisualizer(theme="dark", colorblind_friendly=True)
 
         # Test with segmented data
-        sample_results.segment_data = {"Segment A": [60, 45, 30], "Segment B": [40, 30, 20]}
+        sample_results.segment_data = {
+            "Segment A": [60, 45, 30],
+            "Segment B": [40, 30, 20],
+        }
 
         chart = visualizer.create_enhanced_funnel_chart(sample_results, show_segments=True)
 
@@ -353,7 +377,10 @@ class TestFunnelVisualizerThemeAndAccessibility:
         # Test with different step counts - Updated for new universal standards
         # New calculation: min(800, base + min(content_count-1, 20) * 20)
         test_cases = [
-            (["Step 1", "Step 2"], 350),  # Min height enforced (350px universal minimum)
+            (
+                ["Step 1", "Step 2"],
+                350,
+            ),  # Min height enforced (350px universal minimum)
             (
                 ["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"],
                 350,
@@ -397,7 +424,11 @@ class TestFunnelVisualizerEdgeCases:
     def test_empty_funnel_results(self, visualizer):
         """Test visualization with empty funnel results."""
         empty_results = FunnelResults(
-            steps=[], users_count=[], conversion_rates=[], drop_offs=[], drop_off_rates=[]
+            steps=[],
+            users_count=[],
+            conversion_rates=[],
+            drop_offs=[],
+            drop_off_rates=[],
         )
         empty_results.steps = []
         empty_results.users_count = []
@@ -489,7 +520,10 @@ class TestFunnelVisualizerEdgeCases:
     def test_empty_cohort_data(self, visualizer):
         """Test cohort heatmap with empty cohort data."""
         empty_cohort = CohortData(
-            cohort_period="monthly", cohort_sizes={}, conversion_rates={}, cohort_labels=[]
+            cohort_period="monthly",
+            cohort_sizes={},
+            conversion_rates={},
+            cohort_labels=[],
         )
         empty_cohort.cohort_labels = []
         empty_cohort.cohort_sizes = {}
@@ -730,7 +764,10 @@ def comprehensive_funnel_results():
     )
 
     # Segment data
-    results.segment_data = {"Mobile": [600, 500, 420, 320], "Desktop": [400, 300, 230, 130]}
+    results.segment_data = {
+        "Mobile": [600, 500, 420, 320],
+        "Desktop": [400, 300, 230, 130],
+    }
 
     # Time to convert stats
     time_stats = []
@@ -772,8 +809,14 @@ def comprehensive_funnel_results():
         },
         between_steps_events={
             "Registration → Email Confirm": {"Email Sent": 800, "Clicked Link": 750},
-            "Email Confirm → Profile Setup": {"Login Success": 650, "Welcome Message": 600},
-            "Profile Setup → First Purchase": {"Browse Products": 450, "Add to Cart": 400},
+            "Email Confirm → Profile Setup": {
+                "Login Success": 650,
+                "Welcome Message": 600,
+            },
+            "Profile Setup → First Purchase": {
+                "Browse Products": 450,
+                "Add to Cart": 400,
+            },
         },
     )
 

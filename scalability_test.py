@@ -51,7 +51,11 @@ def generate_large_test_data(num_users=2000, events_per_user=15):
         # Most users start with login
         if random.random() < 0.8:
             events.append(
-                {"user_id": f"user_{user_id}", "event_name": "login", "timestamp": current_time}
+                {
+                    "user_id": f"user_{user_id}",
+                    "event_name": "login",
+                    "timestamp": current_time,
+                }
             )
             current_time += timedelta(minutes=random.randint(1, 10))
 
@@ -70,7 +74,11 @@ def generate_large_test_data(num_users=2000, events_per_user=15):
                 event = random.choice(event_names)
 
             events.append(
-                {"user_id": f"user_{user_id}", "event_name": event, "timestamp": current_time}
+                {
+                    "user_id": f"user_{user_id}",
+                    "event_name": event,
+                    "timestamp": current_time,
+                }
             )
 
             # Realistic time gaps

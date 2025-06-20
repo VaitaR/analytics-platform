@@ -50,7 +50,8 @@ def test_polars_engine_no_pandas_fallback(mock_pandas_calculator, sample_events_
     )
 
     with patch(
-        "app.FunnelCalculator._calculate_funnel_metrics_polars", return_value=mock_polars_result
+        "app.FunnelCalculator._calculate_funnel_metrics_polars",
+        return_value=mock_polars_result,
     ) as mock_polars_method:
         funnel_calculator = FunnelCalculator(config=config, use_polars=True)
         funnel_calculator.calculate_funnel_metrics(sample_events_df, funnel_steps)
@@ -81,7 +82,8 @@ def test_polars_engine_fallback_on_error(mock_polars_calculator, sample_events_d
     )
 
     with patch(
-        "app.FunnelCalculator._calculate_funnel_metrics_pandas", return_value=mock_pandas_result
+        "app.FunnelCalculator._calculate_funnel_metrics_pandas",
+        return_value=mock_pandas_result,
     ) as mock_pandas_method:
         funnel_calculator = FunnelCalculator(config=config, use_polars=True)
         funnel_calculator.calculate_funnel_metrics(sample_events_df, funnel_steps)

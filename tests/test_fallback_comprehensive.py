@@ -221,7 +221,12 @@ class TestFallbackComprehensive:
     @pytest.mark.parametrize("reentry_mode", list(ReentryMode))
     @pytest.mark.parametrize("counting_method", list(CountingMethod))
     def test_no_fallback_in_funnel_calculation(
-        self, funnel_order, reentry_mode, counting_method, all_test_data_fixtures, log_capture
+        self,
+        funnel_order,
+        reentry_mode,
+        counting_method,
+        all_test_data_fixtures,
+        log_capture,
     ):
         """
         Test that funnel calculation does not trigger fallbacks for any configuration.
@@ -289,7 +294,12 @@ class TestFallbackComprehensive:
     @pytest.mark.parametrize("reentry_mode", list(ReentryMode))
     @pytest.mark.parametrize("counting_method", list(CountingMethod))
     def test_component_specific_fallback_detection(
-        self, funnel_order, reentry_mode, counting_method, all_test_data_fixtures, log_capture
+        self,
+        funnel_order,
+        reentry_mode,
+        counting_method,
+        all_test_data_fixtures,
+        log_capture,
     ):
         """
         Test specific components for fallbacks across all configurations.
@@ -578,7 +588,11 @@ class TestFallbackComprehensive:
                     )
 
                     # Test components separately
-                    components_to_test = ["path_analysis", "time_to_convert", "cohort_analysis"]
+                    components_to_test = [
+                        "path_analysis",
+                        "time_to_convert",
+                        "cohort_analysis",
+                    ]
 
                     component_results = {}
 
@@ -673,7 +687,11 @@ class TestFallbackComprehensive:
                             }
 
                     # Record results for this configuration
-                    config_key = (funnel_order.value, reentry_mode.value, counting_method.value)
+                    config_key = (
+                        funnel_order.value,
+                        reentry_mode.value,
+                        counting_method.value,
+                    )
                     results[config_key] = component_results
 
         # Generate report

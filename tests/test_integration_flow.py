@@ -72,7 +72,11 @@ class TestCompleteIntegrationFlow:
                             {"source": "organic", "method": "email_click"}
                         ),
                         "user_properties": json.dumps(
-                            {"segment": "premium", "country": "US", "age": 25 + (i % 20)}
+                            {
+                                "segment": "premium",
+                                "country": "US",
+                                "age": 25 + (i % 20),
+                            }
                         ),
                     }
                 )
@@ -86,7 +90,11 @@ class TestCompleteIntegrationFlow:
                         "timestamp": base_timestamp + timedelta(minutes=i + 45),
                         "event_properties": json.dumps({"device": "desktop", "browser": "chrome"}),
                         "user_properties": json.dumps(
-                            {"segment": "premium", "country": "US", "age": 25 + (i % 20)}
+                            {
+                                "segment": "premium",
+                                "country": "US",
+                                "age": 25 + (i % 20),
+                            }
                         ),
                     }
                 )
@@ -102,7 +110,11 @@ class TestCompleteIntegrationFlow:
                             {"amount": 29.99 + (i % 10), "currency": "USD"}
                         ),
                         "user_properties": json.dumps(
-                            {"segment": "premium", "country": "US", "age": 25 + (i % 20)}
+                            {
+                                "segment": "premium",
+                                "country": "US",
+                                "age": 25 + (i % 20),
+                            }
                         ),
                     }
                 )
@@ -170,7 +182,12 @@ class TestCompleteIntegrationFlow:
                 )
 
         # Add some noise events that should be filtered out
-        noise_events = ["Page View", "Button Click", "Form Submit", "Newsletter Subscribe"]
+        noise_events = [
+            "Page View",
+            "Button Click",
+            "Form Submit",
+            "Newsletter Subscribe",
+        ]
         for i in range(50):
             events.append(
                 {
@@ -245,7 +262,12 @@ class TestCompleteIntegrationFlow:
 
         # Step 4: Verify event discovery directly from the data
         # Since get_event_metadata loads demo data, we'll verify events directly
-        expected_events = ["Sign Up", "Email Verification", "First Login", "First Purchase"]
+        expected_events = [
+            "Sign Up",
+            "Email Verification",
+            "First Login",
+            "First Purchase",
+        ]
         actual_events = loaded_data["event_name"].unique().tolist()
 
         # Check that our expected events are present in the loaded data
@@ -255,7 +277,12 @@ class TestCompleteIntegrationFlow:
             )
 
         # Step 5: Configure and run funnel analysis
-        funnel_steps = ["Sign Up", "Email Verification", "First Login", "First Purchase"]
+        funnel_steps = [
+            "Sign Up",
+            "Email Verification",
+            "First Login",
+            "First Purchase",
+        ]
         config = FunnelConfig(
             conversion_window_hours=24,
             counting_method=CountingMethod.UNIQUE_USERS,
@@ -290,7 +317,12 @@ class TestCompleteIntegrationFlow:
         """
         Test complete flow with all counting methods to ensure consistent behavior.
         """
-        funnel_steps = ["Sign Up", "Email Verification", "First Login", "First Purchase"]
+        funnel_steps = [
+            "Sign Up",
+            "Email Verification",
+            "First Login",
+            "First Purchase",
+        ]
         base_config = FunnelConfig(conversion_window_hours=24, reentry_mode=ReentryMode.FIRST_ONLY)
 
         results = {}
@@ -345,7 +377,12 @@ class TestCompleteIntegrationFlow:
         assert "country" in segmentation_props["user_properties"]
 
         # Step 2: Configure segmented funnel analysis
-        funnel_steps = ["Sign Up", "Email Verification", "First Login", "First Purchase"]
+        funnel_steps = [
+            "Sign Up",
+            "Email Verification",
+            "First Login",
+            "First Purchase",
+        ]
         config = FunnelConfig(
             conversion_window_hours=24,
             counting_method=CountingMethod.UNIQUE_USERS,
@@ -527,7 +564,12 @@ class TestCompleteIntegrationFlow:
         Test complete flow including visualization generation.
         """
         # Step 1: Run funnel analysis
-        funnel_steps = ["Sign Up", "Email Verification", "First Login", "First Purchase"]
+        funnel_steps = [
+            "Sign Up",
+            "Email Verification",
+            "First Login",
+            "First Purchase",
+        ]
         config = FunnelConfig()
         calculator = FunnelCalculator(config)
         results = calculator.calculate_funnel_metrics(integration_test_data, funnel_steps)
@@ -700,7 +742,11 @@ class TestDataSourceIntegration:
                             {"source": "organic", "method": "email_click"}
                         ),
                         "user_properties": json.dumps(
-                            {"segment": "premium", "country": "US", "age": 25 + (i % 20)}
+                            {
+                                "segment": "premium",
+                                "country": "US",
+                                "age": 25 + (i % 20),
+                            }
                         ),
                     }
                 )

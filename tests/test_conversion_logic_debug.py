@@ -176,7 +176,9 @@ class TestConversionRateLogicBug:
             daily_breakdown[date] = {
                 "started": len(day_starters),
                 "completed": len(day_completers),
-                "conversion": len(day_completers) / len(day_starters) * 100 if day_starters else 0,
+                "conversion": (
+                    len(day_completers) / len(day_starters) * 100 if day_starters else 0
+                ),
             }
 
             print(

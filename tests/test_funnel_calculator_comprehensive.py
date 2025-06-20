@@ -457,7 +457,12 @@ class TestFunnelCalculatorComprehensive:
     )
     @pytest.mark.parametrize("counting_method", [CountingMethod.UNIQUE_USERS])  # Most common case
     def test_reentry_scenario(
-        self, funnel_order, reentry_mode, counting_method, events_data_with_reentry, caplog
+        self,
+        funnel_order,
+        reentry_mode,
+        counting_method,
+        events_data_with_reentry,
+        caplog,
     ):
         """Test all combinations with reentry data"""
         caplog.set_level(logging.INFO)
@@ -512,12 +517,20 @@ class TestFunnelCalculatorComprehensive:
 
     @pytest.mark.parametrize(
         "funnel_order",
-        [FunnelOrder.ORDERED, FunnelOrder.UNORDERED],  # Important to test both for this case
+        [
+            FunnelOrder.ORDERED,
+            FunnelOrder.UNORDERED,
+        ],  # Important to test both for this case
     )
     @pytest.mark.parametrize("reentry_mode", [ReentryMode.FIRST_ONLY])  # Most common case
     @pytest.mark.parametrize("counting_method", [CountingMethod.UNIQUE_USERS])  # Most common case
     def test_unordered_completion(
-        self, funnel_order, reentry_mode, counting_method, events_data_unordered_completion, caplog
+        self,
+        funnel_order,
+        reentry_mode,
+        counting_method,
+        events_data_unordered_completion,
+        caplog,
     ):
         """Test all combinations with unordered completion data"""
         caplog.set_level(logging.INFO)
@@ -569,7 +582,10 @@ class TestFunnelCalculatorComprehensive:
 
     @pytest.mark.parametrize(
         "funnel_order",
-        [FunnelOrder.ORDERED, FunnelOrder.UNORDERED],  # Important to test both for this case
+        [
+            FunnelOrder.ORDERED,
+            FunnelOrder.UNORDERED,
+        ],  # Important to test both for this case
     )
     @pytest.mark.parametrize("reentry_mode", [ReentryMode.FIRST_ONLY])  # Most common case
     @pytest.mark.parametrize("counting_method", [CountingMethod.UNIQUE_USERS])  # Most common case
@@ -643,7 +659,12 @@ class TestFunnelCalculatorComprehensive:
         ],
     )
     def test_large_dataset_performance(
-        self, funnel_order, reentry_mode, counting_method, events_data_very_large, caplog
+        self,
+        funnel_order,
+        reentry_mode,
+        counting_method,
+        events_data_very_large,
+        caplog,
     ):
         """Test performance and stability with large datasets"""
         caplog.set_level(logging.INFO)

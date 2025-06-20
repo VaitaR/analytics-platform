@@ -126,7 +126,15 @@ class TestProcessMiningDiscovery:
         )
 
         # Verify activities discovered
-        expected_activities = {"Login", "Browse", "Purchase", "Checkout", "Cart", "Error", "Exit"}
+        expected_activities = {
+            "Login",
+            "Browse",
+            "Purchase",
+            "Checkout",
+            "Cart",
+            "Error",
+            "Exit",
+        }
         discovered_activities = set(process_data.activities.keys())
         assert expected_activities <= discovered_activities
 
@@ -208,7 +216,11 @@ class TestProcessMiningInsights:
         for user_id in range(10):
             events.extend(
                 [
-                    {"user_id": f"user_{user_id}", "event_name": "Start", "timestamp": base_time},
+                    {
+                        "user_id": f"user_{user_id}",
+                        "event_name": "Start",
+                        "timestamp": base_time,
+                    },
                     {
                         "user_id": f"user_{user_id}",
                         "event_name": "Bottleneck_Step",
@@ -412,7 +424,10 @@ class TestProcessMiningVisualization:
         )
 
         fig = visualizer.create_process_mining_diagram(
-            empty_data, visualization_type="network", show_frequencies=True, show_statistics=True
+            empty_data,
+            visualization_type="network",
+            show_frequencies=True,
+            show_statistics=True,
         )
 
         # Should handle empty data gracefully
@@ -694,7 +709,10 @@ class TestProcessMiningIntegration:
         visualizer = FunnelVisualizer(theme="dark", colorblind_friendly=False)
 
         fig = visualizer.create_process_mining_diagram(
-            process_data, visualization_type="network", show_frequencies=True, show_statistics=True
+            process_data,
+            visualization_type="network",
+            show_frequencies=True,
+            show_statistics=True,
         )
 
         # Verify visualization created

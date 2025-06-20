@@ -315,7 +315,13 @@ class TestDataSourceManagerJSONProcessing:
                     for i in range(n_rows)
                 ],
                 "user_properties": [
-                    json.dumps({"segment": f"seg_{i % 5}", "score": i % 100, "active": i % 2 == 0})
+                    json.dumps(
+                        {
+                            "segment": f"seg_{i % 5}",
+                            "score": i % 100,
+                            "active": i % 2 == 0,
+                        }
+                    )
                     for i in range(n_rows)
                 ],
             }
@@ -705,7 +711,11 @@ class TestDataSourceManagerPerformanceEdgeCases:
                             "nested": {
                                 "level1": {"level2": f"value_{i}"},
                                 "array": [i, i + 1, i + 2],
-                                "mixed": {"str": f"string_{i}", "num": i, "bool": i % 2 == 0},
+                                "mixed": {
+                                    "str": f"string_{i}",
+                                    "num": i,
+                                    "bool": i % 2 == 0,
+                                },
                             },
                             "simple": f"simple_{i}",
                         }
@@ -721,7 +731,10 @@ class TestDataSourceManagerPerformanceEdgeCases:
                                     "location": f"city_{i % 100}",
                                 },
                                 "preferences": [f"pref_{j}" for j in range(i % 5)],
-                                "scores": {"engagement": i % 100, "satisfaction": (i * 1.5) % 100},
+                                "scores": {
+                                    "engagement": i % 100,
+                                    "satisfaction": (i * 1.5) % 100,
+                                },
                             }
                         }
                     )

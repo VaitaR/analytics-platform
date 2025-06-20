@@ -562,7 +562,13 @@ class TestTimeSeriesCalculationComprehensive:
     def test_empty_data_handling(self, standard_calculator):
         """Test handling of empty datasets."""
         empty_df = pd.DataFrame(
-            columns=["user_id", "event_name", "timestamp", "event_properties", "user_properties"]
+            columns=[
+                "user_id",
+                "event_name",
+                "timestamp",
+                "event_properties",
+                "user_properties",
+            ]
         )
         funnel_steps = ["Step1", "Step2"]
 

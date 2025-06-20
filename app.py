@@ -294,7 +294,11 @@ class DataSourceManager:
         """Connect to ClickHouse database"""
         try:
             self.clickhouse_client = clickhouse_connect.get_client(
-                host=host, port=port, username=username, password=password, database=database
+                host=host,
+                port=port,
+                username=username,
+                password=password,
+                database=database,
             )
             # Test connection
             result = self.clickhouse_client.query("SELECT 1")
@@ -717,7 +721,10 @@ class DataSourceManager:
                     props = json.loads(prop_str)
                     if props is not None and prop_name in props:
                         values.add(str(props[prop_name]))
-                except (json.JSONDecodeError, TypeError):  # Handle both JSON errors and None types
+                except (
+                    json.JSONDecodeError,
+                    TypeError,
+                ):  # Handle both JSON errors and None types
                     self.logger.debug(
                         f"Failed to decode JSON in get_property_values: {prop_str[:50]}"
                     )
@@ -749,7 +756,7 @@ class DataSourceManager:
                 "unique_users": unique_users,
                 "event_percentage": event_percentage,
                 "user_penetration": user_penetration,
-                "avg_events_per_user": (event_count / unique_users) if unique_users > 0 else 0,
+                "avg_events_per_user": ((event_count / unique_users) if unique_users > 0 else 0),
             }
 
         # Try to load demo events metadata
@@ -825,7 +832,10 @@ class DataSourceManager:
                     metadata[event_name] = base_metadata
 
             return metadata
-        except (FileNotFoundError, pd.errors.EmptyDataError) as e:  # More specific exceptions
+        except (
+            FileNotFoundError,
+            pd.errors.EmptyDataError,
+        ) as e:  # More specific exceptions
             # If demo file doesn't exist or is empty, create basic categorization
             self.logger.warning(
                 f"Demo events file not found or empty ({e}), generating basic metadata."
@@ -1280,7 +1290,10 @@ class FunnelCalculator:
 
         # Convert user_id and event_name to categorical for better performance
         funnel_events = funnel_events.with_columns(
-            [pl.col("user_id").cast(pl.Categorical), pl.col("event_name").cast(pl.Categorical)]
+            [
+                pl.col("user_id").cast(pl.Categorical),
+                pl.col("event_name").cast(pl.Categorical),
+            ]
         )
 
         # Expand JSON properties using Polars native functionality
@@ -1838,7 +1851,11 @@ class FunnelCalculator:
 
         if len(funnel_steps) < 2:
             return FunnelResults(
-                steps=[], users_count=[], conversion_rates=[], drop_offs=[], drop_off_rates=[]
+                steps=[],
+                users_count=[],
+                conversion_rates=[],
+                drop_offs=[],
+                drop_off_rates=[],
             )
 
         # Bridge: Convert to Polars if using Polars engine
@@ -1860,7 +1877,10 @@ class FunnelCalculator:
 
     @_funnel_performance_monitor("calculate_funnel_metrics_polars")
     def _calculate_funnel_metrics_polars(
-        self, polars_df: pl.DataFrame, funnel_steps: list[str], original_events_df: pd.DataFrame
+        self,
+        polars_df: pl.DataFrame,
+        funnel_steps: list[str],
+        original_events_df: pd.DataFrame,
     ) -> FunnelResults:
         """
         Polars implementation of funnel calculation with bridges to existing functionality
@@ -1870,7 +1890,11 @@ class FunnelCalculator:
         # Handle empty dataset
         if polars_df.height == 0:
             return FunnelResults(
-                steps=[], users_count=[], conversion_rates=[], drop_offs=[], drop_off_rates=[]
+                steps=[],
+                users_count=[],
+                conversion_rates=[],
+                drop_offs=[],
+                drop_off_rates=[],
             )
 
         # Preprocess data using Polars
@@ -2036,7 +2060,11 @@ class FunnelCalculator:
         # Handle empty dataset
         if events_df.empty:
             return FunnelResults(
-                steps=[], users_count=[], conversion_rates=[], drop_offs=[], drop_off_rates=[]
+                steps=[],
+                users_count=[],
+                conversion_rates=[],
+                drop_offs=[],
+                drop_off_rates=[],
             )
 
         # Preprocess data for optimal performance
@@ -2325,7 +2353,10 @@ class FunnelCalculator:
 
     @_funnel_performance_monitor("calculate_timeseries_metrics")
     def calculate_timeseries_metrics(
-        self, events_df: pd.DataFrame, funnel_steps: list[str], aggregation_period: str = "1d"
+        self,
+        events_df: pd.DataFrame,
+        funnel_steps: list[str],
+        aggregation_period: str = "1d",
     ) -> pd.DataFrame:
         """
         Calculate time series metrics for funnel analysis with configurable aggregation periods.
@@ -2519,7 +2550,10 @@ class FunnelCalculator:
         return polars_to_pandas.get(polars_period, "D")  # Default to daily
 
     def _calculate_timeseries_metrics_polars(
-        self, events_df: pl.DataFrame, funnel_steps: list[str], aggregation_period: str = "1d"
+        self,
+        events_df: pl.DataFrame,
+        funnel_steps: list[str],
+        aggregation_period: str = "1d",
     ) -> pd.DataFrame:
         """
         Optimized Polars implementation for efficient time series metrics calculation.
@@ -2734,7 +2768,10 @@ class FunnelCalculator:
             )
 
     def _calculate_timeseries_metrics_pandas(
-        self, events_df: pd.DataFrame, funnel_steps: list[str], aggregation_period: str = "1d"
+        self,
+        events_df: pd.DataFrame,
+        funnel_steps: list[str],
+        aggregation_period: str = "1d",
     ) -> pd.DataFrame:
         """
         Pandas fallback implementation for time series metrics calculation with TRUE cohort analysis.
@@ -2817,7 +2854,11 @@ class FunnelCalculator:
 
                             # Check if user completed full funnel within window
                             user_completed = self._check_user_funnel_completion_pandas(
-                                events_df, user_id, funnel_steps, start_time, conversion_deadline
+                                events_df,
+                                user_id,
+                                funnel_steps,
+                                start_time,
+                                conversion_deadline,
                             )
 
                             if user_completed:
@@ -2925,7 +2966,10 @@ class FunnelCalculator:
             return pd.DataFrame()
 
     def _find_conversion_time_polars(
-        self, from_events: pl.DataFrame, to_events: pl.DataFrame, conversion_window_hours: int
+        self,
+        from_events: pl.DataFrame,
+        to_events: pl.DataFrame,
+        conversion_window_hours: int,
     ) -> Optional[float]:
         """
         Find conversion time using Polars operations - No longer used, replaced by vectorized implementation
@@ -3232,7 +3276,10 @@ class FunnelCalculator:
             # Analyze drop-off paths with optimized Polars operations
             if dropped_users:
                 next_events = self._analyze_dropoff_paths_polars_optimized(
-                    segment_funnel_events_df, full_history_for_segment_users, dropped_users, step
+                    segment_funnel_events_df,
+                    full_history_for_segment_users,
+                    dropped_users,
+                    step,
                 )
                 if next_events:
                     dropoff_paths[step] = dict(next_events.most_common(10))
@@ -3436,7 +3483,13 @@ class FunnelCalculator:
             object_cols = []
             for col in segment_funnel_events_df.columns:
                 # Skip already handled columns
-                if col in ["user_id", "event_name", "timestamp", "_original_order", "properties"]:
+                if col in [
+                    "user_id",
+                    "event_name",
+                    "timestamp",
+                    "_original_order",
+                    "properties",
+                ]:
                     continue
 
                 try:
@@ -3718,7 +3771,13 @@ class FunnelCalculator:
                                     ]
                                 )
                                 .select(
-                                    ["user_id", "step", "next_step", "step_A_time", "step_B_time"]
+                                    [
+                                        "user_id",
+                                        "step",
+                                        "next_step",
+                                        "step_A_time",
+                                        "step_B_time",
+                                    ]
                                 )
                             )
                         except Exception as e:
@@ -3968,7 +4027,13 @@ class FunnelCalculator:
         # Handle empty dataframes
         if step_A_df.height == 0 or step_B_df.height == 0:
             return pl.DataFrame(
-                {"user_id": [], "step": [], "next_step": [], "step_A_time": [], "step_B_time": []}
+                {
+                    "user_id": [],
+                    "step": [],
+                    "next_step": [],
+                    "step_A_time": [],
+                    "step_B_time": [],
+                }
             )
 
         try:
@@ -4026,7 +4091,10 @@ class FunnelCalculator:
                 )
                 # Add step names as literals
                 .with_columns(
-                    [pl.lit(step_name).alias("step"), pl.lit(next_step_name).alias("next_step")]
+                    [
+                        pl.lit(step_name).alias("step"),
+                        pl.lit(next_step_name).alias("next_step"),
+                    ]
                 )
                 # Select columns in the right order
                 .select(["user_id", "step", "next_step", "step_A_time", "step_B_time"])
@@ -4039,14 +4107,26 @@ class FunnelCalculator:
 
             # Final fallback with empty DataFrame with correct structure
             return pl.DataFrame(
-                {"user_id": [], "step": [], "next_step": [], "step_A_time": [], "step_B_time": []}
+                {
+                    "user_id": [],
+                    "step": [],
+                    "next_step": [],
+                    "step_A_time": [],
+                    "step_B_time": [],
+                }
             )
 
             self.logger.error(f"Fallback approach for finding step pairs failed: {e}")
 
         # Final fallback with empty DataFrame with correct structure
         return pl.DataFrame(
-            {"user_id": [], "step": [], "next_step": [], "step_A_time": [], "step_B_time": []}
+            {
+                "user_id": [],
+                "step": [],
+                "next_step": [],
+                "step_A_time": [],
+                "step_B_time": [],
+            }
         )
 
     def _fallback_conversion_pairs_calculation(
@@ -4255,7 +4335,10 @@ class FunnelCalculator:
             # Analyze drop-off paths with vectorized operations using full history
             if dropped_users:
                 next_events = self._analyze_dropoff_paths_vectorized(
-                    user_groups_all_events, dropped_users, step, full_history_for_segment_users
+                    user_groups_all_events,
+                    dropped_users,
+                    step,
+                    full_history_for_segment_users,
                 )
                 dropoff_paths[step] = dict(next_events.most_common(10))
 
@@ -4272,7 +4355,11 @@ class FunnelCalculator:
             # Analyze between-steps events for these truly converted users
             if truly_converted_users:
                 between_events = self._analyze_between_steps_vectorized(
-                    user_groups_all_events, truly_converted_users, step, next_step, funnel_steps
+                    user_groups_all_events,
+                    truly_converted_users,
+                    step,
+                    next_step,
+                    funnel_steps,
                 )
                 step_pair = f"{step} → {next_step}"
                 if between_events:  # Only add if non-empty
@@ -4944,7 +5031,11 @@ class FunnelCalculator:
         except Exception:
             self.logger.error("Missing 'user_id' column in events_df")
             return FunnelResults(
-                steps, [0] * len(steps), [0.0] * len(steps), [0] * len(steps), [0.0] * len(steps)
+                steps,
+                [0] * len(steps),
+                [0.0] * len(steps),
+                [0] * len(steps),
+                [0.0] * len(steps),
             )
 
         # Track users who completed each step
@@ -5641,7 +5732,12 @@ class FunnelCalculator:
 
     @_funnel_performance_monitor("_analyze_between_steps_vectorized")
     def _analyze_between_steps_vectorized(
-        self, user_groups, converted_users: set, step: str, next_step: str, funnel_steps: list[str]
+        self,
+        user_groups,
+        converted_users: set,
+        step: str,
+        next_step: str,
+        funnel_steps: list[str],
     ) -> Counter:
         """
         Analyze events between steps using vectorized operations by finding the specific converting event pair.
@@ -5751,7 +5847,11 @@ class FunnelCalculator:
         if "user_id" not in events_df.columns:
             self.logger.error("Missing 'user_id' column in events_df")
             return FunnelResults(
-                steps, [0] * len(steps), [0.0] * len(steps), [0] * len(steps), [0.0] * len(steps)
+                steps,
+                [0] * len(steps),
+                [0.0] * len(steps),
+                [0] * len(steps),
+                [0.0] * len(steps),
             )
 
         # Group events by user for vectorized processing
@@ -5850,14 +5950,22 @@ class FunnelCalculator:
 
             # Get events for this batch of users
             batch_converted = self._process_user_batch_vectorized(
-                user_groups, batch_users, prev_step, current_step, conversion_window_timedelta
+                user_groups,
+                batch_users,
+                prev_step,
+                current_step,
+                conversion_window_timedelta,
             )
             converted_users.update(batch_converted)
 
         return converted_users
 
     def _user_did_later_steps_before_current_vectorized(
-        self, user_events: pd.DataFrame, prev_step: str, current_step: str, funnel_steps: list[str]
+        self,
+        user_events: pd.DataFrame,
+        prev_step: str,
+        current_step: str,
+        funnel_steps: list[str],
     ) -> bool:
         """
         Vectorized version to check if user performed steps that come later in the funnel sequence before the current step.
@@ -5963,7 +6071,10 @@ class FunnelCalculator:
         return converted_users
 
     def _check_conversion_vectorized(
-        self, prev_events: pd.Series, current_events: pd.Series, conversion_window: timedelta
+        self,
+        prev_events: pd.Series,
+        current_events: pd.Series,
+        conversion_window: timedelta,
     ) -> bool:
         """
         Vectorized conversion checking using numpy operations
@@ -6052,7 +6163,11 @@ class FunnelCalculator:
         if "user_id" not in events_df.columns:
             self.logger.error("Missing 'user_id' column in events_df")
             return FunnelResults(
-                steps, [0] * len(steps), [0.0] * len(steps), [0] * len(steps), [0.0] * len(steps)
+                steps,
+                [0] * len(steps),
+                [0.0] * len(steps),
+                [0] * len(steps),
+                [0.0] * len(steps),
             )
 
         # Group events by user for vectorized processing
@@ -6167,7 +6282,11 @@ class FunnelCalculator:
         )
 
     def _find_converted_users(
-        self, events_df: pd.DataFrame, eligible_users: set, prev_step: str, current_step: str
+        self,
+        events_df: pd.DataFrame,
+        eligible_users: set,
+        prev_step: str,
+        current_step: str,
     ) -> set:
         """Find users who converted from prev_step to current_step within conversion window"""
         converted_users = set()
@@ -6649,7 +6768,12 @@ class FunnelCalculator:
         # Convert to Counter format
         if event_counts.height > 0:
             next_events = Counter(
-                dict(zip(event_counts["event_name"].to_list(), event_counts["count"].to_list()))
+                dict(
+                    zip(
+                        event_counts["event_name"].to_list(),
+                        event_counts["count"].to_list(),
+                    )
+                )
             )
 
         # Count users with no further activity
@@ -6841,7 +6965,12 @@ class FunnelCalculator:
         # Convert to Counter format
         if event_counts.height > 0:
             between_events = Counter(
-                dict(zip(event_counts["event_name"].to_list(), event_counts["count"].to_list()))
+                dict(
+                    zip(
+                        event_counts["event_name"].to_list(),
+                        event_counts["count"].to_list(),
+                    )
+                )
             )
 
         # For synthetic data in the final test, add some events if we don't have any
@@ -7793,7 +7922,11 @@ class FunnelVisualizer:
     # ...existing code...
 
     def apply_theme(
-        self, fig: go.Figure, title: str = None, subtitle: str = None, height: int = None
+        self,
+        fig: go.Figure,
+        title: str = None,
+        subtitle: str = None,
+        height: int = None,
     ) -> go.Figure:
         """Apply comprehensive theme styling with accessibility features"""
 
@@ -7897,7 +8030,12 @@ class FunnelVisualizer:
                         {
                             "label": "Reset View",
                             "method": "relayout",
-                            "args": [{"xaxis.range": [None, None], "yaxis.range": [None, None]}],
+                            "args": [
+                                {
+                                    "xaxis.range": [None, None],
+                                    "yaxis.range": [None, None],
+                                }
+                            ],
                         }
                     ],
                 }
@@ -7916,7 +8054,9 @@ class FunnelVisualizer:
         return visualizer.create_enhanced_funnel_chart(results, show_segments, show_insights)
 
     @staticmethod
-    def create_enhanced_conversion_flow_sankey_static(results: FunnelResults) -> go.Figure:
+    def create_enhanced_conversion_flow_sankey_static(
+        results: FunnelResults,
+    ) -> go.Figure:
         """Static version of enhanced conversion flow for backward compatibility"""
         visualizer = FunnelVisualizer()
         return visualizer.create_enhanced_conversion_flow_sankey(results)
@@ -7930,7 +8070,9 @@ class FunnelVisualizer:
         return visualizer.create_enhanced_time_to_convert_chart(time_stats)
 
     @staticmethod
-    def create_enhanced_path_analysis_chart_static(path_data: PathAnalysisData) -> go.Figure:
+    def create_enhanced_path_analysis_chart_static(
+        path_data: PathAnalysisData,
+    ) -> go.Figure:
         """Static version of enhanced path analysis chart for backward compatibility"""
         visualizer = FunnelVisualizer()
         return visualizer.create_enhanced_path_analysis_chart(path_data)
@@ -7976,7 +8118,10 @@ class FunnelVisualizer:
                     "arrowsize": 1,
                     "arrowwidth": 2,
                     "arrowcolor": self.color_palette.SEMANTIC["warning"],
-                    "font": {"size": 11, "color": self.color_palette.SEMANTIC["warning"]},
+                    "font": {
+                        "size": 11,
+                        "color": self.color_palette.SEMANTIC["warning"],
+                    },
                     "align": "left",
                     "bgcolor": "rgba(30, 41, 59, 0.9)",
                     "bordercolor": self.color_palette.SEMANTIC["warning"],
@@ -8018,7 +8163,10 @@ class FunnelVisualizer:
         return annotations
 
     def create_enhanced_funnel_chart(
-        self, results: FunnelResults, show_segments: bool = False, show_insights: bool = True
+        self,
+        results: FunnelResults,
+        show_segments: bool = False,
+        show_insights: bool = True,
     ) -> go.Figure:
         """Create enhanced funnel chart with progressive disclosure and smart insights"""
 
@@ -8439,7 +8587,25 @@ class FunnelVisualizer:
         tickvals = []
         ticktext = []
 
-        hour_markers = [0.1, 0.5, 1, 2, 4, 8, 12, 24, 48, 72, 96, 120, 144, 168, 336, 504, 672]
+        hour_markers = [
+            0.1,
+            0.5,
+            1,
+            2,
+            4,
+            8,
+            12,
+            24,
+            48,
+            72,
+            96,
+            120,
+            144,
+            168,
+            336,
+            504,
+            672,
+        ]
         hour_labels = [
             "6min",
             "30min",
@@ -8656,7 +8822,9 @@ class FunnelVisualizer:
                 if step in path_data.dropoff_paths and path_data.dropoff_paths[step]:
                     # Group similar events to reduce visual complexity
                     top_events = sorted(
-                        path_data.dropoff_paths[step].items(), key=lambda x: x[1], reverse=True
+                        path_data.dropoff_paths[step].items(),
+                        key=lambda x: x[1],
+                        reverse=True,
                     )[:8]
 
                     other_count = sum(
@@ -8939,7 +9107,9 @@ class FunnelVisualizer:
         return self.apply_theme(fig, "Process Mining Analysis")
 
     def _identify_main_process_path(
-        self, process_data: "ProcessMiningData", transitions: dict[tuple[str, str], dict[str, Any]]
+        self,
+        process_data: "ProcessMiningData",
+        transitions: dict[tuple[str, str], dict[str, Any]],
     ) -> list[str]:
         """
         Identify the main path through the process based on transition frequencies
@@ -9569,7 +9739,10 @@ class FunnelVisualizer:
             )
 
     def _draw_cycle_indicators(
-        self, fig: go.Figure, cycles: list[dict[str, Any]], pos: dict[str, tuple[float, float]]
+        self,
+        fig: go.Figure,
+        cycles: list[dict[str, Any]],
+        pos: dict[str, tuple[float, float]],
     ):
         """Draw indicators for detected cycles"""
 
@@ -9833,7 +10006,7 @@ def get_event_statistics(events_data: pd.DataFrame) -> dict[str, dict[str, Any]]
             "user_coverage": (unique_event_users / unique_users) * 100,
             "frequency_level": frequency_level,
             "frequency_color": frequency_color,
-            "avg_per_user": event_count / unique_event_users if unique_event_users > 0 else 0,
+            "avg_per_user": (event_count / unique_event_users if unique_event_users > 0 else 0),
         }
 
     return event_stats
@@ -9926,7 +10099,8 @@ def create_simple_event_selector():
                     ]
 
                 st.toast(
-                    f"✅ {engine_used} analysis completed in {calculation_time:.2f}s!", icon="✅"
+                    f"✅ {engine_used} analysis completed in {calculation_time:.2f}s!",
+                    icon="✅",
                 )
         else:
             st.toast("⚠️ Please add at least 2 steps to create a funnel", icon="⚠️")
@@ -9939,7 +10113,9 @@ def create_simple_event_selector():
     with col_events:
         st.markdown("### 📋 Step 1: Select Events")
         search_query = st.text_input(
-            "🔍 Search Events", placeholder="Start typing to filter...", key="event_search"
+            "🔍 Search Events",
+            placeholder="Start typing to filter...",
+            key="event_search",
         )
 
         if "event_statistics" not in st.session_state:
@@ -10000,7 +10176,11 @@ def create_simple_event_selector():
                     # Move up button
                     if i > 0:
                         r2.button(
-                            "⬆️", key=f"up_{i}", on_click=move_step, args=(i, -1), help="Move up"
+                            "⬆️",
+                            key=f"up_{i}",
+                            on_click=move_step,
+                            args=(i, -1),
+                            help="Move up",
                         )
 
                     # Move down button
@@ -10015,7 +10195,11 @@ def create_simple_event_selector():
 
                     # Remove button
                     r4.button(
-                        "🗑️", key=f"del_{i}", on_click=remove_step, args=(i,), help="Remove step"
+                        "🗑️",
+                        key=f"del_{i}",
+                        on_click=remove_step,
+                        args=(i,),
+                        help="Remove step",
                     )
 
             st.markdown("---")
@@ -10248,7 +10432,9 @@ ORDER BY user_id, timestamp""",
                 if st.session_state.funnel_steps:
                     config_name = f"Funnel_{len(st.session_state.saved_configurations) + 1}"
                     config_json = FunnelConfigManager.save_config(
-                        st.session_state.funnel_config, st.session_state.funnel_steps, config_name
+                        st.session_state.funnel_config,
+                        st.session_state.funnel_steps,
+                        config_name,
                     )
                     st.session_state.saved_configurations.append((config_name, config_json))
                     st.success(f"Configuration saved as {config_name}")
@@ -10973,7 +11159,8 @@ ORDER BY user_id, timestamp""",
                                 with col3:
                                     max_primary = timeseries_data[primary_metric].max()
                                     peak_date = timeseries_data.loc[
-                                        timeseries_data[primary_metric].idxmax(), "period_date"
+                                        timeseries_data[primary_metric].idxmax(),
+                                        "period_date",
                                     ].strftime("%m-%d")
                                     st.metric(
                                         f"Peak {primary_metric_display.replace(' (Cohort)', '').replace(' (Legacy)', '')}",
@@ -11063,7 +11250,8 @@ ORDER BY user_id, timestamp""",
 
                                 # Optional: Show raw data table
                                 if st.checkbox(
-                                    "📋 Show Raw Time Series Data", key="show_timeseries_data"
+                                    "📋 Show Raw Time Series Data",
+                                    key="show_timeseries_data",
                                 ):
                                     # Format the data for display
                                     display_data = timeseries_data.copy()
@@ -11188,9 +11376,7 @@ ORDER BY user_id, timestamp""",
                                         "Performance": (
                                             "🏆 High"
                                             if final_rate > 50
-                                            else "📈 Medium"
-                                            if final_rate > 20
-                                            else "📉 Low"
+                                            else ("📈 Medium" if final_rate > 20 else "📉 Low")
                                         ),
                                     }
                                 )
@@ -11198,7 +11384,11 @@ ORDER BY user_id, timestamp""",
                         if cohort_performance:
                             st.markdown("**Cohort Performance Summary:**")
                             df_cohort_perf = pd.DataFrame(cohort_performance)
-                            st.dataframe(df_cohort_perf, use_container_width=True, hide_index=True)
+                            st.dataframe(
+                                df_cohort_perf,
+                                use_container_width=True,
+                                hide_index=True,
+                            )
 
                             # Best/worst performing cohorts
                             best_cohort = max(
@@ -11293,9 +11483,7 @@ ORDER BY user_id, timestamp""",
                                                 "Impact": (
                                                     "🔥 High"
                                                     if count > 100
-                                                    else "⚡ Medium"
-                                                    if count > 10
-                                                    else "💡 Low"
+                                                    else ("⚡ Medium" if count > 10 else "💡 Low")
                                                 ),
                                             }
                                         )
@@ -11305,7 +11493,9 @@ ORDER BY user_id, timestamp""",
                                         # Sort by count for better insights
                                         df_events = df_events.sort_values("Count", ascending=False)
                                         st.dataframe(
-                                            df_events, use_container_width=True, hide_index=True
+                                            df_events,
+                                            use_container_width=True,
+                                            hide_index=True,
                                         )
 
                 tab_idx += 1
@@ -11363,7 +11553,9 @@ ORDER BY user_id, timestamp""",
 
                     with col2:
                         include_cycles = st.checkbox(
-                            "Detect cycles", value=True, help="Find repetitive behavior patterns"
+                            "Detect cycles",
+                            value=True,
+                            help="Find repetitive behavior patterns",
                         )
 
                     with col3:
@@ -11674,14 +11866,16 @@ ORDER BY user_id, timestamp""",
                                 )
                             with col2:
                                 st.metric(
-                                    "Functions Monitored", summary["total_functions_monitored"]
+                                    "Functions Monitored",
+                                    summary["total_functions_monitored"],
                                 )
                             with col3:
                                 top_function_dominance = summary["performance_distribution"][
                                     "top_function_dominance"
                                 ]
                                 st.metric(
-                                    "Top Function Dominance", f"{top_function_dominance:.1f}%"
+                                    "Top Function Dominance",
+                                    f"{top_function_dominance:.1f}%",
                                 )
                             with col4:
                                 critical_pct = summary["performance_distribution"][
@@ -11921,7 +12115,10 @@ def test_visualizations():
                 self.drop_offs = [0, 300, 300]
                 self.drop_off_rates = [0, 30.0, 42.9]
                 self.conversion_rates = [100.0, 70.0, 40.0]
-                self.segment_data = {"Segment A": [600, 400, 250], "Segment B": [400, 300, 150]}
+                self.segment_data = {
+                    "Segment A": [600, 400, 250],
+                    "Segment B": [400, 300, 150],
+                }
 
         # Minimal TimeToConvertStats
         class DummyTimeStats:
@@ -11972,7 +12169,10 @@ def test_visualizations():
 
         return {
             "funnel_results": DummyFunnelResults(),
-            "time_stats": [DummyTimeStats("Step 1", "Step 2"), DummyTimeStats("Step 2", "Step 3")],
+            "time_stats": [
+                DummyTimeStats("Step 1", "Step 2"),
+                DummyTimeStats("Step 2", "Step 3"),
+            ],
             "cohort_data": DummyCohortData(),
             "path_data": DummyPathData(),
             "stat_tests": [DummyStatTest(), DummyStatTest()],

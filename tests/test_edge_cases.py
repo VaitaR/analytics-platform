@@ -464,15 +464,30 @@ class TestEdgeCases:
         # Create DataFrame with mixed types
         events_data = {
             "user_id": ["user_001", 123, "user_003", None],  # Mixed string/int/null
-            "event_name": ["Sign Up", "Sign Up", None, "Email Verification"],  # Mixed string/null
+            "event_name": [
+                "Sign Up",
+                "Sign Up",
+                None,
+                "Email Verification",
+            ],  # Mixed string/null
             "timestamp": [
                 base_timestamp,
                 base_timestamp + timedelta(minutes=30),
                 base_timestamp + timedelta(minutes=60),
                 "invalid_timestamp",  # Invalid timestamp
             ],
-            "event_properties": [json.dumps({}), json.dumps({}), json.dumps({}), json.dumps({})],
-            "user_properties": [json.dumps({}), json.dumps({}), json.dumps({}), json.dumps({})],
+            "event_properties": [
+                json.dumps({}),
+                json.dumps({}),
+                json.dumps({}),
+                json.dumps({}),
+            ],
+            "user_properties": [
+                json.dumps({}),
+                json.dumps({}),
+                json.dumps({}),
+                json.dumps({}),
+            ],
         }
 
         data = pd.DataFrame(events_data)

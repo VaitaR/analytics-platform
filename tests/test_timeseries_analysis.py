@@ -231,7 +231,13 @@ class TestTimeSeriesCalculation:
     def test_timeseries_empty_data(self, calculator, funnel_steps):
         """Test time series calculation with empty data."""
         empty_df = pd.DataFrame(
-            columns=["user_id", "event_name", "timestamp", "event_properties", "user_properties"]
+            columns=[
+                "user_id",
+                "event_name",
+                "timestamp",
+                "event_properties",
+                "user_properties",
+            ]
         )
 
         result = calculator.calculate_timeseries_metrics(
@@ -315,7 +321,9 @@ class TestTimeSeriesVisualization:
         empty_df = pd.DataFrame()
 
         chart = visualizer.create_timeseries_chart(
-            empty_df, primary_metric="started_funnel_users", secondary_metric="conversion_rate"
+            empty_df,
+            primary_metric="started_funnel_users",
+            secondary_metric="conversion_rate",
         )
 
         assert chart is not None, "Chart should be created even with empty data"

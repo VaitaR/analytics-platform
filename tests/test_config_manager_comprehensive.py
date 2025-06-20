@@ -340,7 +340,12 @@ class TestFunnelConfigManagerEdgeCases:
     def test_save_unicode_characters(self):
         """Test saving configuration with Unicode characters."""
         config = FunnelConfig()
-        unicode_steps = ["🔥 Sign Up", "✉️ Email Verify", "🎯 First Login", "💰 Purchase"]
+        unicode_steps = [
+            "🔥 Sign Up",
+            "✉️ Email Verify",
+            "🎯 First Login",
+            "💰 Purchase",
+        ]
         unicode_name = "Funnel_配置_🚀"
 
         # Should handle Unicode

@@ -47,7 +47,11 @@ def main():
             if np.random.random() < 0.7:
                 timestamp += pd.Timedelta(minutes=np.random.randint(1, 120))
                 events.append(
-                    {"user_id": user_id, "event_name": "purchase", "timestamp": timestamp}
+                    {
+                        "user_id": user_id,
+                        "event_name": "purchase",
+                        "timestamp": timestamp,
+                    }
                 )
 
     # Convert to DataFrame
@@ -93,7 +97,11 @@ def main():
                 df_copy["user_id"] = df_copy["user_id"].astype(str)
 
             # Create schema for explicit type handling
-            schema = {"timestamp": pl.Datetime, "user_id": pl.Utf8, "event_name": pl.Utf8}
+            schema = {
+                "timestamp": pl.Datetime,
+                "user_id": pl.Utf8,
+                "event_name": pl.Utf8,
+            }
 
             # Convert to polars with schema
             return pl.from_pandas(df_copy, schema_overrides=schema)

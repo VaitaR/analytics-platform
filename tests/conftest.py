@@ -132,7 +132,10 @@ class TestDataFactory:
 
                 # Create event properties
                 event_props = {}
-                user_props = {"segment": user_segments[user_idx], "user_type": "test_user"}
+                user_props = {
+                    "segment": user_segments[user_idx],
+                    "user_type": "test_user",
+                }
 
                 if spec.include_properties:
                     event_props.update(
@@ -736,7 +739,13 @@ def pytest_collection_modifyitems(config, items):
 def empty_data():
     """Empty dataset for edge case testing."""
     return pd.DataFrame(
-        columns=["user_id", "event_name", "timestamp", "event_properties", "user_properties"]
+        columns=[
+            "user_id",
+            "event_name",
+            "timestamp",
+            "event_properties",
+            "user_properties",
+        ]
     )
 
 

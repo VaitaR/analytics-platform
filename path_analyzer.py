@@ -8,7 +8,13 @@ import pandas as pd
 import polars as pl
 
 # Import necessary classes from models.py
-from models import FunnelConfig, FunnelOrder, PathAnalysisData, ProcessMiningData, ReentryMode
+from models import (
+    FunnelConfig,
+    FunnelOrder,
+    PathAnalysisData,
+    ProcessMiningData,
+    ReentryMode,
+)
 
 
 class PathAnalyzer:
@@ -218,7 +224,12 @@ class PathAnalyzer:
         # Convert to Counter format
         if event_counts.height > 0:
             next_events = Counter(
-                dict(zip(event_counts["event_name"].to_list(), event_counts["count"].to_list()))
+                dict(
+                    zip(
+                        event_counts["event_name"].to_list(),
+                        event_counts["count"].to_list(),
+                    )
+                )
             )
 
         # Count users with no further activity
@@ -231,7 +242,11 @@ class PathAnalyzer:
         return next_events
 
     def _find_conversion_pairs(
-        self, events_df: pl.DataFrame, step: str, next_step: str, funnel_steps: list[str]
+        self,
+        events_df: pl.DataFrame,
+        step: str,
+        next_step: str,
+        funnel_steps: list[str],
     ) -> pl.DataFrame:
         """
         Find pairs of events representing conversions from one step to the next.
@@ -264,7 +279,13 @@ class PathAnalyzer:
         # Early exit if either step has no events
         if step_A_df.height == 0 or step_B_df.height == 0:
             return pl.DataFrame(
-                {"user_id": [], "step": [], "next_step": [], "step_A_time": [], "step_B_time": []}
+                {
+                    "user_id": [],
+                    "step": [],
+                    "next_step": [],
+                    "step_A_time": [],
+                    "step_B_time": [],
+                }
             )
 
         conversion_window = pl.duration(hours=self.config.conversion_window_hours)
@@ -329,7 +350,10 @@ class PathAnalyzer:
                 )
 
                 first_B = step_B_df.group_by("user_id").agg(
-                    [pl.col("step_B_time").min(), pl.col("step_name").first().alias("next_step")]
+                    [
+                        pl.col("step_B_time").min(),
+                        pl.col("step_name").first().alias("next_step"),
+                    ]
                 )
 
                 # Join and filter by conversion window
@@ -409,7 +433,13 @@ class PathAnalyzer:
         # Handle empty dataframes
         if step_A_df.height == 0 or step_B_df.height == 0:
             return pl.DataFrame(
-                {"user_id": [], "step": [], "next_step": [], "step_A_time": [], "step_B_time": []}
+                {
+                    "user_id": [],
+                    "step": [],
+                    "next_step": [],
+                    "step_A_time": [],
+                    "step_B_time": [],
+                }
             )
 
         try:
@@ -467,7 +497,10 @@ class PathAnalyzer:
                 )
                 # Add step names as literals
                 .with_columns(
-                    [pl.lit(step_name).alias("step"), pl.lit(next_step_name).alias("next_step")]
+                    [
+                        pl.lit(step_name).alias("step"),
+                        pl.lit(next_step_name).alias("next_step"),
+                    ]
                 )
                 # Select columns in the right order
                 .select(["user_id", "step", "next_step", "step_A_time", "step_B_time"])
@@ -480,7 +513,13 @@ class PathAnalyzer:
 
             # Final fallback with empty DataFrame with correct structure
             return pl.DataFrame(
-                {"user_id": [], "step": [], "next_step": [], "step_A_time": [], "step_B_time": []}
+                {
+                    "user_id": [],
+                    "step": [],
+                    "next_step": [],
+                    "step_A_time": [],
+                    "step_B_time": [],
+                }
             )
 
     def _analyze_between_steps_events(
@@ -551,7 +590,12 @@ class PathAnalyzer:
         # Convert to Counter format
         if event_counts.height > 0:
             between_events = Counter(
-                dict(zip(event_counts["event_name"].to_list(), event_counts["count"].to_list()))
+                dict(
+                    zip(
+                        event_counts["event_name"].to_list(),
+                        event_counts["count"].to_list(),
+                    )
+                )
             )
 
         # Add special entry for users with no intermediate events
@@ -850,7 +894,9 @@ class PathAnalyzer:
         return cycles[:10]  # Return top 10 cycles
 
     def _detect_cycles_optimized(
-        self, journey_df: pl.DataFrame, transitions: dict[tuple[str, str], dict[str, Any]]
+        self,
+        journey_df: pl.DataFrame,
+        transitions: dict[tuple[str, str], dict[str, Any]],
     ) -> list[dict[str, Any]]:
         """
         Optimized cycle detection using Polars operations instead of NetworkX.
@@ -918,7 +964,11 @@ class PathAnalyzer:
                     [pl.min_horizontal(["frequency", "frequency_right"]).alias("cycle_frequency")]
                 )
                 .select(
-                    ["from_event", pl.col("to_event").alias("middle_event"), "cycle_frequency"]
+                    [
+                        "from_event",
+                        pl.col("to_event").alias("middle_event"),
+                        "cycle_frequency",
+                    ]
                 )
                 .sort("cycle_frequency", descending=True)
                 .limit(5)  # Top 5 two-step cycles
@@ -964,7 +1014,9 @@ class PathAnalyzer:
                             "path": [from_event],
                             "frequency": data["frequency"],
                             "type": "loop",
-                            "impact": "negative" if "error" in from_event.lower() else "positive",
+                            "impact": (
+                                "negative" if "error" in from_event.lower() else "positive"
+                            ),
                             "avg_cycle_time": 0,
                         }
                     )
@@ -1164,7 +1216,14 @@ class PathAnalyzer:
     ) -> float:
         """Calculate activity success rate using optimized Polars operations"""
         # Define success events
-        success_events = ["purchase", "conversion", "complete", "finish", "success", "checkout"]
+        success_events = [
+            "purchase",
+            "conversion",
+            "complete",
+            "finish",
+            "success",
+            "checkout",
+        ]
 
         # Count users who had this activity and later had a success event
         users_with_activity = (
@@ -1289,7 +1348,14 @@ class PathAnalyzer:
             return False
 
         last_event = journey[-1]["event"].lower()
-        success_keywords = ["purchase", "complete", "success", "finish", "convert", "checkout"]
+        success_keywords = [
+            "purchase",
+            "complete",
+            "success",
+            "finish",
+            "convert",
+            "checkout",
+        ]
 
         return any(keyword in last_event for keyword in success_keywords)
 

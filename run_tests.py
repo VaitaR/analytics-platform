@@ -66,7 +66,11 @@ class TestCategory:
         self.test_functions: dict[str, tuple[list[str], str, Optional[str]]] = {}
 
     def add_test(
-        self, name: str, test_files: list[str], description: str, marker: Optional[str] = None
+        self,
+        name: str,
+        test_files: list[str],
+        description: str,
+        marker: Optional[str] = None,
     ):
         """
         Add a test to this category.
@@ -300,7 +304,14 @@ def check_test_dependencies() -> bool:
     """Check if all test dependencies are installed."""
     print("🔍 Checking test dependencies...")
 
-    dependencies = ["pytest", "pandas", "numpy", "scipy", "polars", "pytest-json-report"]
+    dependencies = [
+        "pytest",
+        "pandas",
+        "numpy",
+        "scipy",
+        "polars",
+        "pytest-json-report",
+    ]
     missing = []
 
     for dep in dependencies:
@@ -407,16 +418,27 @@ def generate_test_report() -> TestResult:
     errors = 0
     skipped = 0
 
-    # Look for the summary line like "280 passed, 263 warnings, 16 errors"
+    # Look for the summary line like "295 passed, 266 warnings, 1 error in 20.85s"
     import re
 
     combined_output = stdout + stderr
 
-    # Extract individual numbers using separate patterns
+    # First try to find the main summary line
+    summary_pattern = r"=+ (.+) =+"
+    summary_matches = re.findall(summary_pattern, combined_output)
+
+    # Look for the final summary line (usually the last one)
+    main_summary = ""
+    for match in summary_matches:
+        if any(word in match.lower() for word in ["passed", "failed", "error", "skipped"]):
+            main_summary = match
+
+    # Extract individual numbers using separate patterns from the entire output
     passed_match = re.search(r"(\d+) passed", combined_output)
     failed_match = re.search(r"(\d+) failed", combined_output)
     skipped_match = re.search(r"(\d+) skipped", combined_output)
-    errors_match = re.search(r"(\d+) errors", combined_output)
+    # Look for both "errors" and "error" (singular)
+    errors_match = re.search(r"(\d+) errors?", combined_output)
 
     passed = int(passed_match.group(1)) if passed_match else 0
     failed = int(failed_match.group(1)) if failed_match else 0
@@ -478,9 +500,11 @@ def generate_test_report() -> TestResult:
     result = TestResult(
         group="Comprehensive Report",
         status="SUCCESS" if is_success else "FAILURE",
-        summary=f"{passed} passed, {failed} failed, {errors} fixture errors, {skipped} skipped"
-        if not is_success
-        else f"Generated test report: {passed} passed, {errors} fixture errors (non-critical)",
+        summary=(
+            f"{passed} passed, {failed} failed, {errors} fixture errors, {skipped} skipped"
+            if not is_success
+            else f"Generated test report: {passed} passed, {errors} fixture errors (non-critical)"
+        ),
         passed=passed,
         failed=failed,
         skipped=skipped,
@@ -535,7 +559,13 @@ def parse_fallback_test_output(output: str) -> dict[str, Any]:
     fallback_matches = re.findall(fallback_pattern, output)
 
     # Process each fallback
-    for component, funnel_order, reentry_mode, counting_method, error_messages in fallback_matches:
+    for (
+        component,
+        funnel_order,
+        reentry_mode,
+        counting_method,
+        error_messages,
+    ) in fallback_matches:
         config = f"{funnel_order}-{reentry_mode}-{counting_method}"
 
         # Add unique configs
@@ -716,7 +746,9 @@ def run_fallback_report() -> TestResult:
 
         # Run the tests with pytest-json-report for structured result
         result = run_pytest(
-            ["tests/test_fallback_comprehensive.py"], "fallback:fallback_report", extra_args=["-v"]
+            ["tests/test_fallback_comprehensive.py"],
+            "fallback:fallback_report",
+            extra_args=["-v"],
         )
 
         # Parse the output from the file
@@ -785,10 +817,14 @@ BASIC_TESTS.add_test(
     "basic_scenarios", ["tests/test_basic_scenarios.py"], "Running basic scenario tests"
 )
 BASIC_TESTS.add_test(
-    "conversion_window", ["tests/test_conversion_window.py"], "Running conversion window tests"
+    "conversion_window",
+    ["tests/test_conversion_window.py"],
+    "Running conversion window tests",
 )
 BASIC_TESTS.add_test(
-    "counting_methods", ["tests/test_counting_methods.py"], "Running counting method tests"
+    "counting_methods",
+    ["tests/test_counting_methods.py"],
+    "Running counting method tests",
 )
 
 # Advanced tests
@@ -1238,7 +1274,9 @@ Examples:
         "--list", action="store_true", help="List all available tests with descriptions"
     )
     parser.add_argument(
-        "--fallback-report", action="store_true", help="Generate fallback detection report"
+        "--fallback-report",
+        action="store_true",
+        help="Generate fallback detection report",
     )
 
     # Test execution options
@@ -1350,7 +1388,11 @@ Examples:
 
     if args.comprehensive:
         result = run_specific_test(
-            "comprehensive", args.comprehensive, args.parallel, args.coverage, args.marker
+            "comprehensive",
+            args.comprehensive,
+            args.parallel,
+            args.coverage,
+            args.marker,
         )
         test_results.append(result)
         actions_performed = True
@@ -1371,7 +1413,11 @@ Examples:
 
     if args.process_mining:
         result = run_specific_test(
-            "process_mining", args.process_mining, args.parallel, args.coverage, args.marker
+            "process_mining",
+            args.process_mining,
+            args.parallel,
+            args.coverage,
+            args.marker,
         )
         test_results.append(result)
         actions_performed = True

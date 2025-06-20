@@ -499,7 +499,10 @@ def test_path_analysis_migration():
     def compare_time_to_convert_stats(pandas_stats, polars_stats):
         """Compare time to convert statistics between Pandas and Polars"""
         if len(pandas_stats) != len(polars_stats):
-            return False, f"Different number of stats: {len(pandas_stats)} vs {len(polars_stats)}"
+            return (
+                False,
+                f"Different number of stats: {len(pandas_stats)} vs {len(polars_stats)}",
+            )
 
         for i, (pandas_stat, polars_stat) in enumerate(zip(pandas_stats, polars_stats)):
             # Compare step names

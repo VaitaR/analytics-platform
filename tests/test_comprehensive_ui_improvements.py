@@ -300,9 +300,18 @@ def test_visualization_title_improvements():
         ),
     ]
 
-    for primary_metric, secondary_metric, primary_display, secondary_display in test_cases:
+    for (
+        primary_metric,
+        secondary_metric,
+        primary_display,
+        secondary_display,
+    ) in test_cases:
         chart = visualizer.create_timeseries_chart(
-            timeseries_data, primary_metric, secondary_metric, primary_display, secondary_display
+            timeseries_data,
+            primary_metric,
+            secondary_metric,
+            primary_display,
+            secondary_display,
         )
 
         expected_title = f"Time Series: {primary_display} vs {secondary_display}"

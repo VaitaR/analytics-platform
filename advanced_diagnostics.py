@@ -30,7 +30,7 @@ class DiagnosticContext:
             "function": func_name,
             "args_summary": self._summarize_args(args),
             "kwargs_summary": self._summarize_kwargs(kwargs),
-            "locals_summary": self._summarize_locals(locals_dict) if locals_dict else {},
+            "locals_summary": (self._summarize_locals(locals_dict) if locals_dict else {}),
             "call_id": self._generate_call_id(func_name, args, kwargs),
         }
         self.call_stack.append(call_info)
@@ -65,7 +65,7 @@ class DiagnosticContext:
             "exception_type": type(exception).__name__,
             "exception_message": str(exception),
             "traceback": traceback.format_exc(),
-            "locals_at_failure": self._summarize_locals(locals_dict) if locals_dict else {},
+            "locals_at_failure": (self._summarize_locals(locals_dict) if locals_dict else {}),
             "data_context": data_context or {},
             "suggested_fixes": self._analyze_failure_pattern(exception, func_name),
         }
@@ -139,7 +139,7 @@ class DiagnosticContext:
             if isinstance(obj, (list, tuple, set)):
                 return {
                     "length": len(obj),
-                    "sample_items": list(obj)[:3] if len(obj) <= 3 else list(obj)[:2] + ["..."],
+                    "sample_items": (list(obj)[:3] if len(obj) <= 3 else list(obj)[:2] + ["..."]),
                     "item_types": list(set(type(item).__name__ for item in obj)),
                 }
 
@@ -428,7 +428,11 @@ def smart_diagnostic(logger: SmartDiagnosticLogger = None):
                 locals_dict = frame.f_locals.copy()
 
                 logger.log_function_failure(
-                    call_id, func.__name__, e, locals_dict, {"args": bound_args.arguments}
+                    call_id,
+                    func.__name__,
+                    e,
+                    locals_dict,
+                    {"args": bound_args.arguments},
                 )
                 raise
 

@@ -93,7 +93,12 @@ def diagnose_cohort_attribution():
     print("🔍 TIMESERIES RESULTS:")
     print(
         results[
-            ["period_date", "started_funnel_users", "completed_funnel_users", "conversion_rate"]
+            [
+                "period_date",
+                "started_funnel_users",
+                "completed_funnel_users",
+                "conversion_rate",
+            ]
         ].to_string()
     )
     print()

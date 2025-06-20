@@ -17,7 +17,11 @@ def create_test_data():
     data = {
         "user_id": ["user_1", "user_2", "user_3"],
         "event_name": ["sign_up", "login", "purchase"],
-        "timestamp": ["2024-01-01 10:00:00", "2024-01-01 11:00:00", "2024-01-01 12:00:00"],
+        "timestamp": [
+            "2024-01-01 10:00:00",
+            "2024-01-01 11:00:00",
+            "2024-01-01 12:00:00",
+        ],
         "event_properties": [
             '{"platform": "mobile", "utm_source": "google"}',
             '{"platform": "desktop", "utm_source": "direct"}',

@@ -11,7 +11,14 @@ from app import CountingMethod, FunnelCalculator, FunnelConfig, FunnelOrder, Ree
 def generate_test_data(num_users=1000, events_per_user=20):
     """Generate synthetic test data for benchmarking"""
     user_ids = [f"user_{i}" for i in range(num_users)]
-    event_names = ["Step A", "Step B", "Step C", "Other Event 1", "Other Event 2", "Other Event 3"]
+    event_names = [
+        "Step A",
+        "Step B",
+        "Step C",
+        "Other Event 1",
+        "Other Event 2",
+        "Other Event 3",
+    ]
 
     data = []
     now = datetime.now()

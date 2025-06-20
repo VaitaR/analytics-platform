@@ -144,7 +144,13 @@ print(df_funnel)
 
 # Time series data for conversion over time
 dates = pd.date_range(start="2024-01-01", periods=30, freq="D")
-steps = ["User Sign-Up", "Verify Email", "First Login", "Profile Setup", "Tutorial Completed"]
+steps = [
+    "User Sign-Up",
+    "Verify Email",
+    "First Login",
+    "Profile Setup",
+    "Tutorial Completed",
+]
 
 # Generate random time series data
 np.random.seed(42)
@@ -193,7 +199,11 @@ properties = [
         "type": "string",
         "values": ["organic", "paid_search", "social", "email"],
     },
-    {"name": "device_type", "type": "string", "values": ["iOS", "Android", "Windows", "Mac"]},
+    {
+        "name": "device_type",
+        "type": "string",
+        "values": ["iOS", "Android", "Windows", "Mac"],
+    },
 ]
 
 # Sample data for time-to-convert distribution

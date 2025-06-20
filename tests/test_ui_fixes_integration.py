@@ -94,7 +94,11 @@ class TestUIResponsiveDesign:
         print(f"Large: {margins_lg}")
 
         # All margins should be reasonable for mobile/responsive design
-        for size, margins in [("sm", margins_sm), ("md", margins_md), ("lg", margins_lg)]:
+        for size, margins in [
+            ("sm", margins_sm),
+            ("md", margins_md),
+            ("lg", margins_lg),
+        ]:
             assert margins["l"] <= 80, f"{size} left margin too large: {margins['l']}"
             assert margins["r"] <= 80, f"{size} right margin too large: {margins['r']}"
             assert margins["t"] <= 100, f"{size} top margin too large: {margins['t']}"

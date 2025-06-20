@@ -292,7 +292,11 @@ class TestSegmentation:
                 "event_name": "Sign Up",
                 "timestamp": base_timestamp,
                 "event_properties": json.dumps(
-                    {"platform": "mobile", "utm_source": "google", "app_version": "2.1.0"}
+                    {
+                        "platform": "mobile",
+                        "utm_source": "google",
+                        "app_version": "2.1.0",
+                    }
                 ),
                 "user_properties": json.dumps({}),
             },
@@ -301,7 +305,11 @@ class TestSegmentation:
                 "event_name": "Email Verification",
                 "timestamp": base_timestamp + timedelta(minutes=30),
                 "event_properties": json.dumps(
-                    {"platform": "mobile", "utm_source": "google", "app_version": "2.1.0"}
+                    {
+                        "platform": "mobile",
+                        "utm_source": "google",
+                        "app_version": "2.1.0",
+                    }
                 ),
                 "user_properties": json.dumps({}),
             },
@@ -310,7 +318,11 @@ class TestSegmentation:
                 "event_name": "Sign Up",
                 "timestamp": base_timestamp,
                 "event_properties": json.dumps(
-                    {"platform": "desktop", "utm_source": "facebook", "app_version": "2.2.0"}
+                    {
+                        "platform": "desktop",
+                        "utm_source": "facebook",
+                        "app_version": "2.2.0",
+                    }
                 ),
                 "user_properties": json.dumps({}),
             },

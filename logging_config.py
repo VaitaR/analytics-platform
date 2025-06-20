@@ -61,7 +61,8 @@ def setup_enhanced_logging(
     console_handler.setLevel(numeric_level)
 
     console_format = ColoredFormatter(
-        "%(asctime)s | %(levelname)s | %(name)s:%(lineno)d | %(message)s", datefmt="%H:%M:%S"
+        "%(asctime)s | %(levelname)s | %(name)s:%(lineno)d | %(message)s",
+        datefmt="%H:%M:%S",
     )
     console_handler.setFormatter(console_format)
     logger.addHandler(console_handler)
