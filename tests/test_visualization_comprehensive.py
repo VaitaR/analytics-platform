@@ -375,12 +375,12 @@ class TestFunnelVisualizerThemeAndAccessibility:
 
             # Validate responsive height with universal standards
             actual_height = chart.layout.height
-            assert (
-                actual_height >= expected_min_height
-            ), f"Height {actual_height} too small for {len(steps)} steps"
-            assert (
-                actual_height <= 800
-            ), f"Height {actual_height} exceeds universal maximum of 800px"
+            assert actual_height >= expected_min_height, (
+                f"Height {actual_height} too small for {len(steps)} steps"
+            )
+            assert actual_height <= 800, (
+                f"Height {actual_height} exceeds universal maximum of 800px"
+            )
 
         print("✅ Responsive height calculation test passed")
 

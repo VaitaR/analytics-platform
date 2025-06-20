@@ -250,9 +250,9 @@ class TestCompleteIntegrationFlow:
 
         # Check that our expected events are present in the loaded data
         for event in expected_events:
-            assert (
-                event in actual_events
-            ), f"Event '{event}' not found in loaded data. Found: {actual_events}"
+            assert event in actual_events, (
+                f"Event '{event}' not found in loaded data. Found: {actual_events}"
+            )
 
         # Step 5: Configure and run funnel analysis
         funnel_steps = ["Sign Up", "Email Verification", "First Login", "First Purchase"]
@@ -273,18 +273,18 @@ class TestCompleteIntegrationFlow:
         # Verify user counts match expected
         expected = expected_integration_results["total_users"]
         for i, step in enumerate(funnel_steps):
-            assert (
-                results.users_count[i] == expected[step]
-            ), f"User count mismatch for {step}: expected {expected[step]}, got {results.users_count[i]}"
+            assert results.users_count[i] == expected[step], (
+                f"User count mismatch for {step}: expected {expected[step]}, got {results.users_count[i]}"
+            )
 
         # Verify conversion rates
         expected_rates = expected_integration_results["conversion_rates"]
         for i, step in enumerate(funnel_steps):
             expected_rate = expected_rates[step]
             actual_rate = results.conversion_rates[i]
-            assert (
-                abs(actual_rate - expected_rate) < 0.1
-            ), f"Conversion rate mismatch for {step}: expected {expected_rate}%, got {actual_rate}%"
+            assert abs(actual_rate - expected_rate) < 0.1, (
+                f"Conversion rate mismatch for {step}: expected {expected_rate}%, got {actual_rate}%"
+            )
 
     def test_all_counting_methods_integration(self, integration_test_data):
         """
@@ -316,18 +316,18 @@ class TestCompleteIntegrationFlow:
 
             # Ensure counts are monotonically decreasing for ordered funnel
             for i in range(1, len(result.users_count)):
-                assert (
-                    result.users_count[i] <= result.users_count[i - 1]
-                ), f"User count should decrease at each step for {method.value}"
+                assert result.users_count[i] <= result.users_count[i - 1], (
+                    f"User count should decrease at each step for {method.value}"
+                )
 
         # Compare methods - unique_users should generally have lower counts than event_totals
         unique_users_result = results["unique_users"]
         event_totals_result = results["event_totals"]
 
         # For the last step, unique_users should be <= event_totals
-        assert (
-            unique_users_result.users_count[-1] <= event_totals_result.users_count[-1]
-        ), "Unique users count should be <= event totals count"
+        assert unique_users_result.users_count[-1] <= event_totals_result.users_count[-1], (
+            "Unique users count should be <= event totals count"
+        )
 
     def test_segmentation_integration_flow(
         self, integration_test_data, expected_integration_results
@@ -374,18 +374,18 @@ class TestCompleteIntegrationFlow:
         expected_premium = expected_integration_results["segment_a"]
 
         for i, step in enumerate(funnel_steps):
-            assert (
-                premium_counts[i] == expected_premium[step]
-            ), f"Premium segment count mismatch for {step}: expected {expected_premium[step]}, got {premium_counts[i]}"
+            assert premium_counts[i] == expected_premium[step], (
+                f"Premium segment count mismatch for {step}: expected {expected_premium[step]}, got {premium_counts[i]}"
+            )
 
         # Verify segment B (basic) results
         basic_counts = results.segment_data[basic_key]
         expected_basic = expected_integration_results["segment_b"]
 
         for i, step in enumerate(funnel_steps):
-            assert (
-                basic_counts[i] == expected_basic[step]
-            ), f"Basic segment count mismatch for {step}: expected {expected_basic[step]}, got {basic_counts[i]}"
+            assert basic_counts[i] == expected_basic[step], (
+                f"Basic segment count mismatch for {step}: expected {expected_basic[step]}, got {basic_counts[i]}"
+            )
 
     def test_conversion_window_integration(self, base_timestamp):
         """

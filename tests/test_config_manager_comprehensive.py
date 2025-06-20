@@ -155,9 +155,9 @@ class TestFunnelConfigManagerSaveLoad:
             loaded_config, _, _ = FunnelConfigManager.load_config(saved_json)
 
             # Validate counting method preserved
-            assert (
-                loaded_config.counting_method == counting_method
-            ), f"Failed for {counting_method}"
+            assert loaded_config.counting_method == counting_method, (
+                f"Failed for {counting_method}"
+            )
 
         print("✅ All counting methods save/load test passed")
 
@@ -214,9 +214,9 @@ class TestFunnelConfigManagerDownloadLinks:
         # Validate link structure
         assert download_link is not None, "Should return download link"
         assert isinstance(download_link, str), "Should return string"
-        assert (
-            'href="data:application/json;base64,' in download_link
-        ), "Should contain base64 data URL"
+        assert 'href="data:application/json;base64,' in download_link, (
+            "Should contain base64 data URL"
+        )
         assert f'download="{filename}"' in download_link, "Should contain filename"
 
         print("✅ Basic download link creation test passed")
@@ -260,9 +260,9 @@ class TestFunnelConfigManagerDownloadLinks:
             # Should create valid link
             assert download_link is not None, f"Should handle filename: {filename}"
             assert 'href="data:' in download_link, f"Should be valid data URL for: {filename}"
-            assert (
-                f'download="{filename}"' in download_link
-            ), f"Should preserve filename: {filename}"
+            assert f'download="{filename}"' in download_link, (
+                f"Should preserve filename: {filename}"
+            )
 
         print("✅ Download link special characters test passed")
 
@@ -292,9 +292,9 @@ class TestFunnelConfigManagerDownloadLinks:
         # Should handle large data
         assert download_link is not None, "Should handle large configurations"
         assert len(download_link) > 1000, "Link should contain substantial data"
-        assert (
-            "data:application/json;base64," in download_link
-        ), "Should use correct data URL format"
+        assert "data:application/json;base64," in download_link, (
+            "Should use correct data URL format"
+        )
 
         print("✅ Download link large config test passed")
 

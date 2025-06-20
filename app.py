@@ -6000,12 +6000,9 @@ class FunnelCalculator:
                 # For non-zero windows, check if first current event is after prev and within window
                 if first_current_time > prev_time:
                     time_diff = first_current_time - prev_time
-                    result = time_diff < pd_conversion_window
-                    return result
-                if first_current_time == prev_time:
-                    # Allow simultaneous events for non-zero windows
-                    return True
-                return False
+                    return time_diff < pd_conversion_window
+                # Allow simultaneous events for non-zero windows
+                return first_current_time == prev_time
 
             if self.config.reentry_mode == ReentryMode.OPTIMIZED_REENTRY:
                 # Check any valid sequence using broadcasting, but maintain order
@@ -9020,9 +9017,8 @@ class FunnelVisualizer:
             all_activities.add(to_act)
 
         # Create node mapping
-        for activity in sorted(all_activities):
+        for node_index, activity in enumerate(sorted(all_activities)):
             nodes[activity] = node_index
-            node_index += 1
 
         # Prepare Sankey data
         source_indices = []
@@ -9772,9 +9768,9 @@ def get_comprehensive_performance_analysis() -> dict[str, Any]:
     if hasattr(st.session_state, "last_calculator") and hasattr(
         st.session_state.last_calculator, "_performance_metrics"
     ):
-        analysis[
-            "funnel_calculator_metrics"
-        ] = st.session_state.last_calculator._performance_metrics
+        analysis["funnel_calculator_metrics"] = (
+            st.session_state.last_calculator._performance_metrics
+        )
 
         # Get bottleneck analysis from calculator
         bottleneck_analysis = st.session_state.last_calculator.get_bottleneck_analysis()

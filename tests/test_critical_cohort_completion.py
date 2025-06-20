@@ -182,17 +182,17 @@ class TestCriticalCohortCompletionCount:
 
         # Jan 1 should now have 3 starters and 2 completers (User_A cross-day + User_C same-day)
         jan_1 = results_dict["2024-01-01"]
-        assert (
-            jan_1["started_funnel_users"] == 3
-        ), f"Should have 3 starters, got {jan_1['started_funnel_users']}"
-        assert (
-            jan_1["completed_funnel_users"] == 2
-        ), f"Should have 2 completers, got {jan_1['completed_funnel_users']}"
+        assert jan_1["started_funnel_users"] == 3, (
+            f"Should have 3 starters, got {jan_1['started_funnel_users']}"
+        )
+        assert jan_1["completed_funnel_users"] == 2, (
+            f"Should have 2 completers, got {jan_1['completed_funnel_users']}"
+        )
 
         expected_rate = 66.67  # 2/3 * 100
-        assert (
-            abs(jan_1["conversion_rate"] - expected_rate) < 0.1
-        ), f"Conversion rate should be ~{expected_rate}%, got {jan_1['conversion_rate']:.2f}%"
+        assert abs(jan_1["conversion_rate"] - expected_rate) < 0.1, (
+            f"Conversion rate should be ~{expected_rate}%, got {jan_1['conversion_rate']:.2f}%"
+        )
 
         print("✅ SAME-DAY vs CROSS-DAY ATTRIBUTION TEST PASSED!")
 
@@ -230,15 +230,15 @@ class TestCriticalCohortCompletionCount:
         assert len(results) == 1, f"Should have exactly 1 period, got {len(results)}"
 
         result = results.iloc[0]
-        assert (
-            result["started_funnel_users"] == 2
-        ), f"Should have 2 starters, got {result['started_funnel_users']}"
-        assert (
-            result["completed_funnel_users"] == 0
-        ), f"Should have 0 completers, got {result['completed_funnel_users']}"
-        assert (
-            result["conversion_rate"] == 0.0
-        ), f"Conversion rate should be 0%, got {result['conversion_rate']}"
+        assert result["started_funnel_users"] == 2, (
+            f"Should have 2 starters, got {result['started_funnel_users']}"
+        )
+        assert result["completed_funnel_users"] == 0, (
+            f"Should have 0 completers, got {result['completed_funnel_users']}"
+        )
+        assert result["conversion_rate"] == 0.0, (
+            f"Conversion rate should be 0%, got {result['conversion_rate']}"
+        )
 
         print("✅ ZERO CONVERSION COHORT TEST PASSED!")
 

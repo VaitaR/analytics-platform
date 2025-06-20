@@ -119,14 +119,14 @@ class TestConversionRateCalculationFix:
         print(f"  Weighted == Overall: {abs(weighted_average - overall_conversion) < 0.01}")
 
         # Core assertions: weighted average should match overall conversion
-        assert (
-            abs(weighted_average - overall_conversion) < 0.01
-        ), "Weighted average should match overall conversion rate"
+        assert abs(weighted_average - overall_conversion) < 0.01, (
+            "Weighted average should match overall conversion rate"
+        )
 
         # Arithmetic mean should be significantly different in unbalanced data
-        assert (
-            abs(arithmetic_mean - weighted_average) > 5
-        ), "Arithmetic mean should be significantly different from weighted average in unbalanced data"
+        assert abs(arithmetic_mean - weighted_average) > 5, (
+            "Arithmetic mean should be significantly different from weighted average in unbalanced data"
+        )
 
         # The key insight: weighted average gives correct overall conversion
         assert total_started == 1010, f"Expected 1010 total users, got {total_started}"
@@ -134,9 +134,9 @@ class TestConversionRateCalculationFix:
 
         # Verify weighted calculation is correct
         expected_weighted = (18 / 1010) * 100  # ~1.78%
-        assert (
-            abs(weighted_average - expected_weighted) < 0.01
-        ), f"Weighted average calculation error: expected {expected_weighted:.2f}%, got {weighted_average:.2f}%"
+        assert abs(weighted_average - expected_weighted) < 0.01, (
+            f"Weighted average calculation error: expected {expected_weighted:.2f}%, got {weighted_average:.2f}%"
+        )
 
     def test_balanced_data_same_result(self):
         """Test that both methods give same result when data is balanced."""
@@ -187,17 +187,17 @@ class TestConversionRateCalculationFix:
         print(f"  Weighted average: {weighted_average:.2f}%")
 
         # With balanced data, both should be very close
-        assert (
-            abs(arithmetic_mean - weighted_average) < 0.1
-        ), "With balanced data, arithmetic mean and weighted average should be nearly identical"
+        assert abs(arithmetic_mean - weighted_average) < 0.1, (
+            "With balanced data, arithmetic mean and weighted average should be nearly identical"
+        )
 
         # Both should be close to 20%
-        assert (
-            abs(arithmetic_mean - 20.0) < 0.1
-        ), f"Expected ~20% arithmetic mean, got {arithmetic_mean:.2f}%"
-        assert (
-            abs(weighted_average - 20.0) < 0.1
-        ), f"Expected ~20% weighted average, got {weighted_average:.2f}%"
+        assert abs(arithmetic_mean - 20.0) < 0.1, (
+            f"Expected ~20% arithmetic mean, got {arithmetic_mean:.2f}%"
+        )
+        assert abs(weighted_average - 20.0) < 0.1, (
+            f"Expected ~20% weighted average, got {weighted_average:.2f}%"
+        )
 
 
 def test_conversion_rate_fix():

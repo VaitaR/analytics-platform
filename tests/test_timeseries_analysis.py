@@ -134,29 +134,29 @@ class TestTimeSeriesCalculation:
         assert not result.empty, "Time series result should not be empty"
         assert "period_date" in result.columns, "Should have period_date column"
         assert "started_funnel_users" in result.columns, "Should have started_funnel_users column"
-        assert (
-            "completed_funnel_users" in result.columns
-        ), "Should have completed_funnel_users column"
+        assert "completed_funnel_users" in result.columns, (
+            "Should have completed_funnel_users column"
+        )
         assert "conversion_rate" in result.columns, "Should have conversion_rate column"
 
         # Should have 7 days of data (or close to it, allowing for edge cases)
         assert 6 <= len(result) <= 8, f"Expected 6-8 days of data, got {len(result)}"
 
         # Validate data types
-        assert pd.api.types.is_datetime64_any_dtype(
-            result["period_date"]
-        ), "period_date should be datetime"
-        assert pd.api.types.is_integer_dtype(
-            result["started_funnel_users"]
-        ), "started_funnel_users should be integer"
-        assert pd.api.types.is_numeric_dtype(
-            result["conversion_rate"]
-        ), "conversion_rate should be numeric"
+        assert pd.api.types.is_datetime64_any_dtype(result["period_date"]), (
+            "period_date should be datetime"
+        )
+        assert pd.api.types.is_integer_dtype(result["started_funnel_users"]), (
+            "started_funnel_users should be integer"
+        )
+        assert pd.api.types.is_numeric_dtype(result["conversion_rate"]), (
+            "conversion_rate should be numeric"
+        )
 
         # Validate logical constraints
-        assert (
-            result["started_funnel_users"] >= result["completed_funnel_users"]
-        ).all(), "Started users should be >= completed users"
+        assert (result["started_funnel_users"] >= result["completed_funnel_users"]).all(), (
+            "Started users should be >= completed users"
+        )
         assert (result["conversion_rate"] >= 0).all(), "Conversion rate should be non-negative"
         assert (result["conversion_rate"] <= 100).all(), "Conversion rate should be <= 100%"
 
@@ -471,9 +471,9 @@ class TestTimeSeriesPerformance:
         execution_time = end_time - start_time
 
         assert not result.empty, "Should handle large dataset"
-        assert (
-            execution_time < 10.0
-        ), f"Should complete in under 10 seconds, took {execution_time:.2f}s"
+        assert execution_time < 10.0, (
+            f"Should complete in under 10 seconds, took {execution_time:.2f}s"
+        )
 
         print(
             f"✅ Large dataset performance test passed: {execution_time:.2f}s for {len(large_df)} events"
