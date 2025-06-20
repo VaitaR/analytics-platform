@@ -24,7 +24,9 @@ from app import FunnelCalculator, FunnelVisualizer
 from models import CountingMethod, FunnelConfig, FunnelOrder, ReentryMode
 
 
-@pytest.mark.skip(reason="GitHub Actions compatibility - test has complex output that may be misinterpreted")
+@pytest.mark.skip(
+    reason="GitHub Actions compatibility - test has complex output that may be misinterpreted"
+)
 def test_comprehensive_ui_improvements():
     """Test all the UI/UX improvements and enhanced cohort analysis."""
 

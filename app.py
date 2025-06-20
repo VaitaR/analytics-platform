@@ -7892,12 +7892,12 @@ class FunnelVisualizer:
                 colorbar=dict(
                     title=dict(
                         text="Conversion Rate (%)",
-                        side="right"
-                    ),
-                    titlefont=dict(
-                        size=self.typography.SCALE["sm"],
-                        color=self.text_color,
-                        family=self.typography.get_font_config()["family"],
+                        side="right",
+                        font=dict(
+                            size=self.typography.SCALE["sm"],
+                            color=self.text_color,
+                            family=self.typography.get_font_config()["family"],
+                        ),
                     ),
                     tickfont=dict(color=self.text_color),
                     ticks="outside",
@@ -8758,9 +8758,9 @@ class FunnelVisualizer:
                 colorbar=dict(
                     title=dict(
                         text="Conversion Rate (%)",
-                        side="right"
+                        side="right",
+                        font=dict(size=12, color=visualizer.TEXT_COLOR),
                     ),
-                    titlefont=dict(size=12, color=visualizer.TEXT_COLOR),
                     tickfont=dict(color=visualizer.TEXT_COLOR),
                     ticks="outside",
                 ),

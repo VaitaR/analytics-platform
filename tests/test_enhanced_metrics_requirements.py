@@ -21,7 +21,9 @@ from app import FunnelCalculator
 from models import CountingMethod, FunnelConfig, FunnelOrder, ReentryMode
 
 
-@pytest.mark.skip(reason="GitHub Actions compatibility - test returns values instead of using assert")
+@pytest.mark.skip(
+    reason="GitHub Actions compatibility - test returns values instead of using assert"
+)
 def test_daily_metrics_vs_cohort_metrics():
     """
     Test the difference between cohort-based conversion metrics and daily activity metrics.
@@ -218,7 +220,9 @@ def test_daily_metrics_vs_cohort_metrics():
     assert not has_issues, f"Metrics validation failed: {cohort_errors + daily_errors}"
 
 
-@pytest.mark.skip(reason="GitHub Actions compatibility - test returns values instead of using assert")
+@pytest.mark.skip(
+    reason="GitHub Actions compatibility - test returns values instead of using assert"
+)
 def test_current_total_users_attribution():
     """
     Test whether the current 'total_unique_users' metric is calculated correctly.
