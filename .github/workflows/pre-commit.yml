@@ -1,0 +1,50 @@
+name: Pre-commit Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Run pre-commit workflow
+      run: |
+        make pre-commit
+
+    - name: Check for code changes after formatting
+      run: |
+        if ! git diff --exit-code; then
+          echo "❌ Code formatting changes detected!"
+          echo "Please run 'make format' locally and commit the changes."
+          exit 1
+        else
+          echo "✅ Code formatting is consistent"
+        fi
+
+    - name: Verify test runner functionality
+      run: |
+        python run_tests.py --validate
+        python run_tests.py --check 

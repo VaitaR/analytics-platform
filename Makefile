@@ -158,3 +158,22 @@ validate: clean check test test-coverage
 	@echo "🎯 Full validation complete!"
 	@echo "📊 Code coverage report: htmlcov/index.html"
 	@echo "✅ Project is ready for production!"
+
+# Validate synchronization between local and CI environments
+validate-sync:
+	@echo "🔄 Validating synchronization between local and CI environments..."
+	@echo ""
+	@echo "📋 Checking Python version consistency:"
+	@python -c "import tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); print(f'  pyproject.toml: {config[\"project\"][\"requires-python\"]}')"
+	@grep -o 'python-version: \[.*\]' .github/workflows/tests.yml | head -1 | sed 's/python-version: /  workflows: /'
+	@echo ""
+	@echo "🔧 Testing key commands:"
+	@make check > /dev/null 2>&1 && echo "  ✅ make check: works" || echo "  ❌ make check: failed"
+	@ruff check . --output-format=github > /dev/null 2>&1 && echo "  ✅ GitHub format: works" || echo "  ❌ GitHub format: failed"
+	@python run_tests.py --validate > /dev/null 2>&1 && echo "  ✅ test validation: works" || echo "  ❌ test validation: failed"
+	@echo ""
+	@echo "📊 Dependency consistency:"
+	@echo "  requirements.txt: $$(wc -l < requirements.txt | tr -d ' ') packages"
+	@echo "  requirements-dev.txt: $$(wc -l < requirements-dev.txt | tr -d ' ') packages"
+	@echo ""
+	@echo "✅ Synchronization validation complete!"
