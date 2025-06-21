@@ -15,9 +15,9 @@ import pandas as pd
 # Add the parent directory to the path to import our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app import (
+from core import FunnelCalculator
+from models import (
     CountingMethod,
-    FunnelCalculator,
     FunnelConfig,
     FunnelOrder,
     PathAnalysisData,

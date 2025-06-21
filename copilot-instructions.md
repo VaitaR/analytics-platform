@@ -243,49 +243,42 @@ mypy .                          # Type checking
 
 ## 🗺️ 3. Project Architecture & Key Files
 
-### 3.1. Core Application Structure
+**Core Principle:** The architecture follows a strict separation of concerns:
+- **`app.py`** is for UI and orchestration only.
+- **`core/`** contains all business logic (calculations, data handling).
+- **`ui/`** contains all presentation logic (visualizations).
+- **`models.py`** defines shared data structures.
+
+### 3.1. Core Application Structure (Post-Refactoring)
 
 ```
-/Users/andrew/Documents/projects/project_funnel/
-├── app.py                    # Main Streamlit application
-├── models.py                 # Data structures (FunnelConfig, FunnelResults)
-├── path_analyzer.py          # User journey analysis engine
-├── requirements.txt          # Dependencies
-├── index.html               # Standalone HTML version
-└── tests/                   # Comprehensive test suite
-    ├── test_integration_flow.py
-    ├── test_funnel_calculator_comprehensive.py
-    ├──test_polars_fallback_detection.py
-    └──...
+project_funnel/
+├── app.py                    # Main Streamlit app (UI & orchestration)
+│
+├── core/                     # Core business logic (decoupled from UI)
+│   ├── calculator.py         # --> FunnelCalculator (metrics, analysis)
+│   ├── data_source.py        # --> DataSourceManager (data loading)
+│   └── config_manager.py     # --> FunnelConfigManager (save/load configs)
+│
+├── ui/                       # UI components and visualization
+│   └── visualization/
+│       └── visualizer.py     # --> FunnelVisualizer (all Plotly charts)
+│
+├── models.py                 # Core data models (FunnelConfig, FunnelResults)
+├── path_analyzer.py          # Specialized path analysis engine
+└── tests/                    # Comprehensive test suite
 ```
 
 ### 3.2. Key Classes & Responsibilities
 
-**DataSourceManager** (`app.py:150+`)
-
-- File upload validation & processing
-- ClickHouse connection management
-- Sample data generation
-- JSON property extraction (event/user properties)
-
-**FunnelCalculator** (`app.py:300+`)
-
-- Core funnel logic with multiple algorithms
-- Polars optimization with Pandas fallback
-- Performance monitoring & bottleneck analysis
-- Conversion window handling
-
-**PathAnalyzer** (`path_analyzer.py`)
-
-- User journey analysis between steps
-- Drop-off path identification
-- Between-steps event analysis
-
-**FunnelVisualizer** (`app.py:1500+`)
-
-- Professional Plotly visualizations
-- Dark theme, accessibility compliance
-- Sankey diagrams, funnel charts, time series
+| Class | File Location | Responsibilities |
+|---|---|---|
+| **`FunnelCalculator`** | `core/calculator.py` | - Core funnel logic & algorithms<br>- Polars optimization w/ Pandas fallback<br>- Performance monitoring |
+| **`DataSourceManager`**| `core/data_source.py`| - File & ClickHouse data loading<br>- Sample data generation<br>- Segmentation property extraction |
+| **`FunnelVisualizer`** | `ui/visualization/visualizer.py` | - All Plotly visualizations<br>- Theming & professional styling<br>- Chart creation (funnel, Sankey, time series) |
+| **`PathAnalyzer`** | `path_analyzer.py` | - User journey analysis between steps<br>- Drop-off path identification |
+| **`FunnelConfigManager`**| `core/config_manager.py`| - Saving/loading funnel configurations to/from JSON. |
+| **Data Models** | `models.py` | - Defines `FunnelConfig`, `FunnelResults`, `CountingMethod`, etc. |
 
 ---
 

@@ -164,6 +164,8 @@ test-comprehensive: generate-test-data
 	python run_tests.py --ui-all
 	@echo "  ⚡ Running performance tests..."
 	python run_tests.py --benchmarks
+	@echo "  🎯 Running new comprehensive test suites..."
+	make test-new-suites
 	@echo "✅ Comprehensive testing completed!"
 
 # =====================================================================
@@ -214,6 +216,28 @@ test-fallback:
 	@echo "🔄 Running fallback mechanism tests..."
 	python run_tests.py --fallback-all
 	@echo "✅ Fallback tests completed!"
+
+# File Upload Testing Suite
+test-file-upload:
+	@echo "📁 Running file upload testing suite..."
+	python -m pytest tests/test_file_upload_comprehensive.py -v
+	@echo "✅ File upload tests completed!"
+
+# Error Boundary Testing Suite
+test-error-boundary:
+	@echo "🚨 Running error boundary testing suite..."
+	python -m pytest tests/test_error_boundary_comprehensive.py -v
+	@echo "✅ Error boundary tests completed!"
+
+# Visualization Pipeline Testing Suite
+test-visualization:
+	@echo "📊 Running visualization pipeline testing suite..."
+	python -m pytest tests/test_visualization_pipeline_comprehensive.py -v
+	@echo "✅ Visualization tests completed!"
+
+# New Comprehensive Testing Suites
+test-new-suites: test-file-upload test-error-boundary test-visualization
+	@echo "🎯 All new testing suites completed!"
 
 # CI/CD workflow simulation
 ci-check: install-dev clean check test-comprehensive
