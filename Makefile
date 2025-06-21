@@ -33,14 +33,32 @@ help:
 	@echo "  test-fast    - Run basic tests only (quick validation)"
 	@echo "  test-coverage - Generate HTML coverage report"
 	@echo ""
+	@echo "🖥️ UI Testing:"
+	@echo "  test-ui      - Run all UI tests with Streamlit testing framework"
+	@echo "  test-ui-smoke - Run quick UI smoke tests"
+	@echo ""
+	@echo "🎯 Advanced Testing:"
+	@echo "  test-all-categories - Run all test categories (basic, advanced, polars, ui)"
+	@echo "  test-comprehensive - Run comprehensive test suite with coverage + UI"
+	@echo "  test-category CATEGORY=<name> - Run specific test category"
+	@echo ""
 	@echo "🏗️ Development:"
 	@echo "  run          - Start the Streamlit application"
 	@echo "  docs         - Generate or update documentation"
 	@echo ""
+	@echo "🔧 Workflow Commands:"
+	@echo "  pre-commit   - Quick checks before git commit (format + fast tests + UI smoke)"
+	@echo "  validate     - Full validation (comprehensive quality + testing)"
+	@echo "  ci-check     - Simulate CI/CD workflow"
+	@echo ""
 	@echo "💡 Recommended workflow:"
 	@echo "  1. make install-dev    # One-time setup"
-	@echo "  2. make check          # Before committing changes"
-	@echo "  3. make test           # Validate functionality"
+	@echo "  2. make pre-commit     # Before committing changes"
+	@echo "  3. make validate       # Full project validation"
+	@echo ""
+	@echo "📋 Test Discovery:"
+	@echo "  test-discovery - List all available tests and categories"
+	@echo "  validate-sync  - Validate local/CI environment synchronization"
 
 # =====================================================================
 # Setup & Installation Commands
@@ -117,6 +135,37 @@ test-coverage: generate-test-data
 	@echo "📋 Coverage report generated in htmlcov/index.html"
 	@echo "💡 Open htmlcov/index.html in your browser to view detailed coverage"
 
+# UI Testing Commands (using run_tests.py for comprehensive UI testing)
+test-ui: generate-test-data
+	@echo "🖥️ Running UI tests with Streamlit testing framework..."
+	python run_tests.py --ui-all
+	@echo "✅ UI tests completed!"
+
+test-ui-smoke:
+	@echo "💨 Running UI smoke tests..."
+	python run_tests.py --smoke
+	@echo "✅ UI smoke tests completed!"
+
+# Advanced Testing Commands
+test-all-categories: generate-test-data
+	@echo "🎯 Running all test categories..."
+	python run_tests.py --basic-all
+	python run_tests.py --advanced-all
+	python run_tests.py --polars-all
+	python run_tests.py --ui-all
+	@echo "✅ All test categories completed!"
+
+# Comprehensive testing with all frameworks
+test-comprehensive: generate-test-data
+	@echo "🔬 Running comprehensive test suite..."
+	@echo "  📋 Running pytest tests..."
+	python -m pytest tests/ --cov=app --cov-report=html:htmlcov --cov-report=term-missing -v
+	@echo "  🖥️ Running UI tests..."
+	python run_tests.py --ui-all
+	@echo "  ⚡ Running performance tests..."
+	python run_tests.py --benchmarks
+	@echo "✅ Comprehensive testing completed!"
+
 # =====================================================================
 # Development Commands
 # =====================================================================
@@ -137,34 +186,73 @@ docs:
 test-performance:
 	@echo "⚡ Running performance tests..."
 	python -m pytest tests/ -k "performance or benchmark" -v
+	python run_tests.py --benchmarks
 	@echo "✅ Performance tests completed!"
 
 # Polars-specific testing
 test-polars:
 	@echo "🚀 Running Polars optimization tests..."
 	python -m pytest tests/ -k "polars" -v
+	python run_tests.py --polars-all
 	@echo "✅ Polars tests completed!"
 
 # Integration testing
 test-integration:
 	@echo "🔗 Running integration tests..."
 	python -m pytest tests/ -k "integration" -v
+	python run_tests.py --advanced-all
 	@echo "✅ Integration tests completed!"
 
+# Process Mining testing
+test-process-mining:
+	@echo "🔍 Running process mining tests..."
+	python run_tests.py --process-mining-all
+	@echo "✅ Process mining tests completed!"
+
+# Fallback mechanism testing
+test-fallback:
+	@echo "🔄 Running fallback mechanism tests..."
+	python run_tests.py --fallback-all
+	@echo "✅ Fallback tests completed!"
+
 # CI/CD workflow simulation
-ci-check: install-dev clean check test
+ci-check: install-dev clean check test-comprehensive
 	@echo "🎯 CI/CD workflow simulation complete!"
 	@echo "✅ Ready for continuous integration!"
 
 # Pre-commit workflow (recommended before git commit)
-pre-commit: check test-fast
+pre-commit: check test-fast test-ui-smoke
 	@echo "✅ Pre-commit checks complete - ready to commit!"
 
 # Full validation (comprehensive quality check)
-validate: clean check test test-coverage
+validate: clean check test-comprehensive
 	@echo "🎯 Full validation complete!"
 	@echo "📊 Code coverage report: htmlcov/index.html"
 	@echo "✅ Project is ready for production!"
+
+# Future-proof test runner integration
+test-category:
+	@echo "🧪 Running specific test category..."
+	@echo "Usage: make test-category CATEGORY=<category_name>"
+	@echo "Available categories: basic, advanced, polars, ui, process_mining, fallback, benchmark"
+	@if [ -n "$(CATEGORY)" ]; then \
+		python run_tests.py --$(CATEGORY)-all; \
+	else \
+		echo "❌ Please specify CATEGORY variable"; \
+		echo "Example: make test-category CATEGORY=ui"; \
+	fi
+
+# Test discovery and validation
+test-discovery:
+	@echo "🔍 Discovering and validating test structure..."
+	@echo "📋 Available test files:"
+	@find tests/ -name "test_*.py" -type f | sort
+	@echo ""
+	@echo "🎯 Test categories in run_tests.py:"
+	@python run_tests.py --list
+	@echo ""
+	@echo "📊 Test collection validation:"
+	@python -m pytest tests/ --collect-only -q | grep "collected" || echo "No tests collected"
 
 # Validate synchronization between local and CI environments
 validate-sync:
@@ -172,12 +260,13 @@ validate-sync:
 	@echo ""
 	@echo "📋 Checking Python version consistency:"
 	@python -c "import tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); print(f'  pyproject.toml: {config[\"project\"][\"requires-python\"]}')"
-	@grep -o 'python-version: \[.*\]' .github/workflows/tests.yml | head -1 | sed 's/python-version: /  workflows: /'
+	@grep -o 'python-version: \[.*\]' .github/workflows/tests.yml | head -1 | sed 's/python-version: /  workflows: /' 2>/dev/null || echo "  workflows: not found"
 	@echo ""
 	@echo "🔧 Testing key commands:"
 	@make check > /dev/null 2>&1 && echo "  ✅ make check: works" || echo "  ❌ make check: failed"
 	@ruff check . --output-format=github > /dev/null 2>&1 && echo "  ✅ GitHub format: works" || echo "  ❌ GitHub format: failed"
 	@python -m pytest tests/ --collect-only > /dev/null 2>&1 && echo "  ✅ test validation: works" || echo "  ❌ test validation: failed"
+	@python run_tests.py --list > /dev/null 2>&1 && echo "  ✅ UI test runner: works" || echo "  ❌ UI test runner: failed"
 	@echo ""
 	@echo "📊 Dependency consistency:"
 	@echo "  requirements.txt: $$(wc -l < requirements.txt | tr -d ' ') packages"
