@@ -165,36 +165,8 @@ check_untyped_defs = false
 ignore_errors = true  # More lenient for test files
 
 # =====================================================================
-# Pytest Configuration (Testing Framework)
+# Note: Pytest configuration is in pytest.ini to avoid conflicts
 # =====================================================================
-[tool.pytest.ini_options]
-minversion = "7.4"
-addopts = [
-    "-ra",
-    "--strict-markers",
-    "--strict-config",
-    "--tb=short",
-    "--disable-warnings",
-]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-
-markers = [
-    "unit: Unit tests focusing on individual functions/classes",
-    "integration: Integration tests for component interactions",
-    "performance: Performance and scalability tests",
-    "slow: Tests that take longer than 5 seconds to run",
-    "basic: Basic functionality tests (happy path scenarios)",
-    "edge_case: Edge case and boundary condition tests",
-    "polars: Polars-specific functionality tests",
-    "conversion_window: Conversion window related tests",
-    "counting_method: Counting method algorithm tests",
-    "segmentation: Data segmentation and filtering tests",
-    "visualization: Chart and visualization tests",
-    "timeseries: Time series analysis tests",
-]
 
 # =====================================================================
 # Coverage Configuration (Code Coverage Analysis)
