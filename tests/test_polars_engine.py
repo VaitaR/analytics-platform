@@ -3,7 +3,8 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from app import FunnelCalculator, FunnelConfig, FunnelResults
+from core import FunnelCalculator
+from models import FunnelConfig, FunnelResults
 
 
 @pytest.fixture
@@ -29,7 +30,7 @@ def sample_events_df():
     return pd.DataFrame(data)
 
 
-@patch("app.FunnelCalculator._calculate_funnel_metrics_pandas")
+@patch("core.calculator.FunnelCalculator._calculate_funnel_metrics_pandas")
 def test_polars_engine_no_pandas_fallback(mock_pandas_calculator, sample_events_df):
     """
     Tests that when use_polars is True, the polars calculation engine is used
@@ -50,7 +51,7 @@ def test_polars_engine_no_pandas_fallback(mock_pandas_calculator, sample_events_
     )
 
     with patch(
-        "app.FunnelCalculator._calculate_funnel_metrics_polars",
+        "core.calculator.FunnelCalculator._calculate_funnel_metrics_polars",
         return_value=mock_polars_result,
     ) as mock_polars_method:
         funnel_calculator = FunnelCalculator(config=config, use_polars=True)
@@ -60,7 +61,7 @@ def test_polars_engine_no_pandas_fallback(mock_pandas_calculator, sample_events_
         mock_pandas_calculator.assert_not_called()
 
 
-@patch("app.FunnelCalculator._calculate_funnel_metrics_polars")
+@patch("core.calculator.FunnelCalculator._calculate_funnel_metrics_polars")
 def test_polars_engine_fallback_on_error(mock_polars_calculator, sample_events_df):
     """
     Tests that if the polars calculation engine raises an exception,
@@ -82,7 +83,7 @@ def test_polars_engine_fallback_on_error(mock_polars_calculator, sample_events_d
     )
 
     with patch(
-        "app.FunnelCalculator._calculate_funnel_metrics_pandas",
+        "core.calculator.FunnelCalculator._calculate_funnel_metrics_pandas",
         return_value=mock_pandas_result,
     ) as mock_pandas_method:
         funnel_calculator = FunnelCalculator(config=config, use_polars=True)

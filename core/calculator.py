@@ -71,7 +71,6 @@ def _funnel_performance_monitor(func_name: str):
     return decorator
 
 
-
 class FunnelCalculator:
     """Core funnel calculation engine with performance optimizations"""
 
@@ -6140,5 +6139,3 @@ class FunnelCalculator:
             )
 
         return between_events
-
-

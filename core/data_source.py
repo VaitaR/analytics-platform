@@ -816,4 +816,3 @@ class DataSourceManager:
                 metadata[event] = base_metadata
 
             return metadata
-

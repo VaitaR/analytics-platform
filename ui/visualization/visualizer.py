@@ -2616,5 +2616,3 @@ class FunnelVisualizer:
             )
 
         return pd.DataFrame(data)
-
-

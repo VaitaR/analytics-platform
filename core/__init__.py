@@ -12,6 +12,7 @@ Usage:
 """
 
 from .calculator import FunnelCalculator
+from .config_manager import FunnelConfigManager
 from .data_source import DataSourceManager
 
-__all__ = ["DataSourceManager", "FunnelCalculator"]
+__all__ = ["DataSourceManager", "FunnelCalculator", "FunnelConfigManager"]

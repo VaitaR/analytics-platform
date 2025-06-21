@@ -954,7 +954,41 @@ UI_TESTS.add_test(
     "Running advanced UI tests for Streamlit best practices and architecture patterns",
 )
 
-# Update the TEST_CATEGORIES to include process mining and UI tests
+# Create new comprehensive test suites category
+NEW_SUITES = TestCategory("new_suites", "New comprehensive testing suites for enhanced coverage")
+
+NEW_SUITES.add_test(
+    "file_upload",
+    ["tests/test_file_upload_comprehensive.py"],
+    "Running comprehensive file upload testing suite",
+    "file_upload"
+)
+
+NEW_SUITES.add_test(
+    "error_boundary", 
+    ["tests/test_error_boundary_comprehensive.py"],
+    "Running comprehensive error boundary testing suite",
+    "error_boundary"
+)
+
+NEW_SUITES.add_test(
+    "visualization",
+    ["tests/test_visualization_pipeline_comprehensive.py"], 
+    "Running comprehensive visualization pipeline testing suite",
+    "visualization"
+)
+
+NEW_SUITES.add_test(
+    "all_new_suites",
+    [
+        "tests/test_file_upload_comprehensive.py",
+        "tests/test_error_boundary_comprehensive.py", 
+        "tests/test_visualization_pipeline_comprehensive.py"
+    ],
+    "Running all new comprehensive testing suites"
+)
+
+# Update the TEST_CATEGORIES to include process mining, UI tests, and new suites
 TEST_CATEGORIES = {
     "basic": BASIC_TESTS,
     "advanced": ADVANCED_TESTS,
@@ -965,6 +999,7 @@ TEST_CATEGORIES = {
     "utility": UTILITY_TESTS,
     "process_mining": PROCESS_MINING_TESTS,
     "ui": UI_TESTS,
+    "new_suites": NEW_SUITES,
 }
 
 
@@ -1251,6 +1286,7 @@ Examples:
         "--process-mining-all", action="store_true", help="Run all process mining tests"
     )
     parser.add_argument("--ui-all", action="store_true", help="Run all UI tests")
+    parser.add_argument("--new-suites-all", action="store_true", help="Run all new comprehensive test suites")
 
     # Category specific test options
     parser.add_argument(
@@ -1288,6 +1324,11 @@ Examples:
         "--ui",
         metavar="TEST",
         help="Run specific UI test: app_ui_comprehensive",
+    )
+    parser.add_argument(
+        "--new-suites",
+        metavar="TEST",
+        help="Run specific new test suite: file_upload, error_boundary, visualization, all_new_suites",
     )
 
     # Specific named tests for backward compatibility
@@ -1399,6 +1440,11 @@ Examples:
         test_results.append(result)
         actions_performed = True
 
+    if args.new_suites_all:
+        result = run_tests_by_category("new_suites", args.parallel, args.coverage, args.marker)
+        test_results.append(result)
+        actions_performed = True
+
     # Run specific tests from categories
     if args.basic:
         result = run_specific_test("basic", args.basic, args.parallel, args.coverage, args.marker)
@@ -1459,6 +1505,17 @@ Examples:
         result = run_specific_test(
             "ui",
             args.ui,
+            args.parallel,
+            args.coverage,
+            args.marker,
+        )
+        test_results.append(result)
+        actions_performed = True
+
+    if args.new_suites:
+        result = run_specific_test(
+            "new_suites",
+            args.new_suites,
             args.parallel,
             args.coverage,
             args.marker,

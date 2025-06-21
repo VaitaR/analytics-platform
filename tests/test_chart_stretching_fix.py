@@ -12,7 +12,7 @@ import pytest
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app import FunnelVisualizer, LayoutConfig
+from ui.visualization import FunnelVisualizer, LayoutConfig
 
 
 class TestTimeSeriesChartLayout:

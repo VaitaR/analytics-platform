@@ -52,14 +52,18 @@ class TestPhase1GoldenStandard:
 
         # Verify funnel steps were added to session state
         assert len(at.session_state.funnel_steps) == 3, "Should have 3 funnel steps"
-        assert at.session_state.funnel_steps == selected_events, "Steps should match selected events"
+        assert at.session_state.funnel_steps == selected_events, (
+            "Steps should match selected events"
+        )
 
         # Step 3: Run analysis
         at.button(key="analyze_funnel_button").click().run()
 
         # Verify analysis results were generated
-        assert at.session_state.analysis_results is not None, "Analysis results should be generated"
-        assert hasattr(at.session_state.analysis_results, 'steps'), "Results should have steps"
+        assert at.session_state.analysis_results is not None, (
+            "Analysis results should be generated"
+        )
+        assert hasattr(at.session_state.analysis_results, "steps"), "Results should have steps"
         assert len(at.session_state.analysis_results.steps) == 3, "Results should have 3 steps"
 
         # Verify no exceptions occurred
@@ -123,15 +127,21 @@ class TestPhase1GoldenStandard:
         checkbox_key_2 = f"event_cb_{test_events[1].replace(' ', '_').replace('-', '_')}"
         at.checkbox(key=checkbox_key_2).check().run()
 
-        assert len(at.session_state.funnel_steps) == 2, "Should have 2 steps after second selection"
+        assert len(at.session_state.funnel_steps) == 2, (
+            "Should have 2 steps after second selection"
+        )
         assert test_events[1] in at.session_state.funnel_steps, "Second event should be selected"
 
         # Deselect first event
         at.checkbox(key=checkbox_key_1).uncheck().run()
 
         assert len(at.session_state.funnel_steps) == 1, "Should have 1 step after deselection"
-        assert test_events[0] not in at.session_state.funnel_steps, "First event should be deselected"
-        assert test_events[1] in at.session_state.funnel_steps, "Second event should still be selected"
+        assert test_events[0] not in at.session_state.funnel_steps, (
+            "First event should be deselected"
+        )
+        assert test_events[1] in at.session_state.funnel_steps, (
+            "Second event should still be selected"
+        )
 
         # Verify no exceptions
         assert not at.exception, "No exceptions should occur during event selection"
@@ -162,10 +172,12 @@ class TestPhase1GoldenStandard:
             assert col in at.session_state.events_data.columns, f"Column {col} should exist"
 
         # Verify event statistics were generated
-        assert hasattr(at.session_state, 'event_statistics'), "Event statistics should be generated"
+        assert hasattr(at.session_state, "event_statistics"), (
+            "Event statistics should be generated"
+        )
 
         # Verify funnel config exists
-        assert hasattr(at.session_state, 'funnel_config'), "Funnel config should exist"
+        assert hasattr(at.session_state, "funnel_config"), "Funnel config should exist"
 
         # Verify no exceptions
         assert not at.exception, "No exceptions should occur during data loading"
@@ -206,7 +218,9 @@ class TestPhase1GoldenStandard:
         at.button(key="analyze_funnel_button").click().run()
 
         # Should generate analysis results with 2+ steps
-        assert at.session_state.analysis_results is not None, "Should generate results with 2+ steps"
+        assert at.session_state.analysis_results is not None, (
+            "Should generate results with 2+ steps"
+        )
 
         # Verify no exceptions
         assert not at.exception, "No exceptions should occur during validation"
@@ -247,11 +261,15 @@ class TestPhase1GoldenStandard:
             at.checkbox(key=checkbox_key_4).check().run()
 
             # Verify analysis results were cleared (as expected when funnel changes)
-            assert at.session_state.analysis_results is None, "Results should clear when funnel changes"
+            assert at.session_state.analysis_results is None, (
+                "Results should clear when funnel changes"
+            )
             assert len(at.session_state.funnel_steps) == 4, "Should have 4 steps now"
 
             # Data should still persist
-            assert len(at.session_state.events_data) == original_data_length, "Data should still persist"
+            assert len(at.session_state.events_data) == original_data_length, (
+                "Data should still persist"
+            )
 
         # Verify no exceptions
         assert not at.exception, "No exceptions should occur during state persistence test"
