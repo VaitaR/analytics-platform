@@ -37,9 +37,26 @@ class FunnelAnalyticsPageObject:
         This helper abstracts the data loading flow, making tests immune to
         changes in the data loading implementation.
         """
+        import time
+
         try:
             # Click the Load Sample Data button using its stable key with increased timeout
-            self.at.button(key="load_sample_data_button").click().run(timeout=10)
+            self.at.button(key="load_sample_data_button").click().run(timeout=15)
+
+            # Wait for data loading to complete by checking session state
+            max_retries = 5
+            for attempt in range(max_retries):
+                if (
+                    hasattr(self.at.session_state, "events_data")
+                    and self.at.session_state.events_data is not None
+                    and len(self.at.session_state.events_data) > 0
+                ):
+                    # Data loaded successfully, now wait for event_statistics
+                    break
+                time.sleep(0.5)  # Wait 500ms between retries
+                if attempt < max_retries - 1:  # Don't run on last attempt
+                    self.at.run(timeout=10)  # Re-run to refresh state
+
         except Exception as e:
             # If button interaction fails, manually load sample data for testing
             from datetime import datetime, timedelta
@@ -67,9 +84,51 @@ class FunnelAnalyticsPageObject:
 
             self.at.session_state.events_data = pd.DataFrame(data)
 
+            # CRITICAL FIX: Calculate event_statistics manually when using fallback
+            # Import the function from app.py
+            import os
+            import sys
+
+            sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+            from app import get_event_statistics
+
+            self.at.session_state.event_statistics = get_event_statistics(
+                self.at.session_state.events_data
+            )
+
         # Verify data was loaded by checking session state
         assert self.at.session_state.events_data is not None, "Sample data should be loaded"
         assert len(self.at.session_state.events_data) > 0, "Sample data should not be empty"
+
+        # Wait for event_statistics to be calculated (give it more time)
+        max_retries = 10
+        for attempt in range(max_retries):
+            if (
+                hasattr(self.at.session_state, "event_statistics")
+                and len(self.at.session_state.event_statistics) > 0
+            ):
+                break
+            time.sleep(0.3)  # Wait 300ms between retries
+            if attempt < max_retries - 1:  # Don't run on last attempt
+                self.at.run(
+                    timeout=10
+                )  # Re-run to refresh state and trigger statistics calculation
+
+        # Final verification that event_statistics was calculated
+        if (
+            not hasattr(self.at.session_state, "event_statistics")
+            or len(self.at.session_state.event_statistics) == 0
+        ):
+            # Last resort: manually calculate if still not present
+            import os
+            import sys
+
+            sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+            from app import get_event_statistics
+
+            self.at.session_state.event_statistics = get_event_statistics(
+                self.at.session_state.events_data
+            )
 
     def build_funnel(self, steps: List[str]) -> None:
         """

@@ -961,31 +961,31 @@ NEW_SUITES.add_test(
     "file_upload",
     ["tests/test_file_upload_comprehensive.py"],
     "Running comprehensive file upload testing suite",
-    "file_upload"
+    "file_upload",
 )
 
 NEW_SUITES.add_test(
-    "error_boundary", 
+    "error_boundary",
     ["tests/test_error_boundary_comprehensive.py"],
     "Running comprehensive error boundary testing suite",
-    "error_boundary"
+    "error_boundary",
 )
 
 NEW_SUITES.add_test(
     "visualization",
-    ["tests/test_visualization_pipeline_comprehensive.py"], 
+    ["tests/test_visualization_pipeline_comprehensive.py"],
     "Running comprehensive visualization pipeline testing suite",
-    "visualization"
+    "visualization",
 )
 
 NEW_SUITES.add_test(
     "all_new_suites",
     [
         "tests/test_file_upload_comprehensive.py",
-        "tests/test_error_boundary_comprehensive.py", 
-        "tests/test_visualization_pipeline_comprehensive.py"
+        "tests/test_error_boundary_comprehensive.py",
+        "tests/test_visualization_pipeline_comprehensive.py",
     ],
-    "Running all new comprehensive testing suites"
+    "Running all new comprehensive testing suites",
 )
 
 # Update the TEST_CATEGORIES to include process mining, UI tests, and new suites
@@ -1286,7 +1286,9 @@ Examples:
         "--process-mining-all", action="store_true", help="Run all process mining tests"
     )
     parser.add_argument("--ui-all", action="store_true", help="Run all UI tests")
-    parser.add_argument("--new-suites-all", action="store_true", help="Run all new comprehensive test suites")
+    parser.add_argument(
+        "--new-suites-all", action="store_true", help="Run all new comprehensive test suites"
+    )
 
     # Category specific test options
     parser.add_argument(
