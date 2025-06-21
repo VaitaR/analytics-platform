@@ -38,9 +38,9 @@ import pytest
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import (
+from core import FunnelCalculator
+from models import (
     CountingMethod,
-    FunnelCalculator,
     FunnelConfig,
     FunnelOrder,
     FunnelResults,

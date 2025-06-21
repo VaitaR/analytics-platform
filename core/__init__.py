@@ -11,8 +11,7 @@ Usage:
     from core import FunnelCalculator, DataSourceManager, FunnelConfigManager
 """
 
-# from .calculator import FunnelCalculator
-# from .config_manager import FunnelConfigManager
+from .calculator import FunnelCalculator
 from .data_source import DataSourceManager
 
-__all__ = ["DataSourceManager"]  # "FunnelCalculator", "FunnelConfigManager"]
+__all__ = ["DataSourceManager", "FunnelCalculator"]
