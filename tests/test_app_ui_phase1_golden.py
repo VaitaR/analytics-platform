@@ -13,6 +13,7 @@ Key Principles:
 """
 
 import time
+
 from streamlit.testing.v1 import AppTest
 
 APP_FILE = "app.py"
@@ -22,7 +23,7 @@ DEFAULT_TIMEOUT = 20  # Increased from 10 to handle slower module loading in Pyt
 def wait_for_condition(at, condition_func, max_retries=10, sleep_time=0.5, timeout=15):
     """
     Robust waiting mechanism for test conditions.
-    
+
     Args:
         at: AppTest instance
         condition_func: Function that returns True when condition is met
@@ -37,11 +38,11 @@ def wait_for_condition(at, condition_func, max_retries=10, sleep_time=0.5, timeo
         except (AttributeError, KeyError, TypeError):
             # Condition not ready yet, continue waiting
             pass
-        
+
         if attempt < max_retries - 1:
             time.sleep(sleep_time)
             at.run(timeout=timeout)
-    
+
     return False
 
 
@@ -66,11 +67,13 @@ class TestPhase1GoldenStandard:
         # Wait for data to be fully loaded and processed
         data_loaded = wait_for_condition(
             at,
-            lambda: (hasattr(at.session_state, 'events_data') and 
-                    at.session_state.events_data is not None and
-                    len(at.session_state.events_data) > 0),
+            lambda: (
+                hasattr(at.session_state, "events_data")
+                and at.session_state.events_data is not None
+                and len(at.session_state.events_data) > 0
+            ),
             max_retries=15,
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
         assert data_loaded, "Events data should be loaded within timeout"
 
@@ -91,9 +94,7 @@ class TestPhase1GoldenStandard:
 
         # Wait for funnel steps to be updated
         funnel_built = wait_for_condition(
-            at,
-            lambda: len(at.session_state.funnel_steps) == 3,
-            timeout=DEFAULT_TIMEOUT
+            at, lambda: len(at.session_state.funnel_steps) == 3, timeout=DEFAULT_TIMEOUT
         )
         assert funnel_built, "Funnel should be built within timeout"
 
@@ -109,10 +110,12 @@ class TestPhase1GoldenStandard:
         # Wait for analysis to complete
         analysis_complete = wait_for_condition(
             at,
-            lambda: (hasattr(at.session_state, 'analysis_results') and 
-                    at.session_state.analysis_results is not None),
+            lambda: (
+                hasattr(at.session_state, "analysis_results")
+                and at.session_state.analysis_results is not None
+            ),
             max_retries=20,  # Analysis can take longer
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
         assert analysis_complete, "Analysis should complete within timeout"
 
@@ -141,10 +144,12 @@ class TestPhase1GoldenStandard:
         # Wait for data loading
         data_loaded = wait_for_condition(
             at,
-            lambda: (hasattr(at.session_state, 'events_data') and 
-                    at.session_state.events_data is not None and
-                    len(at.session_state.events_data) > 0),
-            timeout=DEFAULT_TIMEOUT
+            lambda: (
+                hasattr(at.session_state, "events_data")
+                and at.session_state.events_data is not None
+                and len(at.session_state.events_data) > 0
+            ),
+            timeout=DEFAULT_TIMEOUT,
         )
         assert data_loaded, "Data should be loaded"
 
@@ -156,9 +161,7 @@ class TestPhase1GoldenStandard:
 
         # Wait for step to be added
         step_added = wait_for_condition(
-            at,
-            lambda: len(at.session_state.funnel_steps) == 1,
-            timeout=DEFAULT_TIMEOUT
+            at, lambda: len(at.session_state.funnel_steps) == 1, timeout=DEFAULT_TIMEOUT
         )
         assert step_added, "Step should be added"
 
@@ -171,9 +174,7 @@ class TestPhase1GoldenStandard:
 
         # Wait for state to be cleared
         state_cleared = wait_for_condition(
-            at,
-            lambda: len(at.session_state.funnel_steps) == 0,
-            timeout=DEFAULT_TIMEOUT
+            at, lambda: len(at.session_state.funnel_steps) == 0, timeout=DEFAULT_TIMEOUT
         )
         assert state_cleared, "State should be cleared"
 
@@ -199,10 +200,12 @@ class TestPhase1GoldenStandard:
         # Wait for data loading
         data_loaded = wait_for_condition(
             at,
-            lambda: (hasattr(at.session_state, 'events_data') and 
-                    at.session_state.events_data is not None and
-                    len(at.session_state.events_data) > 0),
-            timeout=DEFAULT_TIMEOUT
+            lambda: (
+                hasattr(at.session_state, "events_data")
+                and at.session_state.events_data is not None
+                and len(at.session_state.events_data) > 0
+            ),
+            timeout=DEFAULT_TIMEOUT,
         )
         assert data_loaded, "Data should be loaded"
 
@@ -215,9 +218,7 @@ class TestPhase1GoldenStandard:
 
         # Wait for first event selection
         first_selected = wait_for_condition(
-            at,
-            lambda: len(at.session_state.funnel_steps) == 1,
-            timeout=DEFAULT_TIMEOUT
+            at, lambda: len(at.session_state.funnel_steps) == 1, timeout=DEFAULT_TIMEOUT
         )
         assert first_selected, "First event should be selected"
 
@@ -230,9 +231,7 @@ class TestPhase1GoldenStandard:
 
         # Wait for second event selection
         second_selected = wait_for_condition(
-            at,
-            lambda: len(at.session_state.funnel_steps) == 2,
-            timeout=DEFAULT_TIMEOUT
+            at, lambda: len(at.session_state.funnel_steps) == 2, timeout=DEFAULT_TIMEOUT
         )
         assert second_selected, "Second event should be selected"
 
@@ -247,9 +246,11 @@ class TestPhase1GoldenStandard:
         # Wait for first event deselection
         first_deselected = wait_for_condition(
             at,
-            lambda: (len(at.session_state.funnel_steps) == 1 and 
-                    test_events[0] not in at.session_state.funnel_steps),
-            timeout=DEFAULT_TIMEOUT
+            lambda: (
+                len(at.session_state.funnel_steps) == 1
+                and test_events[0] not in at.session_state.funnel_steps
+            ),
+            timeout=DEFAULT_TIMEOUT,
         )
         assert first_deselected, "First event should be deselected"
 
@@ -283,11 +284,13 @@ class TestPhase1GoldenStandard:
         # Wait for data loading to complete
         data_loaded = wait_for_condition(
             at,
-            lambda: (hasattr(at.session_state, 'events_data') and 
-                    at.session_state.events_data is not None and
-                    len(at.session_state.events_data) > 0),
+            lambda: (
+                hasattr(at.session_state, "events_data")
+                and at.session_state.events_data is not None
+                and len(at.session_state.events_data) > 0
+            ),
             max_retries=15,
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
         assert data_loaded, "Events data should be loaded within timeout"
 
@@ -303,10 +306,12 @@ class TestPhase1GoldenStandard:
         # Wait for event statistics to be generated
         stats_generated = wait_for_condition(
             at,
-            lambda: (hasattr(at.session_state, "event_statistics") and 
-                    len(at.session_state.event_statistics) > 0),
+            lambda: (
+                hasattr(at.session_state, "event_statistics")
+                and len(at.session_state.event_statistics) > 0
+            ),
             max_retries=10,
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
         assert stats_generated, "Event statistics should be generated within timeout"
 
@@ -336,10 +341,12 @@ class TestPhase1GoldenStandard:
         # Wait for data loading
         data_loaded = wait_for_condition(
             at,
-            lambda: (hasattr(at.session_state, 'events_data') and 
-                    at.session_state.events_data is not None and
-                    len(at.session_state.events_data) > 0),
-            timeout=DEFAULT_TIMEOUT
+            lambda: (
+                hasattr(at.session_state, "events_data")
+                and at.session_state.events_data is not None
+                and len(at.session_state.events_data) > 0
+            ),
+            timeout=DEFAULT_TIMEOUT,
         )
         assert data_loaded, "Data should be loaded"
 
@@ -354,9 +361,7 @@ class TestPhase1GoldenStandard:
 
         # Wait for step to be added
         step_added = wait_for_condition(
-            at,
-            lambda: len(at.session_state.funnel_steps) == 1,
-            timeout=DEFAULT_TIMEOUT
+            at, lambda: len(at.session_state.funnel_steps) == 1, timeout=DEFAULT_TIMEOUT
         )
         assert step_added, "Step should be added"
 
@@ -377,9 +382,7 @@ class TestPhase1GoldenStandard:
 
         # Wait for second step
         second_step_added = wait_for_condition(
-            at,
-            lambda: len(at.session_state.funnel_steps) == 2,
-            timeout=DEFAULT_TIMEOUT
+            at, lambda: len(at.session_state.funnel_steps) == 2, timeout=DEFAULT_TIMEOUT
         )
         assert second_step_added, "Second step should be added"
 
@@ -391,7 +394,7 @@ class TestPhase1GoldenStandard:
             at,
             lambda: at.session_state.analysis_results is not None,
             max_retries=20,
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
         assert analysis_complete, "Analysis should complete with 2+ steps"
 
@@ -418,10 +421,12 @@ class TestPhase1GoldenStandard:
         # Wait for data loading
         data_loaded = wait_for_condition(
             at,
-            lambda: (hasattr(at.session_state, 'events_data') and 
-                    at.session_state.events_data is not None and
-                    len(at.session_state.events_data) > 0),
-            timeout=DEFAULT_TIMEOUT
+            lambda: (
+                hasattr(at.session_state, "events_data")
+                and at.session_state.events_data is not None
+                and len(at.session_state.events_data) > 0
+            ),
+            timeout=DEFAULT_TIMEOUT,
         )
         assert data_loaded, "Data should be loaded"
 
@@ -434,13 +439,13 @@ class TestPhase1GoldenStandard:
         for i, event in enumerate(selected_events):
             checkbox_key = f"event_cb_{event.replace(' ', '_').replace('-', '_')}"
             at.checkbox(key=checkbox_key).check().run(timeout=DEFAULT_TIMEOUT)
-            
+
             # Wait for each step to be added
             step_count = i + 1
             step_added = wait_for_condition(
                 at,
                 lambda: len(at.session_state.funnel_steps) == step_count,
-                timeout=DEFAULT_TIMEOUT
+                timeout=DEFAULT_TIMEOUT,
             )
             assert step_added, f"Step {step_count} should be added"
 
@@ -452,7 +457,7 @@ class TestPhase1GoldenStandard:
             at,
             lambda: at.session_state.analysis_results is not None,
             max_retries=20,
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
         assert analysis_complete, "Analysis should complete"
 
@@ -470,9 +475,11 @@ class TestPhase1GoldenStandard:
             # Wait for fourth step and results clearing
             fourth_step_added = wait_for_condition(
                 at,
-                lambda: (len(at.session_state.funnel_steps) == 4 and 
-                        at.session_state.analysis_results is None),
-                timeout=DEFAULT_TIMEOUT
+                lambda: (
+                    len(at.session_state.funnel_steps) == 4
+                    and at.session_state.analysis_results is None
+                ),
+                timeout=DEFAULT_TIMEOUT,
             )
             assert fourth_step_added, "Fourth step should be added and results cleared"
 

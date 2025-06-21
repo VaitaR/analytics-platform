@@ -8,17 +8,14 @@ This test suite covers all aspects of error handling and recovery:
 - Graceful degradation patterns
 """
 
-import json
-import logging
 from datetime import datetime, timedelta
-from io import StringIO
 from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
 
-from core import DataSourceManager, FunnelCalculator, FunnelConfigManager
-from models import CountingMethod, FunnelConfig, FunnelOrder, ReentryMode
+from core import DataSourceManager, FunnelCalculator
+from models import FunnelConfig
 
 
 @pytest.mark.error_boundary
@@ -52,8 +49,12 @@ class TestDataSourceErrorHandling:
                 result_df = data_manager.load_from_file(mock_file)
 
                 # Should return empty DataFrame
-                assert isinstance(result_df, pd.DataFrame), f"Should return DataFrame for {type(exception).__name__}"
-                assert len(result_df) == 0, f"Should return empty DataFrame for {type(exception).__name__}"
+                assert isinstance(result_df, pd.DataFrame), (
+                    f"Should return DataFrame for {type(exception).__name__}"
+                )
+                assert len(result_df) == 0, (
+                    f"Should return empty DataFrame for {type(exception).__name__}"
+                )
 
         print("✅ File loading exception handling test passed")
 
@@ -66,7 +67,6 @@ class TestDataSourceErrorHandling:
                 pd.DataFrame({"wrong_column": [1, 2, 3]}),
                 ["missing", "required", "columns"],
             ),
-            
             # Empty DataFrame scenario
             (
                 pd.DataFrame(),
@@ -83,7 +83,9 @@ class TestDataSourceErrorHandling:
             # Should contain user-friendly keywords
             message_lower = message.lower()
             for keyword in expected_keywords:
-                assert keyword in message_lower, f"Error message should contain '{keyword}': {message}"
+                assert keyword in message_lower, (
+                    f"Error message should contain '{keyword}': {message}"
+                )
 
         print("✅ Data validation error messages test passed")
 
@@ -107,10 +109,10 @@ class TestFunnelCalculatorErrorHandling:
 
         for empty_df in empty_scenarios:
             steps = ["Step1", "Step2"]
-            
+
             # Should handle empty data gracefully
             results = calculator.calculate_funnel_metrics(empty_df, steps)
-            
+
             # Should return valid structure with zero counts
             assert results.steps == [], "Should return empty steps for empty data"
             assert results.users_count == [], "Should return empty users_count for empty data"
@@ -120,13 +122,15 @@ class TestFunnelCalculatorErrorHandling:
     def test_invalid_funnel_steps_handling(self, calculator):
         """Test handling of invalid funnel step configurations."""
         # Create valid data
-        valid_data = pd.DataFrame({
-            "user_id": ["user1", "user2", "user3"],
-            "event_name": ["EventA", "EventB", "EventC"],
-            "timestamp": [datetime.now() + timedelta(minutes=i) for i in range(3)],
-            "event_properties": ["{}"] * 3,
-            "user_properties": ["{}"] * 3,
-        })
+        valid_data = pd.DataFrame(
+            {
+                "user_id": ["user1", "user2", "user3"],
+                "event_name": ["EventA", "EventB", "EventC"],
+                "timestamp": [datetime.now() + timedelta(minutes=i) for i in range(3)],
+                "event_properties": ["{}"] * 3,
+                "user_properties": ["{}"] * 3,
+            }
+        )
 
         invalid_step_scenarios = [
             [],  # Empty steps
@@ -137,10 +141,12 @@ class TestFunnelCalculatorErrorHandling:
         for steps in invalid_step_scenarios:
             # Should handle invalid steps gracefully
             results = calculator.calculate_funnel_metrics(valid_data, steps)
-            
+
             # Should return appropriate structure
             if not steps:
-                assert results.steps == [], f"Should return empty steps for invalid configuration: {steps}"
+                assert results.steps == [], (
+                    f"Should return empty steps for invalid configuration: {steps}"
+                )
             else:
                 # Should filter out non-existent events
                 assert isinstance(results.steps, list), f"Should return list for steps: {steps}"
@@ -155,18 +161,20 @@ class TestRecoveryMechanisms:
     def test_partial_data_recovery(self):
         """Test recovery from partial data corruption."""
         # Create partially corrupted data
-        partial_data = pd.DataFrame({
-            "user_id": ["user1", None, "user3", ""],  # Some missing user IDs
-            "event_name": ["Event1", "Event2", None, "Event4"],  # Some missing events
-            "timestamp": [
-                datetime.now(),
-                datetime.now() + timedelta(minutes=1),
-                None,  # Missing timestamp
-                datetime.now() + timedelta(minutes=3),
-            ],
-            "event_properties": ["{}"] * 4,
-            "user_properties": ["{}"] * 4,
-        })
+        partial_data = pd.DataFrame(
+            {
+                "user_id": ["user1", None, "user3", ""],  # Some missing user IDs
+                "event_name": ["Event1", "Event2", None, "Event4"],  # Some missing events
+                "timestamp": [
+                    datetime.now(),
+                    datetime.now() + timedelta(minutes=1),
+                    None,  # Missing timestamp
+                    datetime.now() + timedelta(minutes=3),
+                ],
+                "event_properties": ["{}"] * 4,
+                "user_properties": ["{}"] * 4,
+            }
+        )
 
         config = FunnelConfig()
         calculator = FunnelCalculator(config)
@@ -174,7 +182,7 @@ class TestRecoveryMechanisms:
 
         # Should recover and process valid data
         results = calculator.calculate_funnel_metrics(partial_data, steps)
-        
+
         # Should have some results from valid data
         assert isinstance(results.steps, list), "Should return valid results from partial data"
 
@@ -188,7 +196,7 @@ class TestUserFriendlyErrorMessages:
     def test_error_message_clarity(self):
         """Test that error messages are clear and actionable."""
         data_manager = DataSourceManager()
-        
+
         # Test scenarios with expected user-friendly messages
         error_scenarios = [
             (
@@ -200,17 +208,19 @@ class TestUserFriendlyErrorMessages:
 
         for test_data, should_contain, should_not_contain in error_scenarios:
             is_valid, message = data_manager.validate_event_data(test_data)
-            
+
             assert not is_valid, "Should be invalid"
-            
+
             message_lower = message.lower()
-            
+
             # Should contain helpful keywords
             for keyword in should_contain:
                 assert keyword in message_lower, f"Message should contain '{keyword}': {message}"
-            
+
             # Should not contain technical jargon
             for jargon in should_not_contain:
-                assert jargon not in message_lower, f"Message should not contain '{jargon}': {message}"
+                assert jargon not in message_lower, (
+                    f"Message should not contain '{jargon}': {message}"
+                )
 
-        print("✅ Error message clarity test passed") 
+        print("✅ Error message clarity test passed")
