@@ -28,6 +28,13 @@ class PathAnalyzer:
         self.config = config
         self.logger = logging.getLogger(__name__)
 
+        # Elite optimization: Enable global string cache for Polars operations
+        try:
+            pl.enable_string_cache()
+            self.logger.debug("Polars string cache enabled in PathAnalyzer")
+        except Exception as e:
+            self.logger.warning(f"Could not enable Polars string cache in PathAnalyzer: {e}")
+
     def analyze(
         self,
         funnel_events_df: pl.DataFrame,

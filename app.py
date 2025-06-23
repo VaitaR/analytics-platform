@@ -364,7 +364,11 @@ def create_simple_event_selector():
         if "event_statistics" not in st.session_state:
             st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
 
-        available_events = sorted(st.session_state.events_data["event_name"].unique())
+        # Cache the sorted list of unique event names for better UI performance
+        if "sorted_event_names" not in st.session_state:
+            st.session_state.sorted_event_names = sorted(st.session_state.events_data["event_name"].unique())
+
+        available_events = st.session_state.sorted_event_names
 
         if search_query:
             filtered_events = [
@@ -530,6 +534,9 @@ def main():
                     st.session_state.events_data = (
                         st.session_state.data_source_manager.get_sample_data()
                     )
+                    # Clear cached event names when new data is loaded
+                    if "sorted_event_names" in st.session_state:
+                        del st.session_state.sorted_event_names
                     # Refresh event statistics when new data is loaded
                     st.session_state.event_statistics = get_event_statistics(
                         st.session_state.events_data
@@ -549,6 +556,9 @@ def main():
                         st.session_state.data_source_manager.load_from_file(uploaded_file)
                     )
                     if not st.session_state.events_data.empty:
+                        # Clear cached event names when new data is loaded
+                        if "sorted_event_names" in st.session_state:
+                            del st.session_state.sorted_event_names
                         # Refresh event statistics when new data is loaded
                         st.session_state.event_statistics = get_event_statistics(
                             st.session_state.events_data
@@ -596,6 +606,9 @@ ORDER BY user_id, timestamp""",
                         st.session_state.data_source_manager.load_from_clickhouse(ch_query)
                     )
                     if not st.session_state.events_data.empty:
+                        # Clear cached event names when new data is loaded
+                        if "sorted_event_names" in st.session_state:
+                            del st.session_state.sorted_event_names
                         # Refresh event statistics when new data is loaded
                         st.session_state.event_statistics = get_event_statistics(
                             st.session_state.events_data
@@ -834,9 +847,24 @@ ORDER BY user_id, timestamp""",
 
                     # Monitor performance
                     calculation_start = time.time()
-                    st.session_state.analysis_results = calculator.calculate_funnel_metrics(
-                        st.session_state.events_data, st.session_state.funnel_steps
-                    )
+                    
+                    # Elite optimization: Use LazyFrame if available for Polars engine
+                    lazy_df = None
+                    if use_polars and hasattr(st.session_state.data_source_manager, '_last_lazy_df'):
+                        lazy_df = st.session_state.data_source_manager.get_lazy_frame()
+                        if lazy_df is not None:
+                            st.session_state.analysis_results = calculator.calculate_funnel_metrics(
+                                st.session_state.events_data, st.session_state.funnel_steps, lazy_df
+                            )
+                        else:
+                            st.session_state.analysis_results = calculator.calculate_funnel_metrics(
+                                st.session_state.events_data, st.session_state.funnel_steps
+                            )
+                    else:
+                        st.session_state.analysis_results = calculator.calculate_funnel_metrics(
+                            st.session_state.events_data, st.session_state.funnel_steps
+                        )
+                    
                     calculation_time = time.time() - calculation_start
 
                     # Store performance metrics in session state
@@ -1418,8 +1446,13 @@ ORDER BY user_id, timestamp""",
                         calculator = FunnelCalculator(st.session_state.funnel_config)
 
                     # Calculate timeseries metrics
+                    # Elite optimization: Use LazyFrame if available
+                    lazy_df = None
+                    if hasattr(st.session_state.data_source_manager, '_last_lazy_df'):
+                        lazy_df = st.session_state.data_source_manager.get_lazy_frame()
+                    
                     timeseries_data = calculator.calculate_timeseries_metrics(
-                        st.session_state.events_data, results.steps, polars_period
+                        st.session_state.events_data, results.steps, polars_period, lazy_df
                     )
 
                     if not timeseries_data.empty:

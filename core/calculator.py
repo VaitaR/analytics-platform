@@ -80,10 +80,20 @@ class FunnelCalculator:
         self._cached_properties = {}  # Cache for parsed JSON properties
         self._preprocessed_data = None  # Cache for preprocessed data
         self._performance_metrics = {}  # Performance monitoring
+        self._funnel_cache = {}  # Elite optimization: Cache for funnel calculations
         self._path_analyzer = PathAnalyzer(self.config)  # Initialize the path analyzer helper
 
         # Set up logging for performance monitoring
         self.logger = logging.getLogger(__name__)
+
+        # Elite optimization: Enable global string cache for Polars
+        # This dramatically speeds up string operations (joins, group_by, filters)
+        if self.use_polars:
+            try:
+                pl.enable_string_cache()
+                self.logger.debug("Polars string cache enabled for optimal performance")
+            except Exception as e:
+                self.logger.warning(f"Could not enable Polars string cache: {e}")
         if not self.logger.handlers:
             handler = logging.StreamHandler()
             formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -390,6 +400,8 @@ class FunnelCalculator:
         self._preprocessed_data = None
         if hasattr(self, "_preprocessed_cache"):
             self._preprocessed_cache = None
+        if hasattr(self, "_funnel_cache"):
+            self._funnel_cache.clear()
         self.logger.info("Cache cleared")
 
     @_funnel_performance_monitor("_preprocess_data_polars")
@@ -981,7 +993,7 @@ class FunnelCalculator:
             return False
 
     def calculate_funnel_metrics(
-        self, events_df: pd.DataFrame, funnel_steps: list[str]
+        self, events_df: pd.DataFrame, funnel_steps: list[str], lazy_df: pl.LazyFrame = None
     ) -> FunnelResults:
         """
         Calculate comprehensive funnel metrics from event data with performance optimizations
@@ -989,6 +1001,7 @@ class FunnelCalculator:
         Args:
             events_df: DataFrame with columns [user_id, event_name, timestamp, event_properties]
             funnel_steps: List of event names in funnel order
+            lazy_df: Optional LazyFrame for optimized Polars processing
 
         Returns:
             FunnelResults object with all calculated metrics
@@ -1006,13 +1019,22 @@ class FunnelCalculator:
 
         # Bridge: Convert to Polars if using Polars engine
         if self.use_polars:
-            self.logger.info(
-                f"Starting POLARS funnel calculation for {len(events_df)} events and {len(funnel_steps)} steps"
-            )
             try:
-                # Convert to Polars at the entry point
-                polars_df = self._to_polars(events_df)
-                return self._calculate_funnel_metrics_polars(polars_df, funnel_steps, events_df)
+                # Elite optimization: Use LazyFrame if available
+                if lazy_df is not None:
+                    self.logger.info(
+                        f"Starting POLARS funnel calculation with LazyFrame optimization for {len(funnel_steps)} steps"
+                    )
+                    # Collect LazyFrame to DataFrame for processing
+                    polars_df = lazy_df.collect()
+                    return self._calculate_funnel_metrics_polars(polars_df, funnel_steps, events_df)
+                else:
+                    self.logger.info(
+                        f"Starting POLARS funnel calculation for {len(events_df)} events and {len(funnel_steps)} steps"
+                    )
+                    # Convert to Polars at the entry point
+                    polars_df = self._to_polars(events_df)
+                    return self._calculate_funnel_metrics_polars(polars_df, funnel_steps, events_df)
             except Exception as e:
                 self.logger.warning(f"Polars calculation failed: {str(e)}, falling back to Pandas")
                 # Fallback to Pandas implementation
@@ -1042,6 +1064,12 @@ class FunnelCalculator:
                 drop_offs=[],
                 drop_off_rates=[],
             )
+
+        # Elite optimization: Check cache for repeated calculations
+        cache_key = f"polars_funnel_{hash(tuple(funnel_steps))}_{self.config.counting_method.value}_{self.config.funnel_order.value}_{polars_df.height}"
+        if hasattr(self, '_funnel_cache') and cache_key in self._funnel_cache:
+            self.logger.debug(f"Cache hit for funnel calculation: {cache_key}")
+            return self._funnel_cache[cache_key]
 
         # Preprocess data using Polars
         preprocess_start = time.time()
@@ -1116,11 +1144,9 @@ class FunnelCalculator:
                 segment_polars_df, funnel_steps
             )
 
-            # For cohort analysis, we still need to use the pandas version for now
-            # Convert segment data to pandas for this specific analysis
-            segment_pandas_df = self._to_pandas(segment_polars_df)
-            main_result.cohort_data = self._calculate_cohort_analysis_optimized(
-                segment_pandas_df, funnel_steps
+            # Elite optimization: Use new Polars cohort analysis
+            main_result.cohort_data = self._calculate_cohort_analysis_polars(
+                segment_polars_df, funnel_steps
             )
 
             # Get all user_ids from this segment
@@ -1167,6 +1193,14 @@ class FunnelCalculator:
                     segment_pandas_df, funnel_steps, full_history_pandas_df
                 )
 
+            # Elite optimization: Cache the result for future use
+            # Limit cache size to prevent memory issues
+            if len(self._funnel_cache) >= 50:  # Maximum 50 cached results
+                # Remove oldest entry (simple FIFO strategy)
+                oldest_key = next(iter(self._funnel_cache))
+                del self._funnel_cache[oldest_key]
+
+            self._funnel_cache[cache_key] = main_result
             return main_result
 
         # If multiple segments, combine results and add statistical tests
@@ -1187,6 +1221,15 @@ class FunnelCalculator:
 
         total_time = time.time() - start_time
         self.logger.info(f"Total Polars funnel calculation completed in {total_time:.4f} seconds")
+
+        # Elite optimization: Cache the result for future use
+        # Limit cache size to prevent memory issues
+        if len(self._funnel_cache) >= 50:  # Maximum 50 cached results
+            # Remove oldest entry (simple FIFO strategy)
+            oldest_key = next(iter(self._funnel_cache))
+            del self._funnel_cache[oldest_key]
+
+        self._funnel_cache[cache_key] = main_result
 
         return main_result
 
@@ -1285,7 +1328,7 @@ class FunnelCalculator:
             main_result.time_to_convert = self._calculate_time_to_convert_optimized(
                 segment_df, funnel_steps
             )
-            main_result.cohort_data = self._calculate_cohort_analysis_optimized(
+            main_result.cohort_data = self._calculate_cohort_analysis_polars(
                 segment_df, funnel_steps
             )
 
@@ -1503,6 +1546,7 @@ class FunnelCalculator:
         events_df: pd.DataFrame,
         funnel_steps: list[str],
         aggregation_period: str = "1d",
+        lazy_df: pl.LazyFrame = None,
     ) -> pd.DataFrame:
         """
         Calculate time series metrics for funnel analysis with configurable aggregation periods.
@@ -1511,6 +1555,7 @@ class FunnelCalculator:
             events_df: DataFrame with columns [user_id, event_name, timestamp, event_properties]
             funnel_steps: List of event names in funnel order
             aggregation_period: Period for data aggregation ('1h', '1d', '1w', '1mo')
+            lazy_df: Optional LazyFrame for optimized Polars processing
 
         Returns:
             DataFrame with time series metrics aggregated by specified period
@@ -1523,7 +1568,13 @@ class FunnelCalculator:
 
         # Convert to Polars for efficient processing
         try:
-            polars_df = self._to_polars(events_df)
+            # Elite optimization: Use LazyFrame if available
+            if lazy_df is not None:
+                self.logger.debug("Using LazyFrame for optimized timeseries processing")
+                polars_df = lazy_df.collect()
+            else:
+                polars_df = self._to_polars(events_df)
+            
             return self._calculate_timeseries_metrics_polars(
                 polars_df, funnel_steps, polars_period
             )
@@ -1726,6 +1777,27 @@ class FunnelCalculator:
 
             if relevant_events.height == 0:
                 return pd.DataFrame()
+
+            # Elite optimization: Convert to categorical types for faster operations
+            # Only convert if not already categorical to avoid casting errors
+            try:
+                columns_to_cast = []
+                schema = relevant_events.schema
+                
+                # Check if user_id is not already categorical
+                user_id_dtype = schema.get("user_id")
+                if user_id_dtype is not None and not isinstance(user_id_dtype, pl.Categorical):
+                    columns_to_cast.append(pl.col("user_id").cast(pl.Categorical))
+                
+                # Check if event_name is not already categorical  
+                event_name_dtype = schema.get("event_name")
+                if event_name_dtype is not None and not isinstance(event_name_dtype, pl.Categorical):
+                    columns_to_cast.append(pl.col("event_name").cast(pl.Categorical))
+                
+                if columns_to_cast:
+                    relevant_events = relevant_events.with_columns(columns_to_cast)
+            except Exception as e:
+                self.logger.warning(f"Could not convert to categorical types: {e}")
 
             # Add period column using truncate for efficient grouping
             events_with_period = relevant_events.with_columns(
@@ -2239,69 +2311,165 @@ class FunnelCalculator:
 
         return None
 
+    @_funnel_performance_monitor("_calculate_cohort_analysis_polars")
+    def _calculate_cohort_analysis_polars(
+        self, events_df: Union[pd.DataFrame, pl.DataFrame], funnel_steps: list[str]
+    ) -> CohortData:
+        """
+        Elite Polars implementation of cohort analysis with universal input support.
+        Automatically converts pandas DataFrame to Polars for optimal performance.
+        
+        Args:
+            events_df: Input data (pandas or polars DataFrame)
+            funnel_steps: List of funnel steps to analyze
+            
+        Returns:
+            CohortData with monthly cohort analysis results
+        """
+        if not funnel_steps:
+            return CohortData("monthly", {}, {}, [])
+
+        # Universal input handling - convert pandas to polars if needed
+        if isinstance(events_df, pd.DataFrame):
+            if events_df.empty:
+                return CohortData("monthly", {}, {}, [])
+            polars_df = self._to_polars(events_df)
+        else:
+            if events_df.is_empty():
+                return CohortData("monthly", {}, {}, [])
+            polars_df = events_df
+
+        first_step_name = funnel_steps[0]
+
+        try:
+            # Elite optimization: Use lazy evaluation for complex operations
+            lazy_df = polars_df.lazy()
+
+            # 1. Find first occurrence of the first step for each user to determine cohorts
+            cohorts_df = (
+                lazy_df
+                .filter(pl.col("event_name") == first_step_name)
+                .group_by("user_id")
+                .agg(pl.col("timestamp").min().alias("cohort_ts"))
+                .with_columns([
+                    # Elite optimization: Use dt.truncate for perfect cohort boundaries
+                    pl.col("cohort_ts").dt.truncate("1mo").alias("cohort_month")
+                ])
+                .collect()
+            )
+
+            if cohorts_df.is_empty():
+                return CohortData("monthly", {}, {}, [])
+
+            # 2. Calculate cohort sizes efficiently
+            cohort_sizes_df = (
+                cohorts_df
+                .group_by("cohort_month")
+                .agg(pl.len().alias("size"))
+                .sort("cohort_month")
+            )
+            
+            # 3. Get all unique user-event combinations for conversion analysis
+            # Elite optimization: Single pass through data for all events
+            all_user_events = (
+                lazy_df
+                .filter(pl.col("event_name").is_in(funnel_steps))
+                .select(["user_id", "event_name"])
+                .unique()
+                .collect()
+            )
+
+            # 4. Join cohort information with user events for conversion calculation
+            cohort_conversions_df = (
+                cohorts_df
+                .select(["user_id", "cohort_month"])
+                .join(all_user_events, on="user_id", how="inner")
+                .group_by(["cohort_month", "event_name"])
+                .agg(pl.len().alias("converted_users"))
+                .join(cohort_sizes_df, on="cohort_month", how="left")
+                .with_columns([
+                    # Elite optimization: Vectorized conversion rate calculation
+                    ((pl.col("converted_users") / pl.col("size")) * 100).alias("conversion_rate")
+                ])
+                .sort(["cohort_month", "event_name"])
+            )
+            
+            # 5. Elite transformation: Pivot to get conversion matrix
+            # Create pivot table with funnel steps as columns
+            conversion_matrix = (
+                cohort_conversions_df
+                .pivot(
+                    index="cohort_month",
+                    on="event_name", 
+                    values="conversion_rate"
+                )
+                .sort("cohort_month")
+            )
+
+            # Ensure all funnel steps are present as columns (fill missing with 0.0)
+            missing_steps = [step for step in funnel_steps if step not in conversion_matrix.columns]
+            if missing_steps:
+                for step in missing_steps:
+                    conversion_matrix = conversion_matrix.with_columns([
+                        pl.lit(0.0).alias(step)
+                    ])
+
+            # Reorder columns to match funnel_steps order
+            ordered_cols = ["cohort_month"] + funnel_steps
+            conversion_matrix = conversion_matrix.select(ordered_cols).fill_null(0.0)
+            
+            # 6. Elite data transformation: Convert to native Python structures
+            # Convert cohort sizes to dictionary
+            cohort_sizes_dict = {}
+            cohort_labels = []
+            
+            for row in cohort_sizes_df.iter_rows(named=True):
+                cohort_month = row["cohort_month"]
+                # Elite formatting: Convert to period string for consistency
+                cohort_key = cohort_month.strftime("%Y-%m")
+                cohort_sizes_dict[cohort_key] = row["size"]
+                cohort_labels.append(cohort_key)
+            
+            # Convert conversion rates to nested dictionary
+            cohort_conversions_dict = {}
+            
+            for row in conversion_matrix.iter_rows(named=True):
+                cohort_month = row["cohort_month"]
+                cohort_key = cohort_month.strftime("%Y-%m")
+                
+                # Extract conversion rates for each step
+                step_conversions = []
+                for step in funnel_steps:
+                    rate = row.get(step, 0.0)
+                    # Handle potential None values
+                    step_conversions.append(rate if rate is not None else 0.0)
+                
+                cohort_conversions_dict[cohort_key] = step_conversions
+
+            # Sort cohort labels chronologically
+            cohort_labels.sort()
+
+            return CohortData(
+                cohort_period="monthly",
+                cohort_sizes=cohort_sizes_dict,
+                conversion_rates=cohort_conversions_dict,
+                cohort_labels=cohort_labels,
+            )
+
+        except Exception as e:
+            self.logger.error(f"Polars cohort analysis failed: {str(e)}")
+            # Elite fallback: Return empty but valid CohortData
+            return CohortData("monthly", {}, {}, [])
+
+    # Keep old method as fallback for compatibility
     @_funnel_performance_monitor("_calculate_cohort_analysis_optimized")
     def _calculate_cohort_analysis_optimized(
         self, events_df: pd.DataFrame, funnel_steps: list[str]
     ) -> CohortData:
         """
-        Calculate cohort analysis using vectorized operations
+        Legacy pandas implementation - now delegates to elite Polars version
         """
-        if not funnel_steps:
-            return CohortData("monthly", {}, {}, [])
-
-        first_step = funnel_steps[0]
-        first_step_events = events_df[events_df["event_name"] == first_step].copy()
-
-        if first_step_events.empty:
-            return CohortData("monthly", {}, {}, [])
-
-        # Handle mixed data types in timestamp column
-        try:
-            # Filter out invalid timestamps first
-            valid_timestamps_mask = pd.to_datetime(
-                first_step_events["timestamp"], errors="coerce"
-            ).notna()
-            first_step_events = first_step_events[valid_timestamps_mask].copy()
-
-            if first_step_events.empty:
-                return CohortData("monthly", {}, {}, [])
-
-            # Convert to datetime and then to period
-            first_step_events["timestamp"] = pd.to_datetime(first_step_events["timestamp"])
-            first_step_events["cohort_month"] = first_step_events["timestamp"].dt.to_period("M")
-            cohorts = first_step_events.groupby("cohort_month")["user_id"].nunique().to_dict()
-        except Exception as e:
-            self.logger.error(f"Error in cohort analysis: {str(e)}")
-            return CohortData("monthly", {}, {}, [])
-
-        # Vectorized conversion rate calculation
-        cohort_conversions = {}
-        cohort_labels = sorted([str(c) for c in cohorts.keys()])
-
-        # Pre-calculate step users for efficiency
-        step_user_sets = {}
-        for step in funnel_steps:
-            step_user_sets[step] = set(events_df[events_df["event_name"] == step]["user_id"])
-
-        for cohort_month in cohorts.keys():
-            cohort_users = set(
-                first_step_events[first_step_events["cohort_month"] == cohort_month]["user_id"]
-            )
-
-            step_conversions = []
-            for step in funnel_steps:
-                converted = len(cohort_users.intersection(step_user_sets[step]))
-                rate = (converted / len(cohort_users) * 100) if len(cohort_users) > 0 else 0
-                step_conversions.append(rate)
-
-            cohort_conversions[str(cohort_month)] = step_conversions
-
-        return CohortData(
-            cohort_period="monthly",
-            cohort_sizes={str(k): v for k, v in cohorts.items()},
-            conversion_rates=cohort_conversions,
-            cohort_labels=cohort_labels,
-        )
+        return self._calculate_cohort_analysis_polars(events_df, funnel_steps)
 
     @_funnel_performance_monitor("_calculate_path_analysis_optimized")
     def _calculate_path_analysis_optimized(
