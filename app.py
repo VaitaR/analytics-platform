@@ -222,9 +222,9 @@ def get_comprehensive_performance_analysis() -> dict[str, Any]:
     if hasattr(st.session_state, "last_calculator") and hasattr(
         st.session_state.last_calculator, "_performance_metrics"
     ):
-        analysis["funnel_calculator_metrics"] = (
-            st.session_state.last_calculator._performance_metrics
-        )
+        analysis[
+            "funnel_calculator_metrics"
+        ] = st.session_state.last_calculator._performance_metrics
 
         # Get bottleneck analysis from calculator
         bottleneck_analysis = st.session_state.last_calculator.get_bottleneck_analysis()
@@ -341,11 +341,15 @@ def create_simple_event_selector():
 
     # Показываем прогресс
     if len(st.session_state.funnel_steps) == 0:
-        st.info("👇 Select events below to build your funnel. You need at least 2 events to create a funnel.")
+        st.info(
+            "👇 Select events below to build your funnel. You need at least 2 events to create a funnel."
+        )
     elif len(st.session_state.funnel_steps) == 1:
         st.info("👇 Select one more event to complete your funnel (minimum 2 events required).")
     else:
-        st.success(f"✅ Funnel ready with {len(st.session_state.funnel_steps)} steps! You can add more events or proceed to configuration.")
+        st.success(
+            f"✅ Funnel ready with {len(st.session_state.funnel_steps)} steps! You can add more events or proceed to configuration."
+        )
 
     # Main layout - более широкое использование пространства
     col_events, col_funnel = st.columns([3, 2])  # Больше места для списка событий
@@ -358,7 +362,7 @@ def create_simple_event_selector():
             "🔍 Search Events",
             placeholder="Start typing to filter events...",
             key="event_search",
-            help="Search by event name to quickly find what you need"
+            help="Search by event name to quickly find what you need",
         )
 
         if "event_statistics" not in st.session_state:
@@ -366,7 +370,9 @@ def create_simple_event_selector():
 
         # Cache the sorted list of unique event names for better UI performance
         if "sorted_event_names" not in st.session_state:
-            st.session_state.sorted_event_names = sorted(st.session_state.events_data["event_name"].unique())
+            st.session_state.sorted_event_names = sorted(
+                st.session_state.events_data["event_name"].unique()
+            )
 
         available_events = st.session_state.sorted_event_names
 
@@ -401,19 +407,21 @@ def create_simple_event_selector():
                                 key=f"event_cb_{event.replace(' ', '_').replace('-', '_')}",
                                 on_change=toggle_event_in_funnel,
                                 args=(event,),
-                                help=f"Click to {'remove from' if is_selected else 'add to'} funnel"
+                                help=f"Click to {'remove from' if is_selected else 'add to'} funnel",
                             )
 
                             # Показываем статистику под названием события
                             if stats:
-                                st.caption(f"👥 {stats['unique_users']:,} users • 📊 {stats['user_coverage']:.1f}% coverage")
+                                st.caption(
+                                    f"👥 {stats['unique_users']:,} users • 📊 {stats['user_coverage']:.1f}% coverage"
+                                )
 
                         with event_col2:
                             # Индикатор популярности события
                             if stats:
-                                if stats['user_coverage'] > 50:
+                                if stats["user_coverage"] > 50:
                                     st.markdown("🔥")  # Популярное событие
-                                elif stats['user_coverage'] > 20:
+                                elif stats["user_coverage"] > 20:
                                     st.markdown("📈")  # Умеренно популярное
                                 else:
                                     st.markdown("📉")  # Редкое событие
@@ -472,7 +480,7 @@ def create_simple_event_selector():
                 if i < len(st.session_state.funnel_steps) - 1:
                     st.markdown(
                         '<div style="text-align: center; color: #888; font-size: 1.2em;">⬇️</div>',
-                        unsafe_allow_html=True
+                        unsafe_allow_html=True,
                     )
 
             st.markdown("---")
@@ -486,7 +494,7 @@ def create_simple_event_selector():
                     key="clear_all_button",
                     on_click=clear_all_steps,
                     use_container_width=True,
-                    help="Remove all events from funnel"
+                    help="Remove all events from funnel",
                 )
 
             with funnel_col2:
@@ -500,7 +508,9 @@ def create_simple_event_selector():
             if len(st.session_state.funnel_steps) >= 2:
                 st.markdown("**Funnel Summary:**")
                 st.markdown(f"• **{len(st.session_state.funnel_steps)} steps** in your funnel")
-                st.markdown(f"• **{st.session_state.funnel_steps[0]}** → **{st.session_state.funnel_steps[-1]}**")
+                st.markdown(
+                    f"• **{st.session_state.funnel_steps[0]}** → **{st.session_state.funnel_steps[-1]}**"
+                )
                 st.markdown("• Ready for analysis configuration!")
 
 
@@ -792,8 +802,10 @@ ORDER BY user_id, timestamp""",
                                 prop_type, prop_name = selected_property.split("_", 1)
 
                                 # Get available values for this property
-                                prop_values = st.session_state.data_source_manager.get_property_values(
-                                    st.session_state.events_data, prop_name, prop_type
+                                prop_values = (
+                                    st.session_state.data_source_manager.get_property_values(
+                                        st.session_state.events_data, prop_name, prop_type
+                                    )
                                 )
 
                                 if prop_values:
@@ -806,9 +818,7 @@ ORDER BY user_id, timestamp""",
             # Большая заметная кнопка анализа
             st.markdown("---")
             submitted = st.form_submit_button(
-                label="🚀 Run Funnel Analysis",
-                type="primary",
-                use_container_width=True
+                label="🚀 Run Funnel Analysis", type="primary", use_container_width=True
             )
 
         # Handle form submission - centralized analysis logic
@@ -847,24 +857,32 @@ ORDER BY user_id, timestamp""",
 
                     # Monitor performance
                     calculation_start = time.time()
-                    
+
                     # Elite optimization: Use LazyFrame if available for Polars engine
                     lazy_df = None
-                    if use_polars and hasattr(st.session_state.data_source_manager, '_last_lazy_df'):
+                    if use_polars and hasattr(
+                        st.session_state.data_source_manager, "_last_lazy_df"
+                    ):
                         lazy_df = st.session_state.data_source_manager.get_lazy_frame()
                         if lazy_df is not None:
-                            st.session_state.analysis_results = calculator.calculate_funnel_metrics(
-                                st.session_state.events_data, st.session_state.funnel_steps, lazy_df
+                            st.session_state.analysis_results = (
+                                calculator.calculate_funnel_metrics(
+                                    st.session_state.events_data,
+                                    st.session_state.funnel_steps,
+                                    lazy_df,
+                                )
                             )
                         else:
-                            st.session_state.analysis_results = calculator.calculate_funnel_metrics(
-                                st.session_state.events_data, st.session_state.funnel_steps
+                            st.session_state.analysis_results = (
+                                calculator.calculate_funnel_metrics(
+                                    st.session_state.events_data, st.session_state.funnel_steps
+                                )
                             )
                     else:
                         st.session_state.analysis_results = calculator.calculate_funnel_metrics(
                             st.session_state.events_data, st.session_state.funnel_steps
                         )
-                    
+
                     calculation_time = time.time() - calculation_start
 
                     # Store performance metrics in session state
@@ -885,9 +903,9 @@ ORDER BY user_id, timestamp""",
 
                     # Keep only last 10 calculations
                     if len(st.session_state.performance_history) > 10:
-                        st.session_state.performance_history = st.session_state.performance_history[
-                            -10:
-                        ]
+                        st.session_state.performance_history = (
+                            st.session_state.performance_history[-10:]
+                        )
 
                     st.toast(
                         f"✅ {engine_used} analysis completed in {calculation_time:.2f}s!",
@@ -959,9 +977,7 @@ ORDER BY user_id, timestamp""",
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
-            overall_conversion = (
-                results.conversion_rates[-1] if results.conversion_rates else 0
-            )
+            overall_conversion = results.conversion_rates[-1] if results.conversion_rates else 0
             st.metric("Overall Conversion", f"{overall_conversion:.1f}%")
 
         with col2:
@@ -1032,9 +1048,7 @@ ORDER BY user_id, timestamp""",
                 segment_summary = []
                 for segment_name, counts in results.segment_data.items():
                     if counts:
-                        overall_conversion = (
-                            (counts[-1] / counts[0] * 100) if counts[0] > 0 else 0
-                        )
+                        overall_conversion = (counts[-1] / counts[0] * 100) if counts[0] > 0 else 0
                         segment_summary.append(
                             {
                                 "Segment": segment_name,
@@ -1065,9 +1079,7 @@ ORDER BY user_id, timestamp""",
                     results.conversion_rates[i] if i < len(results.conversion_rates) else 0
                 )
                 drop_offs = results.drop_offs[i] if i < len(results.drop_offs) else 0
-                drop_off_rate = (
-                    results.drop_off_rates[i] if i < len(results.drop_off_rates) else 0
-                )
+                drop_off_rate = results.drop_off_rates[i] if i < len(results.drop_off_rates) else 0
 
                 # Advanced analytics
                 # Average views per user (simulate realistic data)
@@ -1140,29 +1152,19 @@ ORDER BY user_id, timestamp""",
                 column_config={
                     "Step": st.column_config.TextColumn("🎯 Funnel Step", width="medium"),
                     "Users": st.column_config.TextColumn("👥 Users", width="small"),
-                    "Conversion Rate": st.column_config.TextColumn(
-                        "📈 Conv. Rate", width="small"
-                    ),
+                    "Conversion Rate": st.column_config.TextColumn("📈 Conv. Rate", width="small"),
                     "Drop-offs": st.column_config.TextColumn("🚪 Drop-offs", width="small"),
-                    "Drop-off Rate": st.column_config.TextColumn(
-                        "📉 Drop Rate", width="small"
-                    ),
-                    "Avg Views/User": st.column_config.TextColumn(
-                        "👁️ Avg Views", width="small"
-                    ),
+                    "Drop-off Rate": st.column_config.TextColumn("📉 Drop Rate", width="small"),
+                    "Avg Views/User": st.column_config.TextColumn("👁️ Avg Views", width="small"),
                     "Avg Time": st.column_config.TextColumn("⏱️ Avg Time", width="small"),
-                    "Median Time": st.column_config.TextColumn(
-                        "📊 Median Time", width="small"
-                    ),
+                    "Median Time": st.column_config.TextColumn("📊 Median Time", width="small"),
                     "Engagement Score": st.column_config.TextColumn(
                         "🎯 Engagement", width="small"
                     ),
                     "Conversion Probability": st.column_config.TextColumn(
                         "🎲 Conv. Prob.", width="small"
                     ),
-                    "Step Efficiency": st.column_config.TextColumn(
-                        "⚡ Efficiency", width="small"
-                    ),
+                    "Step Efficiency": st.column_config.TextColumn("⚡ Efficiency", width="small"),
                 },
             )
 
@@ -1219,9 +1221,7 @@ ORDER BY user_id, timestamp""",
             with col1:
                 # Overall funnel efficiency
                 if results.users_count and len(results.users_count) > 1:
-                    overall_efficiency = (
-                        results.users_count[-1] / results.users_count[0]
-                    ) * 100
+                    overall_efficiency = (results.users_count[-1] / results.users_count[0]) * 100
                     st.metric(
                         label="🏆 Overall Efficiency",
                         value=f"{overall_efficiency:.1f}%",
@@ -1448,9 +1448,9 @@ ORDER BY user_id, timestamp""",
                     # Calculate timeseries metrics
                     # Elite optimization: Use LazyFrame if available
                     lazy_df = None
-                    if hasattr(st.session_state.data_source_manager, '_last_lazy_df'):
+                    if hasattr(st.session_state.data_source_manager, "_last_lazy_df"):
                         lazy_df = st.session_state.data_source_manager.get_lazy_frame()
-                    
+
                     timeseries_data = calculator.calculate_timeseries_metrics(
                         st.session_state.events_data, results.steps, polars_period, lazy_df
                     )
@@ -1492,9 +1492,7 @@ ORDER BY user_id, timestamp""",
                                     "📍 **Daily Activity View**: Metrics below show platform usage by event dates"
                                 )
                             else:
-                                st.caption(
-                                    "📍 **Legacy View**: Using backward-compatible metrics"
-                                )
+                                st.caption("📍 **Legacy View**: Using backward-compatible metrics")
 
                             col1, col2, col3, col4 = st.columns(4)
 
@@ -1511,9 +1509,7 @@ ORDER BY user_id, timestamp""",
                                 # Enhanced calculation with clear labeling for different metric types
                                 if secondary_metric == "conversion_rate":
                                     # For cohort conversion rate, calculate properly weighted average
-                                    total_started = timeseries_data[
-                                        "started_funnel_users"
-                                    ].sum()
+                                    total_started = timeseries_data["started_funnel_users"].sum()
                                     total_completed = timeseries_data[
                                         "completed_funnel_users"
                                     ].sum()
@@ -1568,11 +1564,7 @@ ORDER BY user_id, timestamp""",
                                             "completed_funnel_users"
                                         ].sum()
                                         recent_rate = (
-                                            (
-                                                recent_total_completed
-                                                / recent_total_started
-                                                * 100
-                                            )
+                                            (recent_total_completed / recent_total_started * 100)
                                             if recent_total_started > 0
                                             else 0
                                         )
@@ -1584,11 +1576,7 @@ ORDER BY user_id, timestamp""",
                                             "completed_funnel_users"
                                         ].sum()
                                         earlier_rate = (
-                                            (
-                                                earlier_total_completed
-                                                / earlier_total_started
-                                                * 100
-                                            )
+                                            (earlier_total_completed / earlier_total_started * 100)
                                             if earlier_total_started > 0
                                             else 0
                                         )
@@ -1802,9 +1790,7 @@ ORDER BY user_id, timestamp""",
                 # User Journey Flow takes full width for better visualization
                 st.markdown("**User Journey Flow**")
                 # Use enhanced path analysis chart with full container width
-                path_chart = visualizer.create_enhanced_path_analysis_chart(
-                    results.path_analysis
-                )
+                path_chart = visualizer.create_enhanced_path_analysis_chart(results.path_analysis)
                 st.plotly_chart(path_chart, use_container_width=True)
 
                 # Between-Steps Events section moved below for better layout
@@ -2267,9 +2253,7 @@ ORDER BY user_id, timestamp""",
                             st.metric("Critical Functions", f"{critical_pct:.1f}%")
 
                         # Bottleneck table
-                        st.markdown(
-                            "**⚠️ Function Performance Breakdown (Ordered by Total Time)**"
-                        )
+                        st.markdown("**⚠️ Function Performance Breakdown (Ordered by Total Time)**")
 
                         bottleneck_table_data = []
                         for func_data in bottleneck_analysis["bottlenecks"]:

@@ -243,24 +243,23 @@ def compare_path_analysis_results(
     """Compare path analysis results from Pandas and Polars implementations"""
 
     # Compare dropoff_paths
-    assert set(pandas_result.dropoff_paths.keys()) == set(polars_result.dropoff_paths.keys()), (
-        f"Dropoff paths keys don't match:\nPandas keys: {set(pandas_result.dropoff_paths.keys())}\nPolars keys: {set(polars_result.dropoff_paths.keys())}"
-    )
+    assert (
+        set(pandas_result.dropoff_paths.keys()) == set(polars_result.dropoff_paths.keys())
+    ), f"Dropoff paths keys don't match:\nPandas keys: {set(pandas_result.dropoff_paths.keys())}\nPolars keys: {set(polars_result.dropoff_paths.keys())}"
 
     for step in pandas_result.dropoff_paths:
         pandas_paths = pandas_result.dropoff_paths[step]
         polars_paths = polars_result.dropoff_paths[step]
 
-        assert pandas_paths == polars_paths, (
-            f"Dropoff paths for step '{step}' don't match:\nPandas: {pandas_paths}\nPolars: {polars_paths}"
-        )
+        assert (
+            pandas_paths == polars_paths
+        ), f"Dropoff paths for step '{step}' don't match:\nPandas: {pandas_paths}\nPolars: {polars_paths}"
 
         # Compare between_steps_events
-        assert set(pandas_result.between_steps_events.keys()) == set(
-            polars_result.between_steps_events.keys()
-        ), (
-            f"Between steps events keys don't match:\nPandas keys: {set(pandas_result.between_steps_events.keys())}\nPolars keys: {set(polars_result.between_steps_events.keys())}"
-        )
+        assert (
+            set(pandas_result.between_steps_events.keys())
+            == set(polars_result.between_steps_events.keys())
+        ), f"Between steps events keys don't match:\nPandas keys: {set(pandas_result.between_steps_events.keys())}\nPolars keys: {set(polars_result.between_steps_events.keys())}"
 
         # For the purposes of this test, we allow Polars implementation to return empty dictionaries
         # This is because the specific test case with ReentryMode.OPTIMIZED_REENTRY is problematic
@@ -721,21 +720,21 @@ def test_polars_function_sequence():
 
         # Check if expected functions were called in order
         for expected_func in expected_sequence:
-            assert expected_func in call_sequence, (
-                f"Expected function {expected_func} was not called"
-            )
+            assert (
+                expected_func in call_sequence
+            ), f"Expected function {expected_func} was not called"
 
         # Check proper ordering of key functions
         to_polars_idx = call_sequence.index("_to_polars")
         calc_metrics_idx = call_sequence.index("_calculate_funnel_metrics_polars")
         preprocess_idx = call_sequence.index("_preprocess_data_polars")
 
-        assert to_polars_idx < calc_metrics_idx, (
-            "Conversion to Polars must happen before calculation"
-        )
-        assert preprocess_idx < calc_metrics_idx or preprocess_idx > calc_metrics_idx, (
-            "Preprocessing may happen before or inside the calculation function"
-        )
+        assert (
+            to_polars_idx < calc_metrics_idx
+        ), "Conversion to Polars must happen before calculation"
+        assert (
+            preprocess_idx < calc_metrics_idx or preprocess_idx > calc_metrics_idx
+        ), "Preprocessing may happen before or inside the calculation function"
 
         print("✅ Function call sequence verified")
 

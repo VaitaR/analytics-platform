@@ -157,25 +157,25 @@ def test_comprehensive_ui_improvements():
 
         # Verify cohort logic
         assert row["started_funnel_users"] > 0, f"Day {date} should have signups"
-        assert row["conversion_rate"] >= 0 and row["conversion_rate"] <= 100, (
-            f"Conversion rate must be 0-100%, got {row['conversion_rate']}"
-        )
+        assert (
+            row["conversion_rate"] >= 0 and row["conversion_rate"] <= 100
+        ), f"Conversion rate must be 0-100%, got {row['conversion_rate']}"
 
         # Verify daily metrics make sense
-        assert row["daily_active_users"] >= row["started_funnel_users"], (
-            "Daily active users should be >= cohort starters"
-        )
-        assert row["daily_events_total"] >= row["daily_active_users"], (
-            "Daily events should be >= daily users"
-        )
+        assert (
+            row["daily_active_users"] >= row["started_funnel_users"]
+        ), "Daily active users should be >= cohort starters"
+        assert (
+            row["daily_events_total"] >= row["daily_active_users"]
+        ), "Daily events should be >= daily users"
 
         # Verify backward compatibility
-        assert row["total_unique_users"] == row["daily_active_users"], (
-            "Legacy metrics should match daily metrics"
-        )
-        assert row["total_events"] == row["daily_events_total"], (
-            "Legacy events should match daily events"
-        )
+        assert (
+            row["total_unique_users"] == row["daily_active_users"]
+        ), "Legacy metrics should match daily metrics"
+        assert (
+            row["total_events"] == row["daily_events_total"]
+        ), "Legacy events should match daily events"
 
         print()
 
@@ -325,9 +325,9 @@ def test_visualization_title_improvements():
         actual_title = chart.layout.title.text
 
         print(f"✅ Chart title: '{actual_title}'")
-        assert expected_title in actual_title or "Time Series" in actual_title, (
-            f"Chart should have meaningful title, got: {actual_title}"
-        )
+        assert (
+            expected_title in actual_title or "Time Series" in actual_title
+        ), f"Chart should have meaningful title, got: {actual_title}"
 
     print("✅ Visualization title improvements working correctly!")
 

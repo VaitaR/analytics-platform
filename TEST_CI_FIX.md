@@ -26,4 +26,4 @@ python run_tests.py --coverage --report
 # 295 passed, 0 failed, 0 errors, 1 skipped ✅
 ```
 
-Время проверить GitHub Actions! 🚀 
+Время проверить GitHub Actions! 🚀

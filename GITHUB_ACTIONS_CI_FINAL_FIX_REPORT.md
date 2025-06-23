@@ -53,13 +53,13 @@
 # OLD (incorrect)
 "event": event
 
-# NEW (correct)  
+# NEW (correct)
 "event_name": event
 ```
 
 ### Test Data Files Generated
 - `demo_events.csv` (50,000 events)
-- `sample_funnel.csv` (10,000 events) 
+- `sample_funnel.csv` (10,000 events)
 - `time_series_data.csv` (20,000 events)
 - `segment_data.csv` (5,000 events)
 - `ab_test_data.csv` (8,000 events)
@@ -94,4 +94,4 @@ This resolves the CI/CD pipeline issues and ensures consistent test results acro
 
 ---
 *Report generated: 2025-06-20*
-*Status: Awaiting GitHub Actions validation* 
+*Status: Awaiting GitHub Actions validation*

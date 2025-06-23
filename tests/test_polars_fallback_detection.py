@@ -237,12 +237,12 @@ class TestPolarsFallbackDetection:
 
         # Check logs for fallback messages
         log_output = log_capture.getvalue()
-        assert "falling back to pandas" not in log_output.lower(), (
-            "Detected fallback to Pandas in main funnel calculation"
-        )
-        assert "falling back to standard polars" not in log_output.lower(), (
-            "Detected fallback from optimized Polars to standard Polars"
-        )
+        assert (
+            "falling back to pandas" not in log_output.lower()
+        ), "Detected fallback to Pandas in main funnel calculation"
+        assert (
+            "falling back to standard polars" not in log_output.lower()
+        ), "Detected fallback from optimized Polars to standard Polars"
 
         # Make sure we got valid results
         assert results is not None
@@ -314,9 +314,9 @@ class TestPolarsFallbackDetection:
 
             # Check logs for fallback messages
             log_output = log_capture.getvalue()
-            assert "falling back" not in log_output.lower(), (
-                "Detected fallback in path analysis with LazyFrame"
-            )
+            assert (
+                "falling back" not in log_output.lower()
+            ), "Detected fallback in path analysis with LazyFrame"
 
         except Exception as e:
             pytest.fail(f"Path analysis failed with LazyFrame: {str(e)}")
@@ -616,9 +616,9 @@ class TestPolarsFallbackDetection:
                 "These errors indicate Python standard library functions being used instead of Polars native expressions."
             )
             # Make the test fail only when expression ambiguity errors are found
-            assert False, (
-                "Critical unhandled Polars expression ambiguity errors detected - fix required"
-            )
+            assert (
+                False
+            ), "Critical unhandled Polars expression ambiguity errors detected - fix required"
         elif unhandled_critical_errors_found:
             print(
                 "\n⚠️ WARNING: Some potential issues were detected, but they are properly handled with fallbacks"

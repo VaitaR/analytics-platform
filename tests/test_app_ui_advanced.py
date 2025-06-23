@@ -40,9 +40,9 @@ class AdvancedStreamlitPageObject:
         self.at.run()
 
         # Verify error handling
-        assert self.at.session_state.events_data.empty, (
-            "Invalid data should result in empty DataFrame"
-        )
+        assert (
+            self.at.session_state.events_data.empty
+        ), "Invalid data should result in empty DataFrame"
 
     def test_session_state_isolation(self) -> None:
         """Test that session state is properly isolated and managed."""
@@ -78,9 +78,9 @@ class AdvancedStreamlitPageObject:
 
         # Verify configuration was saved
         assert len(self.at.session_state.saved_configurations) > 0, "Configuration should be saved"
-        assert str(test_steps) in str(self.at.session_state.saved_configurations), (
-            "Steps should be in saved config"
-        )
+        assert str(test_steps) in str(
+            self.at.session_state.saved_configurations
+        ), "Steps should be in saved config"
 
     def test_data_validation_pipeline(self) -> None:
         """Test data validation and sanitization."""
@@ -98,9 +98,9 @@ class AdvancedStreamlitPageObject:
 
         # Verify data was accepted
         assert not self.at.session_state.events_data.empty, "Valid data should be loaded"
-        assert "user_id" in self.at.session_state.events_data.columns, (
-            "Required columns should exist"
-        )
+        assert (
+            "user_id" in self.at.session_state.events_data.columns
+        ), "Required columns should exist"
 
     def test_performance_monitoring(self) -> None:
         """Test performance monitoring and optimization features."""
@@ -123,12 +123,12 @@ class AdvancedStreamlitPageObject:
         self.at.run()
 
         # Verify performance tracking
-        assert len(self.at.session_state.performance_history) > 0, (
-            "Performance history should be tracked"
-        )
-        assert "calculation_time" in self.at.session_state.performance_history[0], (
-            "Performance metrics should be recorded"
-        )
+        assert (
+            len(self.at.session_state.performance_history) > 0
+        ), "Performance history should be tracked"
+        assert (
+            "calculation_time" in self.at.session_state.performance_history[0]
+        ), "Performance metrics should be recorded"
 
     def test_cache_management(self) -> None:
         """Test cache management and invalidation."""
@@ -305,9 +305,10 @@ class TestAdvancedStreamlitArchitecture:
         at.run()
 
         # Verify state persists
-        assert at.session_state.funnel_steps == ["Step 1", "Step 2"], (
-            "State should persist across interactions"
-        )
+        assert at.session_state.funnel_steps == [
+            "Step 1",
+            "Step 2",
+        ], "State should persist across interactions"
 
     def test_concurrent_user_simulation(self):
         """Test behavior under concurrent user scenarios (simulated)."""

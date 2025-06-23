@@ -195,4 +195,4 @@ make clean && make install-dev && make check && make test
 - ⚠️ Версии Python (pyproject.toml + workflows)
 - ⚠️ Прямые команды в workflows (если не используют make)
 
-**Рекомендация:** Всегда используйте `make` команды в GitHub workflows для максимальной синхронизации! 
+**Рекомендация:** Всегда используйте `make` команды в GitHub workflows для максимальной синхронизации!

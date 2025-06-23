@@ -49,12 +49,12 @@ class TestDataSourceErrorHandling:
                 result_df = data_manager.load_from_file(mock_file)
 
                 # Should return empty DataFrame
-                assert isinstance(result_df, pd.DataFrame), (
-                    f"Should return DataFrame for {type(exception).__name__}"
-                )
-                assert len(result_df) == 0, (
-                    f"Should return empty DataFrame for {type(exception).__name__}"
-                )
+                assert isinstance(
+                    result_df, pd.DataFrame
+                ), f"Should return DataFrame for {type(exception).__name__}"
+                assert (
+                    len(result_df) == 0
+                ), f"Should return empty DataFrame for {type(exception).__name__}"
 
         print("✅ File loading exception handling test passed")
 
@@ -83,9 +83,9 @@ class TestDataSourceErrorHandling:
             # Should contain user-friendly keywords
             message_lower = message.lower()
             for keyword in expected_keywords:
-                assert keyword in message_lower, (
-                    f"Error message should contain '{keyword}': {message}"
-                )
+                assert (
+                    keyword in message_lower
+                ), f"Error message should contain '{keyword}': {message}"
 
         print("✅ Data validation error messages test passed")
 
@@ -144,9 +144,9 @@ class TestFunnelCalculatorErrorHandling:
 
             # Should return appropriate structure
             if not steps:
-                assert results.steps == [], (
-                    f"Should return empty steps for invalid configuration: {steps}"
-                )
+                assert (
+                    results.steps == []
+                ), f"Should return empty steps for invalid configuration: {steps}"
             else:
                 # Should filter out non-existent events
                 assert isinstance(results.steps, list), f"Should return list for steps: {steps}"
@@ -219,8 +219,8 @@ class TestUserFriendlyErrorMessages:
 
             # Should not contain technical jargon
             for jargon in should_not_contain:
-                assert jargon not in message_lower, (
-                    f"Message should not contain '{jargon}': {message}"
-                )
+                assert (
+                    jargon not in message_lower
+                ), f"Message should not contain '{jargon}': {message}"
 
         print("✅ Error message clarity test passed")
