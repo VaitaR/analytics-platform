@@ -620,6 +620,7 @@ class PathAnalyzer:
         min_frequency: int = 10,
         include_cycles: bool = True,
         time_window_hours: Optional[int] = None,
+        filter_events: Optional[list[str]] = None,
     ) -> ProcessMiningData:
         """
         Automatic process discovery from user events using advanced algorithms
@@ -629,6 +630,7 @@ class PathAnalyzer:
             min_frequency: Minimum frequency to include transition
             include_cycles: Whether to detect cycles and loops
             time_window_hours: Optional time window for process analysis
+            filter_events: Optional list of event names to filter analysis to (e.g., funnel events only)
 
         Returns:
             ProcessMiningData with complete process structure
@@ -657,6 +659,10 @@ class PathAnalyzer:
         if time_window_hours:
             cutoff_time = datetime.now() - timedelta(hours=time_window_hours)
             events_pl = events_pl.filter(pl.col("timestamp") >= cutoff_time)
+
+        # Filter by specific events if specified (e.g., funnel events only)
+        if filter_events:
+            events_pl = events_pl.filter(pl.col("event_name").is_in(filter_events))
 
         # Build user journeys (optimized) - avoid dictionary conversion when possible
         journey_df = self._build_user_journeys_optimized(events_pl)
@@ -765,7 +771,7 @@ class PathAnalyzer:
         return journeys
 
     def _discover_activities(
-        self, events_pl: pl.DataFrame, user_journeys: dict[str, list[dict[str, Any]]]
+        self, events_pl: pl.DataFrame, user_journeys: Optional[dict[str, list[dict[str, Any]]]] = None
     ) -> dict[str, dict[str, Any]]:
         """Discover activities and their characteristics - optimized version"""
         # Get optimized journey DataFrame
