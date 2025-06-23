@@ -1043,7 +1043,7 @@ class FunnelCalculator:
             # Use original Pandas implementation
             return self._calculate_funnel_metrics_pandas(events_df, funnel_steps)
 
-    @_funnel_performance_monitor("calculate_funnel_metrics_polars")
+    @_funnel_performance_monitor("_calculate_funnel_metrics_polars")
     def _calculate_funnel_metrics_polars(
         self,
         polars_df: pl.DataFrame,
@@ -1233,7 +1233,7 @@ class FunnelCalculator:
 
         return main_result
 
-    @_funnel_performance_monitor("calculate_funnel_metrics_pandas")
+    @_funnel_performance_monitor("_calculate_funnel_metrics_pandas")
     def _calculate_funnel_metrics_pandas(
         self, events_df: pd.DataFrame, funnel_steps: list[str]
     ) -> FunnelResults:
