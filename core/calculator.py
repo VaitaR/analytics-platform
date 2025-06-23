@@ -1027,14 +1027,18 @@ class FunnelCalculator:
                     )
                     # Collect LazyFrame to DataFrame for processing
                     polars_df = lazy_df.collect()
-                    return self._calculate_funnel_metrics_polars(polars_df, funnel_steps, events_df)
+                    return self._calculate_funnel_metrics_polars(
+                        polars_df, funnel_steps, events_df
+                    )
                 else:
                     self.logger.info(
                         f"Starting POLARS funnel calculation for {len(events_df)} events and {len(funnel_steps)} steps"
                     )
                     # Convert to Polars at the entry point
                     polars_df = self._to_polars(events_df)
-                    return self._calculate_funnel_metrics_polars(polars_df, funnel_steps, events_df)
+                    return self._calculate_funnel_metrics_polars(
+                        polars_df, funnel_steps, events_df
+                    )
             except Exception as e:
                 self.logger.warning(f"Polars calculation failed: {str(e)}, falling back to Pandas")
                 # Fallback to Pandas implementation
@@ -1067,7 +1071,7 @@ class FunnelCalculator:
 
         # Elite optimization: Check cache for repeated calculations
         cache_key = f"polars_funnel_{hash(tuple(funnel_steps))}_{self.config.counting_method.value}_{self.config.funnel_order.value}_{polars_df.height}"
-        if hasattr(self, '_funnel_cache') and cache_key in self._funnel_cache:
+        if hasattr(self, "_funnel_cache") and cache_key in self._funnel_cache:
             self.logger.debug(f"Cache hit for funnel calculation: {cache_key}")
             return self._funnel_cache[cache_key]
 
@@ -1574,7 +1578,7 @@ class FunnelCalculator:
                 polars_df = lazy_df.collect()
             else:
                 polars_df = self._to_polars(events_df)
-            
+
             return self._calculate_timeseries_metrics_polars(
                 polars_df, funnel_steps, polars_period
             )
@@ -1783,17 +1787,19 @@ class FunnelCalculator:
             try:
                 columns_to_cast = []
                 schema = relevant_events.schema
-                
+
                 # Check if user_id is not already categorical
                 user_id_dtype = schema.get("user_id")
                 if user_id_dtype is not None and not isinstance(user_id_dtype, pl.Categorical):
                     columns_to_cast.append(pl.col("user_id").cast(pl.Categorical))
-                
-                # Check if event_name is not already categorical  
+
+                # Check if event_name is not already categorical
                 event_name_dtype = schema.get("event_name")
-                if event_name_dtype is not None and not isinstance(event_name_dtype, pl.Categorical):
+                if event_name_dtype is not None and not isinstance(
+                    event_name_dtype, pl.Categorical
+                ):
                     columns_to_cast.append(pl.col("event_name").cast(pl.Categorical))
-                
+
                 if columns_to_cast:
                     relevant_events = relevant_events.with_columns(columns_to_cast)
             except Exception as e:
@@ -2318,11 +2324,11 @@ class FunnelCalculator:
         """
         Elite Polars implementation of cohort analysis with universal input support.
         Automatically converts pandas DataFrame to Polars for optimal performance.
-        
+
         Args:
             events_df: Input data (pandas or polars DataFrame)
             funnel_steps: List of funnel steps to analyze
-            
+
         Returns:
             CohortData with monthly cohort analysis results
         """
@@ -2347,14 +2353,15 @@ class FunnelCalculator:
 
             # 1. Find first occurrence of the first step for each user to determine cohorts
             cohorts_df = (
-                lazy_df
-                .filter(pl.col("event_name") == first_step_name)
+                lazy_df.filter(pl.col("event_name") == first_step_name)
                 .group_by("user_id")
                 .agg(pl.col("timestamp").min().alias("cohort_ts"))
-                .with_columns([
-                    # Elite optimization: Use dt.truncate for perfect cohort boundaries
-                    pl.col("cohort_ts").dt.truncate("1mo").alias("cohort_month")
-                ])
+                .with_columns(
+                    [
+                        # Elite optimization: Use dt.truncate for perfect cohort boundaries
+                        pl.col("cohort_ts").dt.truncate("1mo").alias("cohort_month")
+                    ]
+                )
                 .collect()
             )
 
@@ -2363,17 +2370,15 @@ class FunnelCalculator:
 
             # 2. Calculate cohort sizes efficiently
             cohort_sizes_df = (
-                cohorts_df
-                .group_by("cohort_month")
+                cohorts_df.group_by("cohort_month")
                 .agg(pl.len().alias("size"))
                 .sort("cohort_month")
             )
-            
+
             # 3. Get all unique user-event combinations for conversion analysis
             # Elite optimization: Single pass through data for all events
             all_user_events = (
-                lazy_df
-                .filter(pl.col("event_name").is_in(funnel_steps))
+                lazy_df.filter(pl.col("event_name").is_in(funnel_steps))
                 .select(["user_id", "event_name"])
                 .unique()
                 .collect()
@@ -2381,69 +2386,66 @@ class FunnelCalculator:
 
             # 4. Join cohort information with user events for conversion calculation
             cohort_conversions_df = (
-                cohorts_df
-                .select(["user_id", "cohort_month"])
+                cohorts_df.select(["user_id", "cohort_month"])
                 .join(all_user_events, on="user_id", how="inner")
                 .group_by(["cohort_month", "event_name"])
                 .agg(pl.len().alias("converted_users"))
                 .join(cohort_sizes_df, on="cohort_month", how="left")
-                .with_columns([
-                    # Elite optimization: Vectorized conversion rate calculation
-                    ((pl.col("converted_users") / pl.col("size")) * 100).alias("conversion_rate")
-                ])
+                .with_columns(
+                    [
+                        # Elite optimization: Vectorized conversion rate calculation
+                        ((pl.col("converted_users") / pl.col("size")) * 100).alias(
+                            "conversion_rate"
+                        )
+                    ]
+                )
                 .sort(["cohort_month", "event_name"])
             )
-            
+
             # 5. Elite transformation: Pivot to get conversion matrix
             # Create pivot table with funnel steps as columns
-            conversion_matrix = (
-                cohort_conversions_df
-                .pivot(
-                    index="cohort_month",
-                    on="event_name", 
-                    values="conversion_rate"
-                )
-                .sort("cohort_month")
-            )
+            conversion_matrix = cohort_conversions_df.pivot(
+                index="cohort_month", on="event_name", values="conversion_rate"
+            ).sort("cohort_month")
 
             # Ensure all funnel steps are present as columns (fill missing with 0.0)
-            missing_steps = [step for step in funnel_steps if step not in conversion_matrix.columns]
+            missing_steps = [
+                step for step in funnel_steps if step not in conversion_matrix.columns
+            ]
             if missing_steps:
                 for step in missing_steps:
-                    conversion_matrix = conversion_matrix.with_columns([
-                        pl.lit(0.0).alias(step)
-                    ])
+                    conversion_matrix = conversion_matrix.with_columns([pl.lit(0.0).alias(step)])
 
             # Reorder columns to match funnel_steps order
             ordered_cols = ["cohort_month"] + funnel_steps
             conversion_matrix = conversion_matrix.select(ordered_cols).fill_null(0.0)
-            
+
             # 6. Elite data transformation: Convert to native Python structures
             # Convert cohort sizes to dictionary
             cohort_sizes_dict = {}
             cohort_labels = []
-            
+
             for row in cohort_sizes_df.iter_rows(named=True):
                 cohort_month = row["cohort_month"]
                 # Elite formatting: Convert to period string for consistency
                 cohort_key = cohort_month.strftime("%Y-%m")
                 cohort_sizes_dict[cohort_key] = row["size"]
                 cohort_labels.append(cohort_key)
-            
+
             # Convert conversion rates to nested dictionary
             cohort_conversions_dict = {}
-            
+
             for row in conversion_matrix.iter_rows(named=True):
                 cohort_month = row["cohort_month"]
                 cohort_key = cohort_month.strftime("%Y-%m")
-                
+
                 # Extract conversion rates for each step
                 step_conversions = []
                 for step in funnel_steps:
                     rate = row.get(step, 0.0)
                     # Handle potential None values
                     step_conversions.append(rate if rate is not None else 0.0)
-                
+
                 cohort_conversions_dict[cohort_key] = step_conversions
 
             # Sort cohort labels chronologically

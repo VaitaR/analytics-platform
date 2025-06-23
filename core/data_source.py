@@ -23,7 +23,7 @@ import os
 import time
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any
+from typing import Any, Union
 
 import numpy as np
 import pandas as pd
@@ -183,7 +183,7 @@ class DataSourceManager:
             timestamp_type = schema.get("timestamp")
             if timestamp_type is None:
                 return False, "timestamp column not found"
-            
+
             # Polars handles datetime parsing automatically in most cases
             # We can do a small sample check if needed
             try:
@@ -195,7 +195,7 @@ class DataSourceManager:
                 return False, f"Cannot validate timestamp column: {str(e)}"
 
             return True, "Data validation successful"
-            
+
         except Exception as e:
             return False, f"Schema validation failed: {str(e)}"
 
@@ -204,17 +204,20 @@ class DataSourceManager:
         try:
             # Check if we're in a testing environment by looking for pytest
             import sys
-            is_testing = 'pytest' in sys.modules or 'unittest' in sys.modules
-            
+
+            is_testing = "pytest" in sys.modules or "unittest" in sys.modules
+
             if is_testing:
                 # In testing environment, use pandas for compatibility with mocked tests
                 return self._load_from_file_pandas_fallback(uploaded_file)
-            
+
             # Save uploaded file to temporary location for Polars scanning
-            import tempfile
             import os
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=os.path.splitext(uploaded_file.name)[1]
+            ) as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_file.flush()
                 temp_path = tmp_file.name
@@ -245,21 +248,21 @@ class DataSourceManager:
 
                 # Convert to pandas for backward compatibility
                 df = polars_df.to_pandas()
-                
+
                 # Store the LazyFrame for Polars engine use
                 self._last_lazy_df = lazy_df
-                
+
                 return df
-                
+
             finally:
                 # Clean up temporary file
                 try:
                     os.unlink(temp_path)
                 except OSError:
                     pass  # Ignore cleanup errors
-                    
+
         except Exception as e:
-            if hasattr(st, 'error'):
+            if hasattr(st, "error"):
                 st.error(f"Error loading file: {str(e)}")
             return pd.DataFrame()
 
@@ -267,7 +270,9 @@ class DataSourceManager:
         """Fallback method for loading files using pandas (for testing compatibility)"""
         try:
             # Check if this is a Mock object (from tests)
-            if hasattr(uploaded_file, '_mock_name') or str(type(uploaded_file)).__contains__('Mock'):
+            if hasattr(uploaded_file, "_mock_name") or str(type(uploaded_file)).__contains__(
+                "Mock"
+            ):
                 # This is a test mock - use direct pandas reading with mocked data
                 if uploaded_file.name.endswith(".csv"):
                     # For CSV files, let pandas.read_csv be mocked by the test
@@ -279,10 +284,12 @@ class DataSourceManager:
                     raise ValueError("Unsupported file format. Please use CSV or Parquet files.")
             else:
                 # Real file upload - use temporary file approach
-                import tempfile
                 import os
-                
-                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+                import tempfile
+
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=os.path.splitext(uploaded_file.name)[1]
+                ) as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
                     tmp_file.flush()
                     temp_path = tmp_file.name
@@ -294,8 +301,10 @@ class DataSourceManager:
                     elif uploaded_file.name.endswith(".parquet"):
                         df = pd.read_parquet(temp_path)
                     else:
-                        raise ValueError("Unsupported file format. Please use CSV or Parquet files.")
-                        
+                        raise ValueError(
+                            "Unsupported file format. Please use CSV or Parquet files."
+                        )
+
                 finally:
                     # Clean up temporary file
                     try:
@@ -307,12 +316,12 @@ class DataSourceManager:
             is_valid, message = self.validate_event_data(df)
             if not is_valid:
                 raise ValueError(message)
-            
+
             # Clear LazyFrame since we're using pandas
             self._last_lazy_df = None
-            
+
             return df
-                    
+
         except Exception as e:
             return pd.DataFrame()
 
@@ -355,7 +364,7 @@ class DataSourceManager:
             st.error(f"ClickHouse query failed: {str(e)}")
             return pd.DataFrame()
 
-    def get_lazy_frame(self) -> pl.LazyFrame | None:
+    def get_lazy_frame(self) -> Union[pl.LazyFrame, None]:
         """Get the last loaded LazyFrame for Polars engine optimization"""
         return self._last_lazy_df
 
@@ -497,7 +506,7 @@ class DataSourceManager:
 
         df = pd.DataFrame(events_data)
         df["timestamp"] = pd.to_datetime(df["timestamp"])
-        
+
         # Elite optimization: Create LazyFrame from generated data for Polars engine
         try:
             # Convert to Polars LazyFrame and store for potential optimization
@@ -507,7 +516,7 @@ class DataSourceManager:
         except Exception as e:
             self.logger.warning(f"Could not create LazyFrame from sample data: {e}")
             self._last_lazy_df = None
-        
+
         return df
 
     @_data_source_performance_monitor("get_segmentation_properties")
