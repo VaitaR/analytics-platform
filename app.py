@@ -767,6 +767,58 @@ ORDER BY user_id, timestamp""",
             st.markdown("🔄 **Ready for Analysis**")
             st.markdown("Performance monitoring will appear after first calculation.")
 
+        # Configuration Management
+        st.markdown("---")
+        st.markdown("### 💾 Configuration Management")
+
+        config_col1, config_col2 = st.columns(2)
+
+        with config_col1:
+            if st.button("💾 Save Config", help="Save current funnel configuration"):
+                if st.session_state.funnel_steps:
+                    config_name = f"Funnel_{len(st.session_state.saved_configurations) + 1}"
+                    config_json = FunnelConfigManager.save_config(
+                        st.session_state.funnel_config,
+                        st.session_state.funnel_steps,
+                        config_name,
+                    )
+                    st.session_state.saved_configurations.append((config_name, config_json))
+                    st.toast(f"💾 Saved as {config_name}!", icon="💾")
+
+        with config_col2:
+            uploaded_config = st.file_uploader(
+                "📁 Load Config",
+                type=["json"],
+                help="Upload saved configuration",
+                key="sidebar_config_upload"
+            )
+
+            if uploaded_config is not None:
+                try:
+                    config_json = uploaded_config.read().decode()
+                    config, steps, name = FunnelConfigManager.load_config(config_json)
+                    st.session_state.funnel_config = config
+                    st.session_state.funnel_steps = steps
+                    st.toast(f"📁 Loaded {name}!", icon="📁")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+
+        # Download saved configurations
+        if st.session_state.saved_configurations:
+            st.markdown("**Saved Configs:**")
+            for i, (name, config_json) in enumerate(st.session_state.saved_configurations):
+                config_col1, config_col2 = st.columns([2, 1])
+                config_col1.caption(name)
+                config_col2.download_button(
+                    "⬇️",
+                    config_json,
+                    file_name=f"{name}.json",
+                    mime="application/json",
+                    key=f"sidebar_download_{i}",
+                    help="Download",
+                )
+
         # Cache Management
         st.markdown("---")
         st.markdown("### 💾 Cache Management")
@@ -1017,57 +1069,7 @@ ORDER BY user_id, timestamp""",
             else:
                 st.toast("⚠️ Please add at least 2 steps to create a funnel", icon="⚠️")
 
-        st.markdown("---")
 
-        # Configuration Management - перенесено в основную область
-        st.markdown("### 💾 Save & Load Configurations")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button("💾 Save Current Config", use_container_width=True):
-                if st.session_state.funnel_steps:
-                    config_name = f"Funnel_{len(st.session_state.saved_configurations) + 1}"
-                    config_json = FunnelConfigManager.save_config(
-                        st.session_state.funnel_config,
-                        st.session_state.funnel_steps,
-                        config_name,
-                    )
-                    st.session_state.saved_configurations.append((config_name, config_json))
-                    st.success(f"Configuration saved as {config_name}")
-
-        with col2:
-            uploaded_config = st.file_uploader(
-                "📁 Load Configuration File",
-                type=["json"],
-                help="Upload a previously saved funnel configuration",
-            )
-
-            if uploaded_config is not None:
-                try:
-                    config_json = uploaded_config.read().decode()
-                    config, steps, name = FunnelConfigManager.load_config(config_json)
-                    st.session_state.funnel_config = config
-                    st.session_state.funnel_steps = steps
-                    st.success(f"Loaded configuration: {name}")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error loading configuration: {str(e)}")
-
-        # Download saved configurations
-        if st.session_state.saved_configurations:
-            st.markdown("**Saved Configurations:**")
-            for i, (name, config_json) in enumerate(st.session_state.saved_configurations):
-                col1, col2 = st.columns([3, 1])
-                col1.write(name)
-                col2.download_button(
-                    "⬇️",
-                    config_json,
-                    file_name=f"{name}.json",
-                    mime="application/json",
-                    key=f"download_{i}",
-                    help="Download configuration",
-                )
 
     # STEP 4: Results - показываем только если есть результаты
     if st.session_state.analysis_results:
@@ -2539,20 +2541,7 @@ ORDER BY user_id, timestamp""",
 
             tab_idx += 1
 
-    # Test visualizations button
-    if "analysis_results" in st.session_state and st.session_state.analysis_results:
-        st.markdown("---")
-        test_col1, test_col2, test_col3 = st.columns([1, 1, 1])
-        with test_col2:
-            if st.button("🧪 Test Visualizations", use_container_width=True):
-                with st.spinner("Testing all visualizations..."):
-                    test_results = test_visualizations()
 
-                if test_results["success"]:
-                    st.success("✅ All visualizations passed!")
-                else:
-                    failed_tests = [name for name, _ in test_results["failed"]]
-                    st.error(f"❌ Failed tests: {', '.join(failed_tests)}")
 
     # Footer
     st.markdown("---")
@@ -2567,250 +2556,8 @@ ORDER BY user_id, timestamp""",
     )
 
 
-def test_visualizations():
-    """
-    Universal test function to verify all visualizations render correctly.
-    Can be run with:
-    1. python app.py test_vis - to run in standalone mode with dummy data
-    2. Called from within the app with actual data
-    """
 
-    import numpy as np
-    import streamlit as st
-
-    # Function to create minimal dummy data for testing
-    def create_dummy_data():
-        # Minimal FunnelResults
-        class DummyFunnelResults:
-            def __init__(self):
-                self.steps = ["Step 1", "Step 2", "Step 3"]
-                self.users_count = [1000, 700, 400]
-                self.drop_offs = [0, 300, 300]
-                self.drop_off_rates = [0, 30.0, 42.9]
-                self.conversion_rates = [100.0, 70.0, 40.0]
-                self.segment_data = {
-                    "Segment A": [600, 400, 250],
-                    "Segment B": [400, 300, 150],
-                }
-
-        # Minimal TimeToConvertStats
-        class DummyTimeStats:
-            def __init__(self, step_from, step_to):
-                self.step_from = step_from
-                self.step_to = step_to
-                self.conversion_times = np.random.exponential(scale=2.0, size=10)
-                self.mean_hours = np.mean(self.conversion_times)
-                self.median_hours = np.median(self.conversion_times)
-                self.p25_hours = np.percentile(self.conversion_times, 25)
-                self.p75_hours = np.percentile(self.conversion_times, 75)
-                self.p90_hours = np.percentile(self.conversion_times, 90)
-                self.std_hours = np.std(self.conversion_times)
-
-        # Minimal CohortData
-        class DummyCohortData:
-            def __init__(self):
-                self.cohort_labels = ["Cohort 1", "Cohort 2"]
-                self.cohort_sizes = {"Cohort 1": 500, "Cohort 2": 400}
-                self.conversion_rates = {
-                    "Cohort 1": [100.0, 75.0, 50.0],
-                    "Cohort 2": [100.0, 70.0, 45.0],
-                }
-
-        # Minimal PathAnalysisData
-        class DummyPathData:
-            def __init__(self):
-                self.dropoff_paths = {
-                    "Step 1": {"Other Path 1": 150, "Other Path 2": 100},
-                    "Step 2": {"Other Path 3": 200, "Other Path 4": 100},
-                }
-                self.between_steps_events = {
-                    "Step 1 → Step 2": {"Event 1": 700},
-                    "Step 2 → Step 3": {"Event 2": 400},
-                }
-
-        # Minimal StatSignificanceResult
-        class DummyStatTest:
-            def __init__(self):
-                self.segment_a = "Segment A"
-                self.segment_b = "Segment B"
-                self.conversion_a = 40.0
-                self.conversion_b = 25.0
-                self.p_value = 0.03
-                self.is_significant = True
-                self.z_score = 2.5
-                self.confidence_interval = (0.05, 0.15)
-
-        return {
-            "funnel_results": DummyFunnelResults(),
-            "time_stats": [
-                DummyTimeStats("Step 1", "Step 2"),
-                DummyTimeStats("Step 2", "Step 3"),
-            ],
-            "cohort_data": DummyCohortData(),
-            "path_data": DummyPathData(),
-            "stat_tests": [DummyStatTest(), DummyStatTest()],
-        }
-
-    # Function to get real data if available, otherwise use dummy data
-    def get_test_data():
-        # Try to get real data from session state if exists
-        data = {}
-
-        try:
-            # Check if we have session state and if we're in the Streamlit context
-            has_session = (
-                "session_state" in globals() or "st" in globals() and hasattr(st, "session_state")
-            )
-
-            if has_session and hasattr(st.session_state, "analysis_results"):
-                results = st.session_state.analysis_results
-                if results:
-                    data["funnel_results"] = results
-                    if hasattr(results, "time_to_convert"):
-                        data["time_stats"] = results.time_to_convert
-                    if hasattr(results, "cohort_data"):
-                        data["cohort_data"] = results.cohort_data
-                    if hasattr(results, "path_analysis"):
-                        data["path_data"] = results.path_analysis
-                    if hasattr(results, "stat_significance"):
-                        data["stat_tests"] = results.stat_significance
-        except Exception:
-            pass  # If we can't access session state or it's not properly initialized
-
-        # For any missing data, fill with dummy data
-        dummy_data = create_dummy_data()
-        for key in dummy_data:
-            if key not in data or not data[key]:
-                data[key] = dummy_data[key]
-
-        return data
-
-    # Track test results
-    test_results = {"passed": [], "failed": []}
-
-    # Get test data (real or dummy)
-    data = get_test_data()
-
-    # Set up Streamlit page
-    st.title("Visualization Tests")
-    st.markdown(
-        "This test page verifies that all visualizations render correctly with dark theme."
-    )
-
-    # Run tests for each visualization
-    with st.expander("Test Details", expanded=True):
-        # Test 1: Funnel Chart
-        try:
-            funnel_chart = FunnelVisualizer.create_funnel_chart(data["funnel_results"])
-            test_results["passed"].append("Funnel Chart")
-            st.success("✅ Funnel Chart")
-        except Exception as e:
-            test_results["failed"].append(("Funnel Chart", str(e)))
-            st.error(f"❌ Funnel Chart: {str(e)}")
-
-        # Test 2: Segmented Funnel Chart
-        try:
-            segmented_funnel = FunnelVisualizer.create_funnel_chart(
-                data["funnel_results"], show_segments=True
-            )
-            test_results["passed"].append("Segmented Funnel")
-            st.success("✅ Segmented Funnel")
-        except Exception as e:
-            test_results["failed"].append(("Segmented Funnel", str(e)))
-            st.error(f"❌ Segmented Funnel: {str(e)}")
-
-        # Test 3: Conversion Flow Sankey
-        try:
-            flow_chart = FunnelVisualizer.create_conversion_flow_sankey(data["funnel_results"])
-            test_results["passed"].append("Conversion Flow Sankey")
-            st.success("✅ Conversion Flow Sankey")
-        except Exception as e:
-            test_results["failed"].append(("Conversion Flow Sankey", str(e)))
-            st.error(f"❌ Conversion Flow Sankey: {str(e)}")
-
-        # Test 4: Time to Convert Chart
-        try:
-            time_chart = FunnelVisualizer.create_time_to_convert_chart(data["time_stats"])
-            test_results["passed"].append("Time to Convert Chart")
-            st.success("✅ Time to Convert Chart")
-        except Exception as e:
-            test_results["failed"].append(("Time to Convert Chart", str(e)))
-            st.error(f"❌ Time to Convert Chart: {str(e)}")
-
-        # Test 5: Cohort Heatmap
-        try:
-            cohort_chart = FunnelVisualizer.create_cohort_heatmap(data["cohort_data"])
-            test_results["passed"].append("Cohort Heatmap")
-            st.success("✅ Cohort Heatmap")
-        except Exception as e:
-            test_results["failed"].append(("Cohort Heatmap", str(e)))
-            st.error(f"❌ Cohort Heatmap: {str(e)}")
-
-        # Test 6: Path Analysis Chart
-        try:
-            path_chart = FunnelVisualizer.create_path_analysis_chart(data["path_data"])
-            test_results["passed"].append("Path Analysis Chart")
-            st.success("✅ Path Analysis Chart")
-        except Exception as e:
-            test_results["failed"].append(("Path Analysis Chart", str(e)))
-            st.error(f"❌ Path Analysis Chart: {str(e)}")
-
-        # Test 7: Statistical Significance Table
-        try:
-            stat_table = FunnelVisualizer.create_statistical_significance_table(data["stat_tests"])
-            test_results["passed"].append("Statistical Significance Table")
-            st.success("✅ Statistical Significance Table")
-        except Exception as e:
-            test_results["failed"].append(("Statistical Significance Table", str(e)))
-            st.error(f"❌ Statistical Significance Table: {str(e)}")
-
-    # Show overall test result
-    if not test_results["failed"]:
-        st.success(f"✅ All {len(test_results['passed'])} visualizations passed!")
-    else:
-        st.error(
-            f"❌ {len(test_results['failed'])} of {len(test_results['passed']) + len(test_results['failed'])} tests failed."
-        )
-
-    # Show successful visualizations
-    if test_results["passed"]:
-        st.subheader("Successful Visualizations")
-
-        # Display the charts that passed
-        for viz_name in test_results["passed"]:
-            if viz_name == "Funnel Chart":
-                st.subheader("1. Funnel Chart")
-                st.plotly_chart(funnel_chart, use_container_width=True)
-            elif viz_name == "Segmented Funnel":
-                st.subheader("2. Segmented Funnel Chart")
-                st.plotly_chart(segmented_funnel, use_container_width=True)
-            elif viz_name == "Conversion Flow Sankey":
-                st.subheader("3. Conversion Flow Sankey")
-                st.plotly_chart(flow_chart, use_container_width=True)
-            elif viz_name == "Time to Convert Chart":
-                st.subheader("4. Time to Convert Chart")
-                st.plotly_chart(time_chart, use_container_width=True)
-            elif viz_name == "Cohort Heatmap":
-                st.subheader("5. Cohort Heatmap")
-                st.plotly_chart(cohort_chart, use_container_width=True)
-            elif viz_name == "Path Analysis Chart":
-                st.subheader("6. Path Analysis Chart")
-                st.plotly_chart(path_chart, use_container_width=True)
-            elif viz_name == "Statistical Significance Table":
-                st.subheader("7. Statistical Significance Table")
-                st.dataframe(stat_table)
-
-    return {
-        "success": len(test_results["failed"]) == 0,
-        "passed": test_results["passed"],
-        "failed": test_results["failed"],
-    }
 
 
 if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1 and sys.argv[1] == "test_vis":
-        test_visualizations()
-    else:
-        main()
+    main()
