@@ -691,7 +691,7 @@ def test_polars_function_sequence():
         calculator = FunnelCalculator(config, use_polars=True)
 
         # Calculate funnel metrics
-        results = calculator.calculate_funnel_metrics(test_df, funnel_steps)
+        calculator.calculate_funnel_metrics(test_df, funnel_steps)
 
         # Check if we've fallen back to Pandas
         pandas_used = "_calculate_funnel_metrics_pandas" in call_sequence
@@ -797,7 +797,7 @@ def test_conversion_window_edge_cases():
         try:
             # Test with Polars implementation directly
             calculator = FunnelCalculator(config, use_polars=True)
-            results = calculator.calculate_funnel_metrics(test_df, funnel_steps)
+            calculator.calculate_funnel_metrics(test_df, funnel_steps)
             print(f"✅ Polars implementation succeeded with {window_str} window")
 
         except Exception as e:

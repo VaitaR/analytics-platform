@@ -1006,7 +1006,7 @@ class FunnelCalculator:
         Returns:
             FunnelResults object with all calculated metrics
         """
-        start_time = time.time()
+        time.time()
 
         if len(funnel_steps) < 2:
             return FunnelResults(
@@ -1088,7 +1088,7 @@ class FunnelCalculator:
             existing_events_in_data = set(
                 polars_df.select("event_name").unique().to_series().to_list()
             )
-            funnel_steps_in_data = set(funnel_steps) & existing_events_in_data
+            set(funnel_steps) & existing_events_in_data
 
             zero_counts = [0] * len(funnel_steps)
             drop_offs = [0] * len(funnel_steps)
@@ -1167,7 +1167,6 @@ class FunnelCalculator:
 
             # Ensure consistent data types between DataFrames
             # Get the schema of segment_polars_df
-            segment_schema = segment_polars_df.schema
 
             # Cast user_id in both DataFrames to string to ensure consistent types
             segment_polars_df = segment_polars_df.with_columns(
@@ -1272,7 +1271,7 @@ class FunnelCalculator:
                 return FunnelResults([], [], [], [], [])
             # Events exist but none match funnel steps - check if any of the funnel steps exist in the data at all
             existing_events_in_data = set(events_df["event_name"].unique())
-            funnel_steps_in_data = set(funnel_steps) & existing_events_in_data
+            set(funnel_steps) & existing_events_in_data
 
             zero_counts = [0] * len(funnel_steps)
             drop_offs = [0] * len(funnel_steps)
@@ -2013,7 +2012,7 @@ class FunnelCalculator:
 
         # Define first and last steps
         first_step = funnel_steps[0]
-        last_step = funnel_steps[-1]
+        funnel_steps[-1]
         conversion_window_hours = self.config.conversion_window_hours
 
         try:
@@ -3250,7 +3249,7 @@ class FunnelCalculator:
                     # Fully vectorized approach for between-steps analysis
                     try:
                         # Get unique user IDs with valid conversion pairs
-                        user_ids = conversion_pairs.select("user_id").unique()
+                        conversion_pairs.select("user_id").unique()
 
                         # Create a lazy frame with step pairs information
                         step_pairs_lazy = conversion_pairs.lazy().select(
@@ -3785,7 +3784,7 @@ class FunnelCalculator:
                         continue
 
                     step_A_time = user_A[0, "step_A_time"]
-                    conversion_window = timedelta(hours=self.config.conversion_window_hours)
+                    timedelta(hours=self.config.conversion_window_hours)
 
                     # Find first B after A within conversion window
                     potential_Bs = user_B.filter(
@@ -4576,7 +4575,7 @@ class FunnelCalculator:
             users_count.append(count)
 
             # For unique pairs, conversion rate is step-to-step
-            step_conversion_rate = (
+            (
                 (count / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
             )
             # But we also track overall conversion rate from first step for consistency
@@ -5694,7 +5693,7 @@ class FunnelCalculator:
         try:
             # Get the funnel sequence from the order that steps appear in the overall dataset
             # This is a heuristic but works for most cases
-            all_funnel_events = all_events_df["event_name"].unique()
+            all_events_df["event_name"].unique()
 
             # For the test case, we know the sequence should be: Sign Up -> Email Verification -> First Login
             # When checking Email Verification after Sign Up, we should see if First Login happened before Email Verification
@@ -5888,7 +5887,7 @@ class FunnelCalculator:
             users_count.append(count)
 
             # For unique pairs, conversion rate is step-to-step
-            step_conversion_rate = (
+            (
                 (count / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
             )
             # But we also track overall conversion rate from first step
@@ -5929,7 +5928,7 @@ class FunnelCalculator:
         try:
             # Find the indices of steps in the funnel
             try:
-                prev_step_idx = funnel_steps.index(prev_step)
+                funnel_steps.index(prev_step)
                 current_step_idx = funnel_steps.index(current_step)
             except ValueError:
                 # If the steps aren't in the funnel, we can't determine order

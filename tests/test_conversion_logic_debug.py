@@ -65,7 +65,7 @@ class TestConversionRateLogicBug:
 
         overall_started = overall_results.users_count[0]
         overall_completed = overall_results.users_count[1]
-        overall_conversion = overall_results.conversion_rates[1]
+        overall_results.conversion_rates[1]
 
         print(
             f"   Manual verification: {overall_completed}/{overall_started} = {(overall_completed / overall_started * 100):.2f}%"

@@ -286,7 +286,7 @@ class TestPolarsFallbackDetection:
 
         # Convert to regular Polars DataFrame and then to Pandas
         polars_df = lazy_df.collect()
-        pandas_df = polars_df.to_pandas()
+        polars_df.to_pandas()
 
         # Setup
         steps = ["Step1", "Step2", "Step3"]

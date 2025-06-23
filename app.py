@@ -125,6 +125,98 @@ st.markdown(
 
 # Performance monitoring decorators
 
+# Cached Data Loading Functions
+@st.cache_data
+def load_sample_data_cached() -> pd.DataFrame:
+    """Cached wrapper for loading sample data to prevent regeneration on every UI interaction"""
+    from core import DataSourceManager
+    manager = DataSourceManager()
+    return manager.get_sample_data()
+
+@st.cache_data
+def load_file_data_cached(file_name: str, file_size: int, file_type: str, file_content: bytes) -> pd.DataFrame:
+    """Cached wrapper for loading file data based on file properties to avoid re-processing same files"""
+    import os
+    import tempfile
+
+    from core import DataSourceManager
+
+    manager = DataSourceManager()
+
+    # Create a temporary file from the uploaded content
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_type}") as tmp_file:
+        tmp_file.write(file_content)
+        tmp_file.flush()
+        temp_path = tmp_file.name
+
+    try:
+        # Create a mock uploaded file object for the manager
+        class MockUploadedFile:
+            def __init__(self, name, content):
+                self.name = name
+                self._content = content
+
+            def getvalue(self):
+                return self._content
+
+        mock_file = MockUploadedFile(file_name, file_content)
+        return manager.load_from_file(mock_file)
+    finally:
+        # Clean up temporary file
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+@st.cache_data
+def load_clickhouse_data_cached(query: str, connection_hash: str) -> pd.DataFrame:
+    """Cached wrapper for ClickHouse data loading based on query and connection"""
+    # Note: This assumes the connection is already established in session state
+    if hasattr(st.session_state, "data_source_manager") and st.session_state.data_source_manager.clickhouse_client:
+        return st.session_state.data_source_manager.load_from_clickhouse(query)
+    return pd.DataFrame()
+
+@st.cache_data
+def get_segmentation_properties_cached(events_data: pd.DataFrame) -> dict[str, list[str]]:
+    """Cached wrapper for getting segmentation properties to avoid repeated JSON parsing"""
+    from core import DataSourceManager
+    manager = DataSourceManager()
+    return manager.get_segmentation_properties(events_data)
+
+@st.cache_data
+def get_property_values_cached(events_data: pd.DataFrame, prop_name: str, prop_type: str) -> list[str]:
+    """Cached wrapper for getting property values to avoid repeated filtering"""
+    from core import DataSourceManager
+    manager = DataSourceManager()
+    return manager.get_property_values(events_data, prop_name, prop_type)
+
+@st.cache_data
+def get_sorted_event_names_cached(events_data: pd.DataFrame) -> list[str]:
+    """Cached wrapper for getting sorted event names to avoid repeated sorting"""
+    return sorted(events_data["event_name"].unique())
+
+@st.cache_data
+def calculate_timeseries_metrics_cached(
+    events_data: pd.DataFrame,
+    funnel_steps: tuple[str, ...],
+    polars_period: str,
+    config_dict: dict[str, Any],
+    use_polars: bool = True
+) -> pd.DataFrame:
+    """
+    Cached wrapper for time series calculation to prevent recalculation during tab switching.
+    Uses tuple for funnel_steps and config dict for proper hashing.
+    """
+    from core import FunnelCalculator
+
+    # Reconstruct config from dict
+    config = FunnelConfig.from_dict(config_dict)
+    calculator = FunnelCalculator(config, use_polars=use_polars)
+
+    # Convert tuple back to list for the calculator
+    steps_list = list(funnel_steps)
+
+    return calculator.calculate_timeseries_metrics(events_data, steps_list, polars_period)
 
 # Data Source Management
 def initialize_session_state():
@@ -201,6 +293,7 @@ def create_enhanced_event_selector_DISABLED():
     """Create enhanced event selector with search, filters, and categorized display - DISABLED in simplified version"""
 
 
+@st.cache_data
 def get_comprehensive_performance_analysis() -> dict[str, Any]:
     """
     Get comprehensive performance analysis from all monitored components
@@ -254,13 +347,14 @@ def get_comprehensive_performance_analysis() -> dict[str, Any]:
     return analysis
 
 
+@st.cache_data
 def get_event_statistics(events_data: pd.DataFrame) -> dict[str, dict[str, Any]]:
     """Get comprehensive statistics for each event in the dataset"""
     if events_data is None or events_data.empty:
         return {}
 
     event_stats = {}
-    event_counts = events_data["event_name"].value_counts()
+    events_data["event_name"].value_counts()
     total_events = len(events_data)
     unique_users = events_data["user_id"].nunique()
 
@@ -368,10 +462,10 @@ def create_simple_event_selector():
         if "event_statistics" not in st.session_state:
             st.session_state.event_statistics = get_event_statistics(st.session_state.events_data)
 
-        # Cache the sorted list of unique event names for better UI performance
+        # Use cached sorted event names for better UI performance
         if "sorted_event_names" not in st.session_state:
-            st.session_state.sorted_event_names = sorted(
-                st.session_state.events_data["event_name"].unique()
+            st.session_state.sorted_event_names = get_sorted_event_names_cached(
+                st.session_state.events_data
             )
 
         available_events = st.session_state.sorted_event_names
@@ -401,7 +495,7 @@ def create_simple_event_selector():
 
                         with event_col1:
                             # Checkbox с улучшенным дизайном
-                            selected = st.checkbox(
+                            st.checkbox(
                                 f"**{event}**",
                                 value=is_selected,
                                 key=f"event_cb_{event.replace(' ', '_').replace('-', '_')}",
@@ -541,9 +635,9 @@ def main():
         if data_source == "Sample Data":
             if st.button("Load Sample Data", key="load_sample_data_button"):
                 with st.spinner("Loading sample data..."):
-                    st.session_state.events_data = (
-                        st.session_state.data_source_manager.get_sample_data()
-                    )
+                    # Use cached sample data loading
+                    st.session_state.events_data = load_sample_data_cached()
+
                     # Clear cached event names when new data is loaded
                     if "sorted_event_names" in st.session_state:
                         del st.session_state.sorted_event_names
@@ -562,9 +656,17 @@ def main():
 
             if uploaded_file is not None:
                 with st.spinner("Processing file..."):
-                    st.session_state.events_data = (
-                        st.session_state.data_source_manager.load_from_file(uploaded_file)
+                    # Use cached file loading based on file properties
+                    file_content = uploaded_file.getvalue()
+                    file_type = uploaded_file.name.split('.')[-1].lower()
+
+                    st.session_state.events_data = load_file_data_cached(
+                        uploaded_file.name,
+                        uploaded_file.size,
+                        file_type,
+                        file_content
                     )
+
                     if not st.session_state.events_data.empty:
                         # Clear cached event names when new data is loaded
                         if "sorted_event_names" in st.session_state:
@@ -612,9 +714,14 @@ ORDER BY user_id, timestamp""",
 
             if st.button("Execute Query"):
                 with st.spinner("Executing query..."):
-                    st.session_state.events_data = (
-                        st.session_state.data_source_manager.load_from_clickhouse(ch_query)
+                    # Create a connection hash for caching
+                    connection_hash = f"{ch_host}:{ch_port}:{ch_database}:{ch_username}"
+
+                    # Use cached ClickHouse loading
+                    st.session_state.events_data = load_clickhouse_data_cached(
+                        ch_query, connection_hash
                     )
+
                     if not st.session_state.events_data.empty:
                         # Clear cached event names when new data is loaded
                         if "sorted_event_names" in st.session_state:
@@ -640,7 +747,7 @@ ORDER BY user_id, timestamp""",
         st.markdown("### ⚡ Performance")
         if "performance_history" in st.session_state and st.session_state.performance_history:
             latest_performance = st.session_state.performance_history[-1]
-            performance_analysis = get_comprehensive_performance_analysis()
+            get_comprehensive_performance_analysis()
 
             # Display current performance
             st.markdown("**Latest Analysis:**")
@@ -773,11 +880,9 @@ ORDER BY user_id, timestamp""",
             selected_values = []
 
             if st.session_state.events_data is not None and not st.session_state.events_data.empty:
-                # Update available properties
-                st.session_state.available_properties = (
-                    st.session_state.data_source_manager.get_segmentation_properties(
-                        st.session_state.events_data
-                    )
+                # Update available properties using cached function
+                st.session_state.available_properties = get_segmentation_properties_cached(
+                    st.session_state.events_data
                 )
 
                 if st.session_state.available_properties:
@@ -801,11 +906,9 @@ ORDER BY user_id, timestamp""",
                             if selected_property != "None":
                                 prop_type, prop_name = selected_property.split("_", 1)
 
-                                # Get available values for this property
-                                prop_values = (
-                                    st.session_state.data_source_manager.get_property_values(
-                                        st.session_state.events_data, prop_name, prop_type
-                                    )
+                                # Get available values for this property using cached function
+                                prop_values = get_property_values_cached(
+                                    st.session_state.events_data, prop_name, prop_type
                                 )
 
                                 if prop_values:
@@ -1451,8 +1554,16 @@ ORDER BY user_id, timestamp""",
                     if hasattr(st.session_state.data_source_manager, "_last_lazy_df"):
                         lazy_df = st.session_state.data_source_manager.get_lazy_frame()
 
-                    timeseries_data = calculator.calculate_timeseries_metrics(
-                        st.session_state.events_data, results.steps, polars_period, lazy_df
+                    # Use cached time series calculation to prevent recalculation during tab switching
+                    config_dict = st.session_state.funnel_config.to_dict()
+                    funnel_steps_tuple = tuple(results.steps)
+
+                    timeseries_data = calculate_timeseries_metrics_cached(
+                        st.session_state.events_data,
+                        funnel_steps_tuple,
+                        polars_period,
+                        config_dict,
+                        use_polars
                     )
 
                     if not timeseries_data.empty:

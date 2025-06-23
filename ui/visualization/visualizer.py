@@ -1557,7 +1557,7 @@ class FunnelVisualizer:
             node_categories[len(labels) - 1] = "funnel_step"
 
         # Process conversion and drop-off flows with enhanced categorization
-        node_index = len(funnel_steps)
+        len(funnel_steps)
 
         # Create a color map for consistent coloring across all datasets
         semantic_colors = {

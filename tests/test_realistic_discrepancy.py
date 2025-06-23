@@ -235,7 +235,6 @@ class TestRealWorldDiscrepancy:
         Test the specific issue where users start in one period but convert in another.
         This is likely the root cause of the discrepancy.
         """
-        steps = ["step1", "step2"]
 
         print("\n=== CROSS-PERIOD CONVERSION ANALYSIS ===")
 
