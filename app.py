@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS for professional styling
+# Custom CSS for professional styling and smooth UI behavior
 st.markdown(
     """
 <style>
@@ -118,7 +118,93 @@ st.markdown(
         font-weight: 600;
         color: #374151;
     }
+    
+    /* Smooth scrolling and prevent jump behavior */
+    html {
+        scroll-behavior: smooth;
+    }
+    
+    /* Prevent layout shifts during rerun - Dark theme compatible */
+    .stTabs [data-baseweb="tab-list"] {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: var(--background-color, white);
+        border-bottom: 1px solid var(--border-color, #e5e7eb);
+        padding: 0.5rem 0;
+    }
+    
+    /* Dark theme support for tabs */
+    @media (prefers-color-scheme: dark) {
+        .stTabs [data-baseweb="tab-list"] {
+            background: #0e1117;
+            border-bottom: 1px solid #262730;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            color: #fafafa !important;
+        }
+        
+        .stTabs [data-baseweb="tab"][aria-selected="true"] {
+            color: #ff6b6b !important;
+            border-bottom-color: #ff6b6b !important;
+        }
+    }
+    
+    /* Force dark theme compatibility for Streamlit apps */
+    [data-theme="dark"] .stTabs [data-baseweb="tab-list"] {
+        background: #0e1117 !important;
+        border-bottom: 1px solid #262730 !important;
+    }
+    
+    [data-theme="dark"] .stTabs [data-baseweb="tab"] {
+        color: #fafafa !important;
+    }
+    
+    [data-theme="dark"] .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #ff6b6b !important;
+        border-bottom-color: #ff6b6b !important;
+    }
+    
+    /* Smooth transitions for interactive elements */
+    .stSelectbox > div > div {
+        transition: all 0.2s ease;
+    }
+    
+    .stSlider > div > div {
+        transition: all 0.2s ease;
+    }
+    
+    .stCheckbox > label {
+        transition: all 0.2s ease;
+    }
+    
+    /* Prevent content jumping during updates */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    
+    /* Anchor for tab content to prevent jumping */
+    .tab-content-anchor {
+        scroll-margin-top: 100px;
+    }
 </style>
+
+<script>
+// Preserve scroll position during reruns
+window.addEventListener('beforeunload', function() {
+    sessionStorage.setItem('scrollPosition', window.scrollY);
+});
+
+window.addEventListener('load', function() {
+    const scrollPosition = sessionStorage.getItem('scrollPosition');
+    if (scrollPosition) {
+        window.scrollTo(0, parseInt(scrollPosition));
+        sessionStorage.removeItem('scrollPosition');
+    }
+});
+</script>
 """,
     unsafe_allow_html=True,
 )
@@ -219,6 +305,47 @@ def calculate_timeseries_metrics_cached(
     return calculator.calculate_timeseries_metrics(events_data, steps_list, polars_period)
 
 # Data Source Management
+# Callback functions for UI state management
+def update_timeseries_aggregation():
+    """Update timeseries aggregation setting"""
+    if "timeseries_aggregation" in st.session_state:
+        st.session_state.timeseries_settings["aggregation_period"] = st.session_state.timeseries_aggregation
+
+def update_timeseries_primary():
+    """Update timeseries primary metric setting"""
+    if "timeseries_primary" in st.session_state:
+        st.session_state.timeseries_settings["primary_metric"] = st.session_state.timeseries_primary
+
+def update_timeseries_secondary():
+    """Update timeseries secondary metric setting"""
+    if "timeseries_secondary" in st.session_state:
+        st.session_state.timeseries_settings["secondary_metric"] = st.session_state.timeseries_secondary
+
+def update_pm_min_frequency():
+    """Update process mining min frequency setting"""
+    if "pm_min_frequency" in st.session_state:
+        st.session_state.process_mining_settings["min_frequency"] = st.session_state.pm_min_frequency
+
+def update_pm_include_cycles():
+    """Update process mining include cycles setting"""
+    if "pm_include_cycles" in st.session_state:
+        st.session_state.process_mining_settings["include_cycles"] = st.session_state.pm_include_cycles
+
+def update_pm_show_frequencies():
+    """Update process mining show frequencies setting"""
+    if "pm_show_frequencies" in st.session_state:
+        st.session_state.process_mining_settings["show_frequencies"] = st.session_state.pm_show_frequencies
+
+def update_pm_use_funnel_events_only():
+    """Update process mining use funnel events only setting"""
+    if "pm_use_funnel_events_only" in st.session_state:
+        st.session_state.process_mining_settings["use_funnel_events_only"] = st.session_state.pm_use_funnel_events_only
+
+def update_pm_visualization_type():
+    """Update process mining visualization type setting"""
+    if "pm_visualization_type" in st.session_state:
+        st.session_state.process_mining_settings["visualization_type"] = st.session_state.pm_visualization_type
+
 def initialize_session_state():
     """Initialize Streamlit session state variables"""
     if "funnel_steps" not in st.session_state:
@@ -249,6 +376,23 @@ def initialize_session_state():
         st.session_state.event_selections = {}
     if "use_polars" not in st.session_state:
         st.session_state.use_polars = True
+    # UI state management
+    if "active_tab" not in st.session_state:
+        st.session_state.active_tab = 0
+    if "timeseries_settings" not in st.session_state:
+        st.session_state.timeseries_settings = {
+            "aggregation_period": "Days",
+            "primary_metric": "Users Starting Funnel (Cohort)",
+            "secondary_metric": "Cohort Conversion Rate (%)"
+        }
+    if "process_mining_settings" not in st.session_state:
+        st.session_state.process_mining_settings = {
+            "min_frequency": 5,
+            "include_cycles": True,
+            "show_frequencies": True,
+            "use_funnel_events_only": True,
+            "visualization_type": "sankey"
+        }
 
 
 # Enhanced Event Selection Functions
@@ -1097,7 +1241,7 @@ ORDER BY user_id, timestamp""",
             total_dropoff = sum(results.drop_offs) if results.drop_offs else 0
             st.metric("Total Drop-offs", f"{total_dropoff:,}")
 
-        # Advanced Visualizations
+        # Advanced Visualizations with persistent tab state
         tabs = ["📊 Funnel Chart", "🌊 Flow Diagram", "🕒 Time Series Analysis"]
 
         if results.time_to_convert:
@@ -1116,9 +1260,45 @@ ORDER BY user_id, timestamp""",
         if "performance_history" in st.session_state and st.session_state.performance_history:
             tabs.append("⚡ Performance Monitor")
 
+        # Create tabs with session state management
         tab_objects = st.tabs(tabs)
+        
+        # Add JavaScript to preserve scroll position and prevent jumping
+        st.markdown("""
+        <script>
+        // Store current scroll position before any UI updates
+        function preserveScrollPosition() {
+            const scrollY = window.scrollY;
+            sessionStorage.setItem('currentScrollY', scrollY);
+        }
+        
+        // Restore scroll position after UI updates
+        function restoreScrollPosition() {
+            const scrollY = sessionStorage.getItem('currentScrollY');
+            if (scrollY) {
+                setTimeout(() => {
+                    window.scrollTo(0, parseInt(scrollY));
+                }, 100);
+            }
+        }
+        
+        // Listen for form changes to preserve scroll
+        document.addEventListener('change', preserveScrollPosition);
+        document.addEventListener('DOMContentLoaded', restoreScrollPosition);
+        
+        // Also preserve on page visibility change (when Streamlit reruns)
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                restoreScrollPosition();
+            }
+        });
+        </script>
+        """, unsafe_allow_html=True)
 
         with tab_objects[0]:  # Funnel Chart
+            # Add anchor to prevent jumping
+            st.markdown('<div class="tab-content-anchor" id="funnel-chart"></div>', unsafe_allow_html=True)
+            
             # Business explanation for Funnel Chart
             st.info(
                 """
@@ -1370,6 +1550,9 @@ ORDER BY user_id, timestamp""",
                     )
 
         with tab_objects[1]:  # Flow Diagram
+            # Add anchor to prevent jumping
+            st.markdown('<div class="tab-content-anchor" id="flow-diagram"></div>', unsafe_allow_html=True)
+            
             # Business explanation for Flow Diagram
             st.info(
                 """
@@ -1412,6 +1595,9 @@ ORDER BY user_id, timestamp""",
                     )
 
         with tab_objects[2]:  # Time Series Analysis
+            # Add anchor to prevent jumping
+            st.markdown('<div class="tab-content-anchor" id="time-series"></div>', unsafe_allow_html=True)
+            
             st.markdown("### 🕒 Time Series Analysis")
             st.markdown("*Analyze funnel metrics trends over time with configurable periods*")
 
@@ -1475,7 +1661,7 @@ ORDER BY user_id, timestamp""",
                 )
                 return
 
-            # Control panel for time series configuration
+            # Control panel for time series configuration with session state
             col1, col2, col3 = st.columns(3)
 
             with col1:
@@ -1486,11 +1672,17 @@ ORDER BY user_id, timestamp""",
                     "Weeks": "1w",
                     "Months": "1mo",
                 }
+                
+                # Get current index from session state
+                current_aggregation = st.session_state.timeseries_settings["aggregation_period"]
+                current_index = list(aggregation_options.keys()).index(current_aggregation) if current_aggregation in aggregation_options else 1
+                
                 aggregation_period = st.selectbox(
                     "📅 Aggregate by:",
                     options=list(aggregation_options.keys()),
-                    index=1,  # Default to "Days"
+                    index=current_index,
                     key="timeseries_aggregation",
+                    on_change=update_timeseries_aggregation
                 )
                 polars_period = aggregation_options[aggregation_period]
 
@@ -1505,12 +1697,18 @@ ORDER BY user_id, timestamp""",
                     "Total Unique Users (Legacy)": "total_unique_users",
                     "Total Events (Legacy)": "total_events",
                 }
+                
+                # Get current index from session state
+                current_primary = st.session_state.timeseries_settings["primary_metric"]
+                current_primary_index = list(primary_options.keys()).index(current_primary) if current_primary in primary_options else 0
+                
                 primary_metric_display = st.selectbox(
                     "📊 Primary Metric (Bars):",
                     options=list(primary_options.keys()),
-                    index=0,  # Default to "Users Starting Funnel (Cohort)"
+                    index=current_primary_index,
                     key="timeseries_primary",
                     help="Select the metric to display as bars on the left Y-axis. Cohort metrics are attributed to signup dates, Daily metrics to event dates.",
+                    on_change=update_timeseries_primary
                 )
                 primary_metric = primary_options[primary_metric_display]
 
@@ -1528,12 +1726,17 @@ ORDER BY user_id, timestamp""",
                         metric_name = f"{step_from}_to_{step_to}_rate"
                         secondary_options[display_name] = metric_name
 
+                # Get current index from session state
+                current_secondary = st.session_state.timeseries_settings["secondary_metric"]
+                current_secondary_index = list(secondary_options.keys()).index(current_secondary) if current_secondary in secondary_options else 0
+                
                 secondary_metric_display = st.selectbox(
                     "📈 Secondary Metric (Line):",
                     options=list(secondary_options.keys()),
-                    index=0,  # Default to "Cohort Conversion Rate (%)"
+                    index=current_secondary_index,
                     key="timeseries_secondary",
                     help="Select the percentage metric to display as a line on the right Y-axis. All rates shown are cohort-based (attributed to signup dates).",
+                    on_change=update_timeseries_secondary
                 )
                 secondary_metric = secondary_options[secondary_metric_display]
 
@@ -2005,6 +2208,9 @@ ORDER BY user_id, timestamp""",
 
         # Process Mining Tab (always show if we have event data)
         with tab_objects[tab_idx]:  # Process Mining
+            # Add anchor to prevent jumping
+            st.markdown('<div class="tab-content-anchor" id="process-mining"></div>', unsafe_allow_html=True)
+            
             st.markdown("### 🔍 Process Mining: User Journey Discovery")
 
             st.info(
@@ -2020,7 +2226,7 @@ ORDER BY user_id, timestamp""",
             """
             )
 
-            # Process Mining Configuration
+            # Process Mining Configuration with session state
             with st.expander("🎛️ Process Mining Settings", expanded=True):
                 col1, col2, col3, col4 = st.columns(4)
 
@@ -2029,29 +2235,37 @@ ORDER BY user_id, timestamp""",
                         "Min. transition frequency",
                         min_value=1,
                         max_value=100,
-                        value=5,
+                        value=st.session_state.process_mining_settings["min_frequency"],
+                        key="pm_min_frequency",
                         help="Hide transitions with fewer occurrences to reduce noise",
+                        on_change=update_pm_min_frequency
                     )
 
                 with col2:
                     include_cycles = st.checkbox(
                         "Detect cycles",
-                        value=True,
+                        value=st.session_state.process_mining_settings["include_cycles"],
+                        key="pm_include_cycles",
                         help="Find repetitive behavior patterns",
+                        on_change=update_pm_include_cycles
                     )
 
                 with col3:
                     show_frequencies = st.checkbox(
                         "Show frequencies",
-                        value=True,
+                        value=st.session_state.process_mining_settings["show_frequencies"],
+                        key="pm_show_frequencies",
                         help="Display transition counts on visualizations",
+                        on_change=update_pm_show_frequencies
                     )
 
                 with col4:
                     use_funnel_events_only = st.checkbox(
                         "Use selected events only",
-                        value=True,
+                        value=st.session_state.process_mining_settings["use_funnel_events_only"],
+                        key="pm_use_funnel_events_only",
                         help="Analyze only the events selected in your funnel (recommended for focused analysis)",
+                        on_change=update_pm_use_funnel_events_only
                     )
 
             # Show warning if filtering is enabled but no funnel events selected
@@ -2125,30 +2339,43 @@ ORDER BY user_id, timestamp""",
                 # Process Mining Visualization
                 st.markdown("#### 📊 Process Visualization")
 
-                # Visualization controls
+                # Visualization controls with session state
                 viz_col1, viz_col2, viz_col3 = st.columns([2, 1, 1])
 
                 with viz_col1:
+                    # Get current visualization type index
+                    viz_options = ["sankey", "journey", "funnel", "network"]
+                    current_viz_type = st.session_state.process_mining_settings["visualization_type"]
+                    current_viz_index = viz_options.index(current_viz_type) if current_viz_type in viz_options else 0
+                    
                     visualization_type = st.selectbox(
                         "📊 Visualization Type",
-                        options=["sankey", "journey", "funnel", "network"],
+                        options=viz_options,
+                        index=current_viz_index,
                         format_func=lambda x: {
                             "sankey": "🌊 Flow Diagram (Recommended)",
                             "journey": "🗺️ Journey Map",
                             "funnel": "📊 Funnel Analysis",
                             "network": "🕸️ Network View (Advanced)",
                         }[x],
+                        key="pm_visualization_type",
                         help="Choose visualization style for process analysis",
+                        on_change=update_pm_visualization_type
                     )
 
                 with viz_col2:
-                    show_frequencies = st.checkbox("📈 Show Frequencies", True)
+                    show_frequencies = st.checkbox(
+                        "📈 Show Frequencies", 
+                        value=st.session_state.process_mining_settings["show_frequencies"],
+                        key="pm_viz_show_frequencies"
+                    )
 
                 with viz_col3:
                     min_frequency_filter = st.number_input(
                         "🔍 Min Frequency",
                         min_value=0,
                         value=0,
+                        key="pm_min_frequency_filter",
                         help="Filter out transitions below this frequency",
                     )
 
