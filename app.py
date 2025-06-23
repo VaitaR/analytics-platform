@@ -683,15 +683,6 @@ def create_simple_event_selector():
                 unsafe_allow_html=True,
             )
         else:
-            # Status indicator at the top
-            steps_count = len(st.session_state.funnel_steps)
-            if steps_count >= 2:
-                st.success(f"✅ **Funnel ready** with {steps_count} steps")
-            else:
-                st.info(f"🔨 **Building funnel** - {steps_count}/2 steps (minimum)")
-            
-            st.markdown("---")
-            
             # Clean step display with inline layout - no scrolling, show all events
             for i, step in enumerate(st.session_state.funnel_steps):
                 # Create a single row with number, name, and buttons
@@ -799,9 +790,8 @@ def create_simple_event_selector():
                         help="Proceed to analysis configuration",
                         disabled=False,
                     ):
-                        # Set navigation flag in session state
-                        st.session_state.navigate_to_config = True
-                        st.rerun()
+                        # Use Streamlit's scroll_to_element when available, or show info message
+                        st.info("📍 Scroll down to Step 3: Configure Analysis Parameters to set up your funnel analysis.")
                 else:
                     st.button(
                         "⚙️ Configure Analysis",
@@ -811,23 +801,39 @@ def create_simple_event_selector():
                         disabled=True,
                     )
             
-            # Compact summary with key metrics
+            # Enhanced funnel summary with more useful information
             if len(st.session_state.funnel_steps) >= 2:
+                # Calculate coverage for funnel steps
+                step_coverage = []
+                if st.session_state.events_data is not None and "event_statistics" in st.session_state:
+                    for step in st.session_state.funnel_steps:
+                        stats = st.session_state.event_statistics.get(step, {})
+                        coverage = stats.get('user_coverage', 0)
+                        step_coverage.append(f"{coverage:.0f}%")
+                
+                coverage_text = " → ".join(step_coverage) if step_coverage else "calculating..."
+                
                 st.markdown(
                     f"""
                     <div style="
                         background: rgba(16, 185, 129, 0.1);
                         border: 1px solid rgba(16, 185, 129, 0.3);
                         border-radius: 8px;
-                        padding: 12px;
+                        padding: 16px;
                         margin-top: 16px;
                     ">
-                        <div style="color: #10B981; font-weight: 600; margin-bottom: 4px;">
+                        <div style="color: #10B981; font-weight: 600; margin-bottom: 8px; font-size: 16px;">
                             📊 Funnel Summary
                         </div>
-                        <div style="color: #E2E8F0; font-size: 14px;">
-                            <strong>{len(st.session_state.funnel_steps)} steps:</strong> 
-                            {st.session_state.funnel_steps[0]} → {st.session_state.funnel_steps[-1]}
+                        <div style="color: #E2E8F0; font-size: 14px; line-height: 1.5;">
+                            <div style="margin-bottom: 6px;">
+                                <strong>📈 {len(st.session_state.funnel_steps)} steps:</strong> 
+                                {st.session_state.funnel_steps[0]} → {st.session_state.funnel_steps[-1]}
+                            </div>
+                            <div>
+                                <strong>🎯 Step coverage:</strong> 
+                                {coverage_text}
+                            </div>
                         </div>
                     </div>
                     """,
@@ -835,7 +841,7 @@ def create_simple_event_selector():
                 )
 
 
-# Commented out original complex functions - keeping for reference but not using
+# Commented out original complex functions - keeping for reference but not using in simplified version
 def create_funnel_templates_DISABLED():
     """Create predefined funnel templates for quick setup - DISABLED in simplified version"""
 
@@ -1116,28 +1122,6 @@ ORDER BY user_id, timestamp""",
 
         # STEP 3: Configure Analysis - Настройки воронки переносим в основную область
         st.markdown('<div id="step3-config"></div>', unsafe_allow_html=True)
-        
-        # Handle navigation from Configure Analysis button
-        if st.session_state.get("navigate_to_config", False):
-            st.markdown(
-                """
-                <script>
-                    // Scroll to configuration section immediately after page load
-                    setTimeout(function() {
-                        const configSection = document.getElementById('step3-config');
-                        if (configSection) {
-                            configSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start' 
-                            });
-                        }
-                    }, 100);
-                </script>
-                """,
-                unsafe_allow_html=True,
-            )
-            # Clear the flag after use
-            st.session_state.navigate_to_config = False
         
         st.markdown("## ⚙️ Step 3: Configure Analysis Parameters")
 
