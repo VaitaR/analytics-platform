@@ -584,10 +584,6 @@ def create_simple_event_selector():
         )
     elif len(st.session_state.funnel_steps) == 1:
         st.info("👇 Select one more event to complete your funnel (minimum 2 events required).")
-    else:
-        st.success(
-            f"✅ Funnel ready with {len(st.session_state.funnel_steps)} steps! You can add more events or proceed to configuration."
-        )
 
     # Main layout - более широкое использование пространства
     col_events, col_funnel = st.columns([3, 2])  # Больше места для списка событий
@@ -665,91 +661,178 @@ def create_simple_event_selector():
                                     st.markdown("📉")  # Редкое событие
 
     with col_funnel:
+        # Modern funnel builder with clean design
         st.markdown("### 🎯 Your Funnel")
-
+        
         if not st.session_state.funnel_steps:
-            st.info("Your funnel will appear here as you select events from the left.")
+            # Empty state with clear call-to-action
+            st.markdown(
+                """
+                <div style="
+                    text-align: center; 
+                    padding: 2rem; 
+                    border: 2px dashed #4A5568; 
+                    border-radius: 12px; 
+                    background: rgba(74, 85, 104, 0.1);
+                    margin: 1rem 0;
+                ">
+                    <h4 style="color: #A0AEC0; margin-bottom: 0.5rem;">🎯 Build Your Funnel</h4>
+                    <p style="color: #718096; margin: 0;">Select events from the left to create your analysis funnel</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         else:
-            # Показываем предварительный просмотр воронки
-            st.markdown("**Funnel Steps:**")
-
-            # Отображаем шаги воронки с улучшенным дизайном
+            # Status indicator at the top
+            steps_count = len(st.session_state.funnel_steps)
+            if steps_count >= 2:
+                st.success(f"✅ **Funnel ready** with {steps_count} steps")
+            else:
+                st.info(f"🔨 **Building funnel** - {steps_count}/2 steps (minimum)")
+            
+            st.markdown("---")
+            
+            # Clean step display with inline layout - no scrolling, show all events
             for i, step in enumerate(st.session_state.funnel_steps):
-                with st.container():
-                    # Создаем строку для каждого шага
-                    step_col1, step_col2, step_col3, step_col4 = st.columns([0.5, 3, 0.5, 0.5])
-
-                    with step_col1:
-                        st.markdown(f"**{i + 1}.**")
-
-                    with step_col2:
-                        st.markdown(f"**{step}**")
-
-                    with step_col3:
-                        # Move buttons (только если можно двигать)
-                        if i > 0:
-                            st.button(
-                                "⬆️",
-                                key=f"up_{i}",
-                                on_click=move_step,
-                                args=(i, -1),
-                                help="Move up",
-                            )
-                        if i < len(st.session_state.funnel_steps) - 1:
-                            st.button(
-                                "⬇️",
-                                key=f"down_{i}",
-                                on_click=move_step,
-                                args=(i, 1),
-                                help="Move down",
-                            )
-
-                    with step_col4:
-                        # Remove button
-                        st.button(
-                            "🗑️",
-                            key=f"del_{i}",
-                            on_click=remove_step,
-                            args=(i,),
-                            help="Remove step",
-                        )
-
-                # Добавляем стрелку между шагами (кроме последнего)
-                if i < len(st.session_state.funnel_steps) - 1:
+                # Create a single row with number, name, and buttons
+                step_col1, step_col2, step_col3, step_col4, step_col5 = st.columns([0.6, 3, 0.6, 0.6, 0.6])
+                
+                with step_col1:
+                    # Step number badge
                     st.markdown(
-                        '<div style="text-align: center; color: #888; font-size: 1.2em;">⬇️</div>',
+                        f"""
+                        <div style="
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-weight: bold;
+                            font-size: 14px;
+                            margin: 4px auto;
+                        ">{i + 1}</div>
+                        """,
                         unsafe_allow_html=True,
                     )
-
+                
+                with step_col2:
+                    # Step name with clean styling
+                    st.markdown(
+                        f"""
+                        <div style="
+                            padding: 8px 12px;
+                            background: rgba(255, 255, 255, 0.05);
+                            border-radius: 6px;
+                            border-left: 3px solid #667eea;
+                            margin: 4px 0;
+                            display: flex;
+                            align-items: center;
+                            height: 28px;
+                        ">
+                            <strong style="color: #E2E8F0; font-size: 15px;">{step}</strong>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                
+                with step_col3:
+                    # Move up button
+                    if i > 0:
+                        st.button(
+                            "↑",
+                            key=f"up_{i}",
+                            on_click=move_step,
+                            args=(i, -1),
+                            help="Move up",
+                            use_container_width=True,
+                        )
+                
+                with step_col4:
+                    # Move down button
+                    if i < len(st.session_state.funnel_steps) - 1:
+                        st.button(
+                            "↓",
+                            key=f"down_{i}",
+                            on_click=move_step,
+                            args=(i, 1),
+                            help="Move down",
+                            use_container_width=True,
+                        )
+                
+                with step_col5:
+                    # Remove button
+                    st.button(
+                        "✕",
+                        key=f"del_{i}",
+                        on_click=remove_step,
+                        args=(i,),
+                        help="Remove step",
+                        use_container_width=True,
+                        type="secondary",
+                    )
+            
             st.markdown("---")
-
-            # Действия с воронкой
-            funnel_col1, funnel_col2 = st.columns(2)
-
-            with funnel_col1:
+            
+            # Action buttons with modern styling
+            action_col1, action_col2 = st.columns([1, 1])
+            
+            with action_col1:
                 st.button(
                     "🗑️ Clear All",
                     key="clear_all_button",
                     on_click=clear_all_steps,
                     use_container_width=True,
                     help="Remove all events from funnel",
+                    type="secondary",
                 )
-
-            with funnel_col2:
-                # Показываем кнопку предварительного просмотра, если воронка готова
+            
+            with action_col2:
                 if len(st.session_state.funnel_steps) >= 2:
-                    st.success("✅ Ready to configure!")
+                    if st.button(
+                        "⚙️ Configure Analysis",
+                        key="config_ready_button",
+                        use_container_width=True,
+                        type="primary",
+                        help="Proceed to analysis configuration",
+                        disabled=False,
+                    ):
+                        # Set navigation flag in session state
+                        st.session_state.navigate_to_config = True
+                        st.rerun()
                 else:
-                    st.warning("⚠️ Add more events")
-
-            # Показываем краткую сводку
+                    st.button(
+                        "⚙️ Configure Analysis",
+                        key="config_not_ready_button",
+                        use_container_width=True,
+                        help="Add at least 2 events to enable configuration",
+                        disabled=True,
+                    )
+            
+            # Compact summary with key metrics
             if len(st.session_state.funnel_steps) >= 2:
-                st.markdown("**Funnel Summary:**")
-                st.markdown(f"• **{len(st.session_state.funnel_steps)} steps** in your funnel")
                 st.markdown(
-                    f"• **{st.session_state.funnel_steps[0]}** → **{st.session_state.funnel_steps[-1]}**"
+                    f"""
+                    <div style="
+                        background: rgba(16, 185, 129, 0.1);
+                        border: 1px solid rgba(16, 185, 129, 0.3);
+                        border-radius: 8px;
+                        padding: 12px;
+                        margin-top: 16px;
+                    ">
+                        <div style="color: #10B981; font-weight: 600; margin-bottom: 4px;">
+                            📊 Funnel Summary
+                        </div>
+                        <div style="color: #E2E8F0; font-size: 14px;">
+                            <strong>{len(st.session_state.funnel_steps)} steps:</strong> 
+                            {st.session_state.funnel_steps[0]} → {st.session_state.funnel_steps[-1]}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-                st.markdown("• Ready for analysis configuration!")
 
 
 # Commented out original complex functions - keeping for reference but not using
@@ -1032,6 +1115,30 @@ ORDER BY user_id, timestamp""",
         st.markdown("---")
 
         # STEP 3: Configure Analysis - Настройки воронки переносим в основную область
+        st.markdown('<div id="step3-config"></div>', unsafe_allow_html=True)
+        
+        # Handle navigation from Configure Analysis button
+        if st.session_state.get("navigate_to_config", False):
+            st.markdown(
+                """
+                <script>
+                    // Scroll to configuration section immediately after page load
+                    setTimeout(function() {
+                        const configSection = document.getElementById('step3-config');
+                        if (configSection) {
+                            configSection.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'start' 
+                            });
+                        }
+                    }, 100);
+                </script>
+                """,
+                unsafe_allow_html=True,
+            )
+            # Clear the flag after use
+            st.session_state.navigate_to_config = False
+        
         st.markdown("## ⚙️ Step 3: Configure Analysis Parameters")
 
         # Создаем форму в основной области вместо sidebar
