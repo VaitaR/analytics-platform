@@ -57,7 +57,7 @@ class FunnelAnalyticsPageObject:
                 if attempt < max_retries - 1:  # Don't run on last attempt
                     self.at.run(timeout=10)  # Re-run to refresh state
 
-        except Exception as e:
+        except Exception:
             # If button interaction fails, manually load sample data for testing
             from datetime import datetime, timedelta
 
@@ -151,7 +151,7 @@ class FunnelAnalyticsPageObject:
             try:
                 # Check the checkbox for this event
                 self.at.checkbox(key=checkbox_key).check().run()
-            except Exception as e:
+            except Exception:
                 # If checkbox interaction fails, manually add to session state for testing
                 if step not in self.at.session_state.funnel_steps:
                     self.at.session_state.funnel_steps.append(step)
@@ -195,7 +195,7 @@ class FunnelAnalyticsPageObject:
         except KeyError:
             # If analyze button not available, skip this test (button might not be rendered yet)
             pytest.skip("Analyze button not available - UI might not be fully rendered")
-        except Exception as e:
+        except Exception:
             # If analysis fails, create mock results for testing UI flow
             from models import FunnelResults
 

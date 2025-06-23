@@ -323,7 +323,7 @@ class TestCompleteIntegrationFlow:
             "First Login",
             "First Purchase",
         ]
-        base_config = FunnelConfig(conversion_window_hours=24, reentry_mode=ReentryMode.FIRST_ONLY)
+        FunnelConfig(conversion_window_hours=24, reentry_mode=ReentryMode.FIRST_ONLY)
 
         results = {}
 
@@ -684,7 +684,7 @@ class TestCompleteIntegrationFlow:
 
         # Visualization
         visualizer = FunnelVisualizer()
-        chart = visualizer.create_funnel_chart(results)
+        visualizer.create_funnel_chart(results)
 
         end_time = time.time()
         total_time = end_time - start_time

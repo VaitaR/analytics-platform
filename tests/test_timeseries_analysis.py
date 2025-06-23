@@ -400,7 +400,7 @@ class TestTimeSeriesIntegration:
         calculator = FunnelCalculator(config)
 
         # Performance metrics should be empty initially
-        initial_metrics = calculator.get_performance_report()
+        calculator.get_performance_report()
 
         # Create minimal test data and run calculation
         events_df = pd.DataFrame(

@@ -426,10 +426,6 @@ user_003,Purchase,2024-01-01 12:00:00,{},{}"""
 
     def test_load_corrupted_csv_file(self, data_manager):
         """Test loading corrupted CSV file."""
-        corrupted_csv = """user_id,event_name,timestamp
-user_001,Sign Up,2024-01-01
-user_002,"Incomplete quote
-user_003,Login,"""  # Corrupted CSV
 
         # Create mock file
         mock_file = Mock()

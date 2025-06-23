@@ -405,12 +405,10 @@ def generate_test_report() -> TestResult:
         stdout = result.stdout
         stderr = result.stderr
         # For pytest, exit code 1 with fixture errors is acceptable
-        success = result.returncode in [0, 1]  # Accept both success and fixture errors
     except Exception as e:
         print(f"❌ Error running pytest: {e}")
         stdout = ""
         stderr = str(e)
-        success = False
 
     # Parse the output to extract test statistics
     passed = 0
@@ -428,10 +426,9 @@ def generate_test_report() -> TestResult:
     summary_matches = re.findall(summary_pattern, combined_output)
 
     # Look for the final summary line (usually the last one)
-    main_summary = ""
     for match in summary_matches:
         if any(word in match.lower() for word in ["passed", "failed", "error", "skipped"]):
-            main_summary = match
+            pass
 
     # Extract individual numbers using separate patterns from the entire output
     passed_match = re.search(r"(\d+) passed", combined_output)

@@ -322,7 +322,7 @@ class DataSourceManager:
 
             return df
 
-        except Exception as e:
+        except Exception:
             return pd.DataFrame()
 
     def connect_clickhouse(
@@ -338,7 +338,7 @@ class DataSourceManager:
                 database=database,
             )
             # Test connection
-            result = self.clickhouse_client.query("SELECT 1")
+            self.clickhouse_client.query("SELECT 1")
             return True
         except Exception as e:
             st.error(f"ClickHouse connection failed: {str(e)}")

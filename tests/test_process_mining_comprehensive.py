@@ -263,7 +263,7 @@ class TestProcessMiningInsights:
         )
 
         # Should generate completion rate insights
-        completion_insights = [
+        [
             insight
             for insight in process_data.insights
             if "completion" in insight.lower() or "complete" in insight.lower()
