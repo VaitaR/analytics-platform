@@ -370,11 +370,11 @@ class DataSourceManager:
 
     @_data_source_performance_monitor("get_sample_data")
     def get_sample_data(self) -> pd.DataFrame:
-        """Generate sample event data for demonstration"""
+        """Generate sample event data for demonstration with exactly 8 events and high user connectivity"""
         np.random.seed(42)
 
         # Generate users with user properties
-        n_users = 10000
+        n_users = 8000  # Reduced for better performance while maintaining connectivity
         user_ids = [f"user_{i:05d}" for i in range(n_users)]
 
         # Generate user properties for segmentation
@@ -396,59 +396,130 @@ class DataSourceManager:
             }
 
         events_data = []
+        
+        # EXACTLY 8 events for focused funnel analysis
         event_sequence = [
-            "User Sign-Up",
-            "Verify Email",
+            "Sign Up",
+            "Email Verification", 
             "First Login",
             "Profile Setup",
-            "Tutorial Completed",
-            "First Purchase",
+            "Product Browse",
+            "Add to Cart",
+            "Checkout Start",
+            "Purchase Complete",
         ]
 
-        # Generate realistic funnel progression
+        # Generate realistic funnel progression with HIGHER user connectivity
         current_users = set(user_ids)
         base_time = datetime(2024, 1, 1)
 
+        # IMPROVED dropout rates for higher connectivity - more gradual, less aggressive
+        # This ensures more users progress through multiple steps
+        dropout_rates = [0.0, 0.12, 0.15, 0.18, 0.20, 0.22, 0.25, 0.28]
+
         for step_idx, event_name in enumerate(event_sequence):
-            # Calculate dropout rate (realistic funnel)
-            dropout_rates = [0.0, 0.25, 0.20, 0.25, 0.20, 0.22]
             remaining_users = list(current_users)
 
             if step_idx > 0:
-                # Remove some users (dropout)
-                n_remaining = int(len(remaining_users) * (1 - dropout_rates[step_idx]))
-                remaining_users = np.random.choice(remaining_users, n_remaining, replace=False)
+                # More gradual dropout for higher connectivity
+                retention_rate = 1 - dropout_rates[step_idx]
+                n_remaining = int(len(remaining_users) * retention_rate)
+                
+                # Use weighted selection to keep more engaged users
+                # Users with premium subscriptions are more likely to continue
+                user_weights = []
+                for user_id in remaining_users:
+                    weight = 1.0
+                    user_props = user_properties[user_id]
+                    # Premium users have higher retention
+                    if user_props["subscription_plan"] == "premium":
+                        weight = 1.8
+                    elif user_props["subscription_plan"] == "basic":
+                        weight = 1.3
+                    # Younger users are more engaged
+                    if user_props["age_group"] in ["18-25", "26-35"]:
+                        weight *= 1.2
+                    user_weights.append(weight)
+                
+                # Normalize weights
+                user_weights = np.array(user_weights)
+                user_weights = user_weights / user_weights.sum()
+                
+                # Select users with weighted probability
+                remaining_users = np.random.choice(
+                    remaining_users, 
+                    size=n_remaining, 
+                    replace=False, 
+                    p=user_weights
+                )
                 current_users = set(remaining_users)
 
-            # Generate events for remaining users
+            # Generate events for remaining users with realistic timing
             for user_id in remaining_users:
-                # Add some time variance between steps with cohort effect
                 user_props = user_properties[user_id]
                 reg_date = datetime.strptime(user_props["registration_date"], "%Y-%m-%d")
 
-                # Time variance based on registration cohort
-                cohort_factor = (reg_date - base_time).days / 365 + 1
-                hours_offset = np.random.exponential(24 * step_idx * cohort_factor + 1)
-                timestamp = reg_date + timedelta(hours=hours_offset)
+                # More realistic timing progression
+                if step_idx == 0:
+                    # Sign up happens on registration date
+                    timestamp = reg_date
+                elif step_idx == 1:
+                    # Email verification within hours
+                    timestamp = reg_date + timedelta(hours=np.random.exponential(2))
+                elif step_idx == 2:
+                    # First login within 1-2 days
+                    timestamp = reg_date + timedelta(hours=np.random.exponential(12))
+                elif step_idx == 3:
+                    # Profile setup within first week
+                    timestamp = reg_date + timedelta(hours=np.random.exponential(48))
+                else:
+                    # Shopping events can be spread over weeks
+                    base_hours = 24 * step_idx
+                    timestamp = reg_date + timedelta(hours=np.random.exponential(base_hours))
 
-                # Add event properties for segmentation
+                # Enhanced event properties for better segmentation
                 properties = {
                     "platform": np.random.choice(
-                        ["mobile", "desktop", "tablet"], p=[0.6, 0.3, 0.1]
+                        ["mobile", "desktop", "tablet"], p=[0.65, 0.30, 0.05]
                     ),
                     "utm_source": np.random.choice(
                         ["organic", "google_ads", "facebook", "email", "direct"],
-                        p=[0.3, 0.25, 0.2, 0.15, 0.1],
+                        p=[0.35, 0.25, 0.20, 0.12, 0.08],
                     ),
                     "utm_campaign": np.random.choice(
-                        ["summer_sale", "new_user", "retargeting", "brand"],
-                        p=[0.3, 0.3, 0.25, 0.15],
+                        ["new_user_2024", "spring_promo", "retargeting", "brand_awareness"],
+                        p=[0.35, 0.30, 0.25, 0.10],
                     ),
                     "app_version": np.random.choice(
-                        ["2.1.0", "2.2.0", "2.3.0"], p=[0.2, 0.3, 0.5]
+                        ["3.1.0", "3.2.0", "3.3.0"], p=[0.15, 0.35, 0.50]
                     ),
-                    "device_type": np.random.choice(["ios", "android", "web"], p=[0.4, 0.4, 0.2]),
+                    "device_type": np.random.choice(["ios", "android", "web"], p=[0.45, 0.40, 0.15]),
+                    "session_id": f"session_{user_id}_{step_idx}_{np.random.randint(1000, 9999)}",
                 }
+
+                # Add step-specific properties for richer analysis
+                if event_name == "Purchase Complete":
+                    properties.update({
+                        "order_value": float(round(np.random.lognormal(3.5, 0.8), 2)),  # $30-$300 range
+                        "payment_method": str(np.random.choice(
+                            ["credit_card", "paypal", "apple_pay", "google_pay"], 
+                            p=[0.50, 0.25, 0.15, 0.10]
+                        )),
+                        "product_category": str(np.random.choice(
+                            ["electronics", "clothing", "books", "home"], 
+                            p=[0.30, 0.35, 0.20, 0.15]
+                        )),
+                    })
+                elif event_name == "Add to Cart":
+                    properties.update({
+                        "cart_value": float(round(np.random.lognormal(3.2, 0.6), 2)),  # $25-$200 range
+                        "items_count": int(np.random.choice([1, 2, 3, 4, 5], p=[0.40, 0.30, 0.15, 0.10, 0.05])),
+                    })
+                elif event_name == "Product Browse":
+                    properties.update({
+                        "pages_viewed": int(np.random.choice([1, 2, 3, 4, 5, 6, 7, 8], p=[0.25, 0.20, 0.15, 0.12, 0.10, 0.08, 0.06, 0.04])),
+                        "time_spent_minutes": float(round(np.random.exponential(8), 1)),
+                    })
 
                 events_data.append(
                     {
@@ -460,39 +531,47 @@ class DataSourceManager:
                     }
                 )
 
-        # Add some non-funnel events for path analysis
-        additional_events = [
-            "Page View",
-            "Product View",
-            "Search",
-            "Add to Wishlist",
-            "Help Page Visit",
-            "Contact Support",
-            "Settings View",
-            "Logout",
-        ]
-
-        # Generate additional events between funnel steps
-        for user_id in user_ids[:5000]:  # Only for subset to make data manageable
-            n_additional = np.random.poisson(3)  # Average 3 additional events per user
+        # Add cross-step engagement events for users who completed multiple steps
+        # This increases connectivity between events
+        engaged_users = [uid for uid in user_ids if np.random.random() < 0.4]  # 40% of users are "engaged"
+        
+        for user_id in engaged_users:
+            # Add repeat interactions for engaged users
+            user_props = user_properties[user_id]
+            reg_date = datetime.strptime(user_props["registration_date"], "%Y-%m-%d")
+            
+            # Generate 1-3 additional events from the main sequence
+            n_additional = np.random.choice([1, 2, 3], p=[0.5, 0.3, 0.2])
+            
             for _ in range(n_additional):
-                event_name = np.random.choice(additional_events)
-                timestamp = base_time + timedelta(
-                    hours=np.random.uniform(0, 24 * 30)  # Within 30 days
+                # Choose events they're likely to repeat (browse, cart actions)
+                repeat_events = ["Product Browse", "Add to Cart"]
+                event_name = np.random.choice(repeat_events)
+                
+                # Timing should be after their initial journey
+                timestamp = reg_date + timedelta(
+                    days=np.random.uniform(7, 60)  # 1 week to 2 months later
                 )
-
+                
                 properties = {
                     "platform": np.random.choice(
-                        ["mobile", "desktop", "tablet"], p=[0.6, 0.3, 0.1]
+                        ["mobile", "desktop", "tablet"], p=[0.65, 0.30, 0.05]
                     ),
-                    "utm_source": np.random.choice(
-                        ["organic", "google_ads", "facebook", "email", "direct"],
-                        p=[0.3, 0.25, 0.2, 0.15, 0.1],
-                    ),
-                    "page_category": np.random.choice(
-                        ["product", "help", "account", "home"], p=[0.4, 0.2, 0.2, 0.2]
-                    ),
+                    "utm_source": "direct",  # Repeat users often come direct
+                    "session_id": f"session_{user_id}_repeat_{np.random.randint(1000, 9999)}",
+                    "is_repeat_action": True,
                 }
+                
+                if event_name == "Product Browse":
+                    properties.update({
+                        "pages_viewed": int(np.random.choice([2, 3, 4, 5, 6], p=[0.20, 0.25, 0.25, 0.20, 0.10])),
+                        "time_spent_minutes": float(round(np.random.exponential(12), 1)),  # Longer sessions for repeat users
+                    })
+                elif event_name == "Add to Cart":
+                    properties.update({
+                        "cart_value": float(round(np.random.lognormal(3.4, 0.7), 2)),  # Slightly higher for repeat users
+                        "items_count": int(np.random.choice([1, 2, 3, 4], p=[0.30, 0.35, 0.25, 0.10])),
+                    })
 
                 events_data.append(
                     {
@@ -500,7 +579,7 @@ class DataSourceManager:
                         "event_name": event_name,
                         "timestamp": timestamp,
                         "event_properties": json.dumps(properties),
-                        "user_properties": json.dumps(user_properties[user_id]),
+                        "user_properties": json.dumps(user_props),
                     }
                 )
 

@@ -925,7 +925,7 @@ ORDER BY user_id, timestamp""",
                 )
 
             # Segmentation в отдельной секции для лучшей видимости
-            st.markdown("### 🎯 Segmentation (Optional)")
+            st.markdown("### 🎯 Segmentation (Optional, in development)")
 
             # Segmentation controls
             selected_property = "None"
@@ -2047,6 +2047,20 @@ ORDER BY user_id, timestamp""",
                         help="Display transition counts on visualizations",
                     )
 
+                with col4:
+                    use_funnel_events_only = st.checkbox(
+                        "Use selected events only",
+                        value=True,
+                        help="Analyze only the events selected in your funnel (recommended for focused analysis)",
+                    )
+
+            # Show warning if filtering is enabled but no funnel events selected
+            if use_funnel_events_only and not st.session_state.funnel_steps:
+                st.warning(
+                    "⚠️ 'Use selected events only' is enabled but no funnel events are selected. "
+                    "Please build your funnel first or disable this option to analyze all events."
+                )
+
             # Process Mining Analysis
             if st.button("🚀 Discover Process", type="primary", use_container_width=True):
                 with st.spinner("Analyzing user journeys..."):
@@ -2055,18 +2069,30 @@ ORDER BY user_id, timestamp""",
                         config = FunnelConfig()
                         path_analyzer = PathAnalyzer(config)
 
+                        # Determine which events to analyze
+                        filter_events = None
+                        if use_funnel_events_only and st.session_state.funnel_steps:
+                            filter_events = st.session_state.funnel_steps
+
                         # Discover process structure
                         process_data = path_analyzer.discover_process_mining_structure(
                             st.session_state.events_data,
                             min_frequency=min_frequency,
                             include_cycles=include_cycles,
+                            filter_events=filter_events,
                         )
 
                         # Store in session state
                         st.session_state.process_mining_data = process_data
 
+                        # Create success message with filtering info
+                        if filter_events:
+                            filter_info = f" (filtered to {len(filter_events)} selected funnel events)"
+                        else:
+                            filter_info = " (analyzing all events in dataset)"
+                        
                         st.success(
-                            f"✅ Discovered {len(process_data.activities)} activities and {len(process_data.transitions)} transitions"
+                            f"✅ Discovered {len(process_data.activities)} activities and {len(process_data.transitions)} transitions{filter_info}"
                         )
 
                     except Exception as e:
