@@ -117,9 +117,9 @@ class TestResponsiveBehavior:
             calculated_height = LayoutConfig.get_responsive_height(base_height, data_items)
 
             # Should be within universal height standards
-            assert 350 <= calculated_height <= 800, (
-                f"Height {calculated_height} outside standards for {data_items} items"
-            )
+            assert (
+                350 <= calculated_height <= 800
+            ), f"Height {calculated_height} outside standards for {data_items} items"
 
         print("✅ Responsive height calculation test passed")
 

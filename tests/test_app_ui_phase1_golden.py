@@ -111,14 +111,14 @@ class TestPhase1GoldenStandard:
 
         # Verify funnel steps were added to session state
         assert len(at.session_state.funnel_steps) == 3, "Should have 3 funnel steps"
-        assert at.session_state.funnel_steps == selected_events, (
-            "Steps should match selected events"
-        )
+        assert (
+            at.session_state.funnel_steps == selected_events
+        ), "Steps should match selected events"
 
         # Step 3: Run analysis using the new form submit button
         # In the new architecture, we need to find the form and submit it
         # Look for forms in the app
-        forms = [element for element in at.main if hasattr(element, 'form_id')]
+        forms = [element for element in at.main if hasattr(element, "form_id")]
         assert len(forms) > 0, "Should have at least one form for funnel configuration"
 
         # Find the funnel configuration form
@@ -150,9 +150,9 @@ class TestPhase1GoldenStandard:
         assert analysis_complete, "Analysis should complete within timeout"
 
         # Verify analysis results were generated
-        assert at.session_state.analysis_results is not None, (
-            "Analysis results should be generated"
-        )
+        assert (
+            at.session_state.analysis_results is not None
+        ), "Analysis results should be generated"
         assert hasattr(at.session_state.analysis_results, "steps"), "Results should have steps"
         assert len(at.session_state.analysis_results.steps) == 3, "Results should have 3 steps"
 
@@ -265,9 +265,9 @@ class TestPhase1GoldenStandard:
         )
         assert second_selected, "Second event should be selected"
 
-        assert len(at.session_state.funnel_steps) == 2, (
-            "Should have 2 steps after second selection"
-        )
+        assert (
+            len(at.session_state.funnel_steps) == 2
+        ), "Should have 2 steps after second selection"
         assert test_events[1] in at.session_state.funnel_steps, "Second event should be selected"
 
         # Deselect first event
@@ -285,12 +285,12 @@ class TestPhase1GoldenStandard:
         assert first_deselected, "First event should be deselected"
 
         assert len(at.session_state.funnel_steps) == 1, "Should have 1 step after deselection"
-        assert test_events[0] not in at.session_state.funnel_steps, (
-            "First event should be deselected"
-        )
-        assert test_events[1] in at.session_state.funnel_steps, (
-            "Second event should still be selected"
-        )
+        assert (
+            test_events[0] not in at.session_state.funnel_steps
+        ), "First event should be deselected"
+        assert (
+            test_events[1] in at.session_state.funnel_steps
+        ), "Second event should still be selected"
 
         # Verify no exceptions
         assert not at.exception, "No exceptions should occur during event selection"
@@ -346,9 +346,9 @@ class TestPhase1GoldenStandard:
         assert stats_generated, "Event statistics should be generated within timeout"
 
         # Verify event statistics were generated
-        assert hasattr(at.session_state, "event_statistics"), (
-            "Event statistics should be generated"
-        )
+        assert hasattr(
+            at.session_state, "event_statistics"
+        ), "Event statistics should be generated"
 
         # Verify funnel config exists
         assert hasattr(at.session_state, "funnel_config"), "Funnel config should exist"
@@ -476,18 +476,18 @@ class TestPhase1GoldenStandard:
         assert analysis_complete, "Analysis should complete within timeout"
 
         # Verify session state persistence after analysis
-        assert len(at.session_state.events_data) == original_data_length, (
-            "Events data should remain unchanged after analysis"
-        )
-        assert len(at.session_state.funnel_steps) == 3, (
-            "Funnel steps should remain unchanged after analysis"
-        )
-        assert at.session_state.funnel_steps == selected_events, (
-            "Funnel steps should maintain order after analysis"
-        )
-        assert at.session_state.analysis_results is not None, (
-            "Analysis results should be persisted"
-        )
+        assert (
+            len(at.session_state.events_data) == original_data_length
+        ), "Events data should remain unchanged after analysis"
+        assert (
+            len(at.session_state.funnel_steps) == 3
+        ), "Funnel steps should remain unchanged after analysis"
+        assert (
+            at.session_state.funnel_steps == selected_events
+        ), "Funnel steps should maintain order after analysis"
+        assert (
+            at.session_state.analysis_results is not None
+        ), "Analysis results should be persisted"
 
         # Verify no exceptions
         assert not at.exception, "No exceptions should occur during state persistence test"

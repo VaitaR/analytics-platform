@@ -670,9 +670,9 @@ def assert_funnel_results_valid(results: FunnelResults, expected_steps: list[str
 
     # User counts should be monotonically decreasing (or equal)
     for i in range(1, len(results.users_count)):
-        assert results.users_count[i] <= results.users_count[i - 1], (
-            f"User count increased from step {i - 1} to {i}: {results.users_count[i - 1]} -> {results.users_count[i]}"
-        )
+        assert (
+            results.users_count[i] <= results.users_count[i - 1]
+        ), f"User count increased from step {i - 1} to {i}: {results.users_count[i - 1]} -> {results.users_count[i]}"
 
 
 def assert_results_approximately_equal(
@@ -684,14 +684,14 @@ def assert_results_approximately_equal(
     # Allow small differences due to floating point precision
     assert len(result1.users_count) == len(result2.users_count)
     for i, (count1, count2) in enumerate(zip(result1.users_count, result2.users_count)):
-        assert abs(count1 - count2) <= tolerance * max(count1, count2, 1), (
-            f"User counts differ at step {i}: {count1} vs {count2}"
-        )
+        assert abs(count1 - count2) <= tolerance * max(
+            count1, count2, 1
+        ), f"User counts differ at step {i}: {count1} vs {count2}"
 
     for i, (rate1, rate2) in enumerate(zip(result1.conversion_rates, result2.conversion_rates)):
-        assert abs(rate1 - rate2) <= tolerance * 100, (
-            f"Conversion rates differ at step {i}: {rate1}% vs {rate2}%"
-        )
+        assert (
+            abs(rate1 - rate2) <= tolerance * 100
+        ), f"Conversion rates differ at step {i}: {rate1}% vs {rate2}%"
 
 
 def log_test_performance(test_name: str, duration: float, data_size: int):

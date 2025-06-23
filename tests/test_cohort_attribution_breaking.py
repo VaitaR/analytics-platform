@@ -97,28 +97,28 @@ class TestCohortAttributionError:
         # Jan 1 cohort: 1 user started, 1 user completed (User_A converted within 24h window)
         assert "2024-01-01" in results_dict, "Jan 1 period should exist in results"
         jan_1_data = results_dict["2024-01-01"]
-        assert jan_1_data["started_funnel_users"] == 1, (
-            f"Jan 1 should have 1 starter, got {jan_1_data['started_funnel_users']}"
-        )
-        assert jan_1_data["completed_funnel_users"] == 1, (
-            f"Jan 1 cohort should have 1 converter, got {jan_1_data['completed_funnel_users']}"
-        )
-        assert abs(jan_1_data["conversion_rate"] - 100.0) < 0.01, (
-            f"Jan 1 cohort conversion should be 100%, got {jan_1_data['conversion_rate']}"
-        )
+        assert (
+            jan_1_data["started_funnel_users"] == 1
+        ), f"Jan 1 should have 1 starter, got {jan_1_data['started_funnel_users']}"
+        assert (
+            jan_1_data["completed_funnel_users"] == 1
+        ), f"Jan 1 cohort should have 1 converter, got {jan_1_data['completed_funnel_users']}"
+        assert (
+            abs(jan_1_data["conversion_rate"] - 100.0) < 0.01
+        ), f"Jan 1 cohort conversion should be 100%, got {jan_1_data['conversion_rate']}"
 
         # Jan 2 cohort: 10 users started, 0 users completed (none of the Jan 2 users converted)
         assert "2024-01-02" in results_dict, "Jan 2 period should exist in results"
         jan_2_data = results_dict["2024-01-02"]
-        assert jan_2_data["started_funnel_users"] == 10, (
-            f"Jan 2 should have 10 starters, got {jan_2_data['started_funnel_users']}"
-        )
-        assert jan_2_data["completed_funnel_users"] == 0, (
-            f"Jan 2 cohort should have 0 converters, got {jan_2_data['completed_funnel_users']}"
-        )
-        assert abs(jan_2_data["conversion_rate"] - 0.0) < 0.01, (
-            f"Jan 2 cohort conversion should be 0%, got {jan_2_data['conversion_rate']}"
-        )
+        assert (
+            jan_2_data["started_funnel_users"] == 10
+        ), f"Jan 2 should have 10 starters, got {jan_2_data['started_funnel_users']}"
+        assert (
+            jan_2_data["completed_funnel_users"] == 0
+        ), f"Jan 2 cohort should have 0 converters, got {jan_2_data['completed_funnel_users']}"
+        assert (
+            abs(jan_2_data["conversion_rate"] - 0.0) < 0.01
+        ), f"Jan 2 cohort conversion should be 0%, got {jan_2_data['conversion_rate']}"
 
         print(
             "✅ COHORT ATTRIBUTION TEST PASSED: Conversions correctly attributed to cohort start dates!"
@@ -217,46 +217,46 @@ class TestCohortAttributionError:
 
         # Jan 1 cohort: 5 starters, 2 converters (40% conversion)
         jan_1 = results_dict["2024-01-01"]
-        assert jan_1["started_funnel_users"] == 5, (
-            f"Jan 1 cohort should have 5 starters, got {jan_1['started_funnel_users']}"
-        )
-        assert jan_1["completed_funnel_users"] == 2, (
-            f"Jan 1 cohort should have 2 converters, got {jan_1['completed_funnel_users']}"
-        )
+        assert (
+            jan_1["started_funnel_users"] == 5
+        ), f"Jan 1 cohort should have 5 starters, got {jan_1['started_funnel_users']}"
+        assert (
+            jan_1["completed_funnel_users"] == 2
+        ), f"Jan 1 cohort should have 2 converters, got {jan_1['completed_funnel_users']}"
         expected_conversion_1 = 40.0
-        assert abs(jan_1["conversion_rate"] - expected_conversion_1) < 0.01, (
-            f"Jan 1 conversion should be {expected_conversion_1}%, got {jan_1['conversion_rate']}"
-        )
+        assert (
+            abs(jan_1["conversion_rate"] - expected_conversion_1) < 0.01
+        ), f"Jan 1 conversion should be {expected_conversion_1}%, got {jan_1['conversion_rate']}"
 
         # Jan 2 cohort: 8 starters, 3 converters (37.5% conversion)
         jan_2 = results_dict["2024-01-02"]
-        assert jan_2["started_funnel_users"] == 8, (
-            f"Jan 2 cohort should have 8 starters, got {jan_2['started_funnel_users']}"
-        )
-        assert jan_2["completed_funnel_users"] == 3, (
-            f"Jan 2 cohort should have 3 converters, got {jan_2['completed_funnel_users']}"
-        )
+        assert (
+            jan_2["started_funnel_users"] == 8
+        ), f"Jan 2 cohort should have 8 starters, got {jan_2['started_funnel_users']}"
+        assert (
+            jan_2["completed_funnel_users"] == 3
+        ), f"Jan 2 cohort should have 3 converters, got {jan_2['completed_funnel_users']}"
         expected_conversion_2 = 37.5
-        assert abs(jan_2["conversion_rate"] - expected_conversion_2) < 0.01, (
-            f"Jan 2 conversion should be {expected_conversion_2}%, got {jan_2['conversion_rate']}"
-        )
+        assert (
+            abs(jan_2["conversion_rate"] - expected_conversion_2) < 0.01
+        ), f"Jan 2 conversion should be {expected_conversion_2}%, got {jan_2['conversion_rate']}"
 
         # Jan 3 cohort: 6 starters, 0 converters (0% conversion)
         jan_3 = results_dict["2024-01-03"]
-        assert jan_3["started_funnel_users"] == 6, (
-            f"Jan 3 cohort should have 6 starters, got {jan_3['started_funnel_users']}"
-        )
-        assert jan_3["completed_funnel_users"] == 0, (
-            f"Jan 3 cohort should have 0 converters, got {jan_3['completed_funnel_users']}"
-        )
-        assert abs(jan_3["conversion_rate"] - 0.0) < 0.01, (
-            f"Jan 3 conversion should be 0%, got {jan_3['conversion_rate']}"
-        )
+        assert (
+            jan_3["started_funnel_users"] == 6
+        ), f"Jan 3 cohort should have 6 starters, got {jan_3['started_funnel_users']}"
+        assert (
+            jan_3["completed_funnel_users"] == 0
+        ), f"Jan 3 cohort should have 0 converters, got {jan_3['completed_funnel_users']}"
+        assert (
+            abs(jan_3["conversion_rate"] - 0.0) < 0.01
+        ), f"Jan 3 conversion should be 0%, got {jan_3['conversion_rate']}"
 
         # Jan 4 should not exist as a cohort (no signups), even though conversions happened
-        assert "2024-01-04" not in results_dict, (
-            "Jan 4 should not appear as a cohort since no signups occurred"
-        )
+        assert (
+            "2024-01-04" not in results_dict
+        ), "Jan 4 should not appear as a cohort since no signups occurred"
 
         print("✅ MULTI-DAY COHORT ATTRIBUTION TEST PASSED!")
 
@@ -310,16 +310,16 @@ class TestCohortAttributionError:
         assert len(results) == 1, f"Should have exactly 1 period, got {len(results)}"
 
         result = results.iloc[0]
-        assert result["started_funnel_users"] == 2, (
-            f"Should have 2 starters, got {result['started_funnel_users']}"
-        )
-        assert result["completed_funnel_users"] == 1, (
-            f"Should have 1 converter, got {result['completed_funnel_users']}"
-        )
+        assert (
+            result["started_funnel_users"] == 2
+        ), f"Should have 2 starters, got {result['started_funnel_users']}"
+        assert (
+            result["completed_funnel_users"] == 1
+        ), f"Should have 1 converter, got {result['completed_funnel_users']}"
         expected_conversion = 50.0
-        assert abs(result["conversion_rate"] - expected_conversion) < 0.01, (
-            f"Conversion should be {expected_conversion}%, got {result['conversion_rate']}"
-        )
+        assert (
+            abs(result["conversion_rate"] - expected_conversion) < 0.01
+        ), f"Conversion should be {expected_conversion}%, got {result['conversion_rate']}"
 
         print("✅ SAME-PERIOD CONVERSION TEST PASSED!")
 

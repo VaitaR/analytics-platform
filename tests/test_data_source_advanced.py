@@ -113,9 +113,9 @@ class TestDataSourceManagerValidation:
 
             # Should either be invalid or successfully convert timestamps
             if not is_valid:
-                assert "timestamp" in message.lower(), (
-                    f"Should mention timestamp issues for {timestamps}"
-                )
+                assert (
+                    "timestamp" in message.lower()
+                ), f"Should mention timestamp issues for {timestamps}"
 
         print("✅ Invalid timestamp formats validation test passed")
 
@@ -483,9 +483,9 @@ user_003,Login,"""  # Corrupted CSV
             execution_time = end_time - start_time
 
             # Should load in reasonable time (less than 10 seconds)
-            assert execution_time < 10.0, (
-                f"Large file loading took too long: {execution_time:.2f}s"
-            )
+            assert (
+                execution_time < 10.0
+            ), f"Large file loading took too long: {execution_time:.2f}s"
 
             # Should load successfully
             assert isinstance(result_df, pd.DataFrame)
@@ -688,9 +688,9 @@ class TestDataSourceManagerPerformanceEdgeCases:
         # All operations should succeed
         for result in results:
             assert result["valid"], f"Operation {result['operation_id']} should be valid"
-            assert result["duration"] < 10.0, (
-                f"Operation {result['operation_id']} took too long: {result['duration']:.2f}s"
-            )
+            assert (
+                result["duration"] < 10.0
+            ), f"Operation {result['operation_id']} took too long: {result['duration']:.2f}s"
 
         print("✅ Concurrent operations simulation test passed")
 

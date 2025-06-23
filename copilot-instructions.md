@@ -796,12 +796,12 @@ CHART_DIMENSIONS = {
 # ✅ COMPLETED: Professional UI Testing Implementation
 class FunnelAnalyticsPageObject:
     """Page Object Model for resilient UI testing"""
-    
+
     def load_sample_data(self) -> None:
         """Load data using stable key selector"""
         self.at.button(key="load_sample_data_button").click().run()
         assert self.at.session_state.events_data is not None
-    
+
     def build_funnel(self, steps: List[str]) -> None:
         """Build funnel using stable checkbox keys"""
         for step in steps:
@@ -811,7 +811,7 @@ class FunnelAnalyticsPageObject:
 
 # Required app.py keys for UI testing:
 st.button("Load Sample Data", key="load_sample_data_button")
-st.button("🚀 Analyze Funnel", key="analyze_funnel_button")  
+st.button("🚀 Analyze Funnel", key="analyze_funnel_button")
 st.button("🗑️ Clear All", key="clear_all_button")
 st.checkbox(event, key=f"event_cb_{event.replace(' ', '_').replace('-', '_')}")
 st.selectbox("Segment By Property", key="segment_property_select")
