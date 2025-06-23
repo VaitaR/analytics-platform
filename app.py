@@ -306,45 +306,7 @@ def calculate_timeseries_metrics_cached(
 
 # Data Source Management
 # Callback functions for UI state management
-def update_timeseries_aggregation():
-    """Update timeseries aggregation setting"""
-    if "timeseries_aggregation" in st.session_state:
-        st.session_state.timeseries_settings["aggregation_period"] = st.session_state.timeseries_aggregation
-
-def update_timeseries_primary():
-    """Update timeseries primary metric setting"""
-    if "timeseries_primary" in st.session_state:
-        st.session_state.timeseries_settings["primary_metric"] = st.session_state.timeseries_primary
-
-def update_timeseries_secondary():
-    """Update timeseries secondary metric setting"""
-    if "timeseries_secondary" in st.session_state:
-        st.session_state.timeseries_settings["secondary_metric"] = st.session_state.timeseries_secondary
-
-def update_pm_min_frequency():
-    """Update process mining min frequency setting"""
-    if "pm_min_frequency" in st.session_state:
-        st.session_state.process_mining_settings["min_frequency"] = st.session_state.pm_min_frequency
-
-def update_pm_include_cycles():
-    """Update process mining include cycles setting"""
-    if "pm_include_cycles" in st.session_state:
-        st.session_state.process_mining_settings["include_cycles"] = st.session_state.pm_include_cycles
-
-def update_pm_show_frequencies():
-    """Update process mining show frequencies setting"""
-    if "pm_show_frequencies" in st.session_state:
-        st.session_state.process_mining_settings["show_frequencies"] = st.session_state.pm_show_frequencies
-
-def update_pm_use_funnel_events_only():
-    """Update process mining use funnel events only setting"""
-    if "pm_use_funnel_events_only" in st.session_state:
-        st.session_state.process_mining_settings["use_funnel_events_only"] = st.session_state.pm_use_funnel_events_only
-
-def update_pm_visualization_type():
-    """Update process mining visualization type setting"""
-    if "pm_visualization_type" in st.session_state:
-        st.session_state.process_mining_settings["visualization_type"] = st.session_state.pm_visualization_type
+# Removed callback functions - now using direct state updates to prevent navigation issues
 
 def initialize_session_state():
     """Initialize Streamlit session state variables"""
@@ -1033,7 +995,7 @@ ORDER BY user_id, timestamp""",
                     st.session_state.funnel_config = config
                     st.session_state.funnel_steps = steps
                     st.toast(f"📁 Loaded {name}!", icon="📁")
-                    st.rerun()
+                    # Removed st.rerun() to prevent page jumping
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
 
@@ -1764,17 +1726,20 @@ ORDER BY user_id, timestamp""",
                     "Months": "1mo",
                 }
                 
-                # Get current index from session state
-                current_aggregation = st.session_state.timeseries_settings["aggregation_period"]
-                current_index = list(aggregation_options.keys()).index(current_aggregation) if current_aggregation in aggregation_options else 1
+                # Get current value from session state, with safe fallback
+                current_aggregation = st.session_state.timeseries_settings.get("aggregation_period", "Days")
                 
+                # Use selectbox without on_change to avoid callback conflicts
                 aggregation_period = st.selectbox(
                     "📅 Aggregate by:",
                     options=list(aggregation_options.keys()),
-                    index=current_index,
-                    key="timeseries_aggregation",
-                    on_change=update_timeseries_aggregation
+                    index=list(aggregation_options.keys()).index(current_aggregation) if current_aggregation in aggregation_options.keys() else 1,
+                    key="timeseries_aggregation"
                 )
+                
+                # Update session state directly if value changed
+                if aggregation_period != st.session_state.timeseries_settings.get("aggregation_period"):
+                    st.session_state.timeseries_settings["aggregation_period"] = aggregation_period
                 polars_period = aggregation_options[aggregation_period]
 
             with col2:
@@ -1789,18 +1754,20 @@ ORDER BY user_id, timestamp""",
                     "Total Events (Legacy)": "total_events",
                 }
                 
-                # Get current index from session state
-                current_primary = st.session_state.timeseries_settings["primary_metric"]
-                current_primary_index = list(primary_options.keys()).index(current_primary) if current_primary in primary_options else 0
+                # Get current value from session state, with safe fallback
+                current_primary = st.session_state.timeseries_settings.get("primary_metric", "Users Starting Funnel (Cohort)")
                 
                 primary_metric_display = st.selectbox(
                     "📊 Primary Metric (Bars):",
                     options=list(primary_options.keys()),
-                    index=current_primary_index,
+                    index=list(primary_options.keys()).index(current_primary) if current_primary in primary_options.keys() else 0,
                     key="timeseries_primary",
-                    help="Select the metric to display as bars on the left Y-axis. Cohort metrics are attributed to signup dates, Daily metrics to event dates.",
-                    on_change=update_timeseries_primary
+                    help="Select the metric to display as bars on the left Y-axis. Cohort metrics are attributed to signup dates, Daily metrics to event dates."
                 )
+                
+                # Update session state directly if value changed
+                if primary_metric_display != st.session_state.timeseries_settings.get("primary_metric"):
+                    st.session_state.timeseries_settings["primary_metric"] = primary_metric_display
                 primary_metric = primary_options[primary_metric_display]
 
             with col3:
@@ -1817,18 +1784,20 @@ ORDER BY user_id, timestamp""",
                         metric_name = f"{step_from}_to_{step_to}_rate"
                         secondary_options[display_name] = metric_name
 
-                # Get current index from session state
-                current_secondary = st.session_state.timeseries_settings["secondary_metric"]
-                current_secondary_index = list(secondary_options.keys()).index(current_secondary) if current_secondary in secondary_options else 0
+                # Get current value from session state, with safe fallback
+                current_secondary = st.session_state.timeseries_settings.get("secondary_metric", "Cohort Conversion Rate (%)")
                 
                 secondary_metric_display = st.selectbox(
                     "📈 Secondary Metric (Line):",
                     options=list(secondary_options.keys()),
-                    index=current_secondary_index,
+                    index=list(secondary_options.keys()).index(current_secondary) if current_secondary in secondary_options.keys() else 0,
                     key="timeseries_secondary",
-                    help="Select the percentage metric to display as a line on the right Y-axis. All rates shown are cohort-based (attributed to signup dates).",
-                    on_change=update_timeseries_secondary
+                    help="Select the percentage metric to display as a line on the right Y-axis. All rates shown are cohort-based (attributed to signup dates)."
                 )
+                
+                # Update session state directly if value changed
+                if secondary_metric_display != st.session_state.timeseries_settings.get("secondary_metric"):
+                    st.session_state.timeseries_settings["secondary_metric"] = secondary_metric_display
                 secondary_metric = secondary_options[secondary_metric_display]
 
             # Calculate time series data only if we have all required data
@@ -2328,36 +2297,44 @@ ORDER BY user_id, timestamp""",
                         max_value=100,
                         value=st.session_state.process_mining_settings["min_frequency"],
                         key="pm_min_frequency",
-                        help="Hide transitions with fewer occurrences to reduce noise",
-                        on_change=update_pm_min_frequency
+                        help="Hide transitions with fewer occurrences to reduce noise"
                     )
+                    # Update session state directly
+                    if min_frequency != st.session_state.process_mining_settings["min_frequency"]:
+                        st.session_state.process_mining_settings["min_frequency"] = min_frequency
 
                 with col2:
                     include_cycles = st.checkbox(
                         "Detect cycles",
                         value=st.session_state.process_mining_settings["include_cycles"],
                         key="pm_include_cycles",
-                        help="Find repetitive behavior patterns",
-                        on_change=update_pm_include_cycles
+                        help="Find repetitive behavior patterns"
                     )
+                    # Update session state directly
+                    if include_cycles != st.session_state.process_mining_settings["include_cycles"]:
+                        st.session_state.process_mining_settings["include_cycles"] = include_cycles
 
                 with col3:
                     show_frequencies = st.checkbox(
                         "Show frequencies",
                         value=st.session_state.process_mining_settings["show_frequencies"],
                         key="pm_show_frequencies",
-                        help="Display transition counts on visualizations",
-                        on_change=update_pm_show_frequencies
+                        help="Display transition counts on visualizations"
                     )
+                    # Update session state directly
+                    if show_frequencies != st.session_state.process_mining_settings["show_frequencies"]:
+                        st.session_state.process_mining_settings["show_frequencies"] = show_frequencies
 
                 with col4:
                     use_funnel_events_only = st.checkbox(
                         "Use selected events only",
                         value=st.session_state.process_mining_settings["use_funnel_events_only"],
                         key="pm_use_funnel_events_only",
-                        help="Analyze only the events selected in your funnel (recommended for focused analysis)",
-                        on_change=update_pm_use_funnel_events_only
+                        help="Analyze only the events selected in your funnel (recommended for focused analysis)"
                     )
+                    # Update session state directly
+                    if use_funnel_events_only != st.session_state.process_mining_settings["use_funnel_events_only"]:
+                        st.session_state.process_mining_settings["use_funnel_events_only"] = use_funnel_events_only
 
             # Show warning if filtering is enabled but no funnel events selected
             if use_funnel_events_only and not st.session_state.funnel_steps:
@@ -2450,9 +2427,11 @@ ORDER BY user_id, timestamp""",
                             "network": "🕸️ Network View (Advanced)",
                         }[x],
                         key="pm_visualization_type",
-                        help="Choose visualization style for process analysis",
-                        on_change=update_pm_visualization_type
+                        help="Choose visualization style for process analysis"
                     )
+                    # Update session state directly
+                    if visualization_type != st.session_state.process_mining_settings["visualization_type"]:
+                        st.session_state.process_mining_settings["visualization_type"] = visualization_type
 
                 with viz_col2:
                     show_frequencies = st.checkbox(
