@@ -174,9 +174,9 @@ class FunnelAnalyticsPageObject:
             self.at.session_state.analysis_results = None
 
         # Verify funnel was cleared in session state
-        assert (
-            self.at.session_state.funnel_steps == []
-        ), "Funnel steps should be empty after clearing"
+        assert self.at.session_state.funnel_steps == [], (
+            "Funnel steps should be empty after clearing"
+        )
 
     def analyze_funnel(self) -> None:
         """
@@ -185,9 +185,9 @@ class FunnelAnalyticsPageObject:
         This helper abstracts the analysis execution process.
         """
         # Ensure we have at least 2 steps before analyzing
-        assert (
-            len(self.at.session_state.funnel_steps) >= 2
-        ), "Need at least 2 steps to analyze funnel"
+        assert len(self.at.session_state.funnel_steps) >= 2, (
+            "Need at least 2 steps to analyze funnel"
+        )
 
         try:
             # Click Analyze Funnel button using its stable key with increased timeout
@@ -208,9 +208,9 @@ class FunnelAnalyticsPageObject:
             )
 
         # Verify analysis results were generated
-        assert (
-            self.at.session_state.analysis_results is not None
-        ), "Analysis results should be generated"
+        assert self.at.session_state.analysis_results is not None, (
+            "Analysis results should be generated"
+        )
 
     def get_available_events(self) -> List[str]:
         """
@@ -305,9 +305,9 @@ class TestFunnelAnalyticsUI:
         # Verify session state is properly initialized
         assert hasattr(at.session_state, "funnel_steps"), "Session state should have funnel_steps"
         assert hasattr(at.session_state, "events_data"), "Session state should have events_data"
-        assert hasattr(
-            at.session_state, "analysis_results"
-        ), "Session state should have analysis_results"
+        assert hasattr(at.session_state, "analysis_results"), (
+            "Session state should have analysis_results"
+        )
 
     def test_data_loading_flow(self):
         """
@@ -332,18 +332,18 @@ class TestFunnelAnalyticsUI:
         page.load_sample_data()
 
         # Verify data was loaded and session state updated
-        assert (
-            at.session_state.events_data is not None
-        ), "Data should be loaded after clicking button"
+        assert at.session_state.events_data is not None, (
+            "Data should be loaded after clicking button"
+        )
         assert len(at.session_state.events_data) > 0, "Loaded data should not be empty"
 
         # Verify overview metrics are displayed
         page.verify_overview_metrics_displayed()
 
         # Verify event statistics were calculated
-        assert hasattr(
-            at.session_state, "event_statistics"
-        ), "Event statistics should be calculated"
+        assert hasattr(at.session_state, "event_statistics"), (
+            "Event statistics should be calculated"
+        )
         assert len(at.session_state.event_statistics) > 0, "Event statistics should not be empty"
 
     def test_end_to_end_funnel_analysis(self):
@@ -376,9 +376,9 @@ class TestFunnelAnalyticsUI:
         page.build_funnel(test_steps)
 
         # Verify funnel was built correctly
-        assert (
-            at.session_state.funnel_steps == test_steps
-        ), "Funnel steps should match selected steps"
+        assert at.session_state.funnel_steps == test_steps, (
+            "Funnel steps should match selected steps"
+        )
 
         # Step 3: Execute analysis
         page.analyze_funnel()
@@ -388,18 +388,18 @@ class TestFunnelAnalyticsUI:
         assert results is not None, "Analysis results should be generated"
         assert hasattr(results, "steps"), "Results should have steps attribute"
         assert hasattr(results, "users_count"), "Results should have users_count attribute"
-        assert hasattr(
-            results, "conversion_rates"
-        ), "Results should have conversion_rates attribute"
+        assert hasattr(results, "conversion_rates"), (
+            "Results should have conversion_rates attribute"
+        )
 
         # Verify results match our funnel
         assert results.steps == test_steps, "Results steps should match funnel steps"
-        assert len(results.users_count) == len(
-            test_steps
-        ), "Users count should match number of steps"
-        assert len(results.conversion_rates) == len(
-            test_steps
-        ), "Conversion rates should match number of steps"
+        assert len(results.users_count) == len(test_steps), (
+            "Users count should match number of steps"
+        )
+        assert len(results.conversion_rates) == len(test_steps), (
+            "Conversion rates should match number of steps"
+        )
 
         # Step 4: Verify main funnel chart (if available)
         try:
@@ -415,9 +415,9 @@ class TestFunnelAnalyticsUI:
             # Verify chart has values for each step
             chart_values = chart_spec["data"][0]["x"]
             assert len(chart_values) == len(test_steps), "Chart should have values for each step"
-            assert all(
-                isinstance(v, (int, float)) and v >= 0 for v in chart_values
-            ), "Chart values should be non-negative numbers"
+            assert all(isinstance(v, (int, float)) and v >= 0 for v in chart_values), (
+                "Chart values should be non-negative numbers"
+            )
         except (IndexError, KeyError, AssertionError):
             # Chart might not be rendered yet or analysis failed - that's okay for UI testing
             # The important part is that the session state has the results
@@ -446,9 +446,9 @@ class TestFunnelAnalyticsUI:
         page.build_funnel(test_steps)
 
         # Verify funnel was built
-        assert (
-            at.session_state.funnel_steps == test_steps
-        ), "Funnel should be built before clearing"
+        assert at.session_state.funnel_steps == test_steps, (
+            "Funnel should be built before clearing"
+        )
 
         # Clear the funnel
         page.clear_funnel()

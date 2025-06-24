@@ -4575,9 +4575,7 @@ class FunnelCalculator:
             users_count.append(count)
 
             # For unique pairs, conversion rate is step-to-step
-            (
-                (count / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
-            )
+            ((count / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0)
             # But we also track overall conversion rate from first step for consistency
             overall_conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
             conversion_rates.append(overall_conversion_rate)
@@ -5887,9 +5885,7 @@ class FunnelCalculator:
             users_count.append(count)
 
             # For unique pairs, conversion rate is step-to-step
-            (
-                (count / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0
-            )
+            ((count / len(prev_step_users) * 100) if len(prev_step_users) > 0 else 0)
             # But we also track overall conversion rate from first step
             overall_conversion_rate = (count / users_count[0] * 100) if users_count[0] > 0 else 0
             conversion_rates.append(overall_conversion_rate)

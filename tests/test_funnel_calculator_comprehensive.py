@@ -430,9 +430,9 @@ class TestFunnelCalculatorComprehensive:
             and funnel_order == FunnelOrder.UNORDERED
         ):
             # This combination is likely to cause fallback
-            assert (
-                "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower()
-            ), f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
+            assert "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower(), (
+                f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
+            )
 
         # Instead of checking exact counts, just make sure we get a valid result
         # with non-negative values
@@ -486,9 +486,9 @@ class TestFunnelCalculatorComprehensive:
             and reentry_mode == ReentryMode.OPTIMIZED_REENTRY
         ):
             # This combination often causes fallback
-            assert (
-                "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower()
-            ), f"Expected fallback to Pandas for {counting_method.value}, {reentry_mode.value}"
+            assert "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower(), (
+                f"Expected fallback to Pandas for {counting_method.value}, {reentry_mode.value}"
+            )
 
         # Instead of checking exact counts, just make sure we get a valid result
         # with non-negative values
@@ -554,9 +554,9 @@ class TestFunnelCalculatorComprehensive:
             and funnel_order == FunnelOrder.UNORDERED
         ):
             # This combination is known to cause issues
-            assert (
-                "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower()
-            ), f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
+            assert "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower(), (
+                f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
+            )
 
         # Instead of checking exact counts, just make sure we get a valid result
         # with non-negative values
@@ -621,9 +621,9 @@ class TestFunnelCalculatorComprehensive:
                 funnel_order == FunnelOrder.ORDERED
                 and counting_method == CountingMethod.UNIQUE_PAIRS
             ):
-                assert (
-                    "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower()
-                ), f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
+                assert "falling back" in caplog.text.lower() and "pandas" in caplog.text.lower(), (
+                    f"Expected fallback to Pandas for {counting_method.value}, {funnel_order.value}"
+                )
 
             # Instead of checking exact counts, just make sure we get a valid result
             # with non-negative values
@@ -711,7 +711,9 @@ class TestFunnelCalculatorComprehensive:
                 )
             else:
                 # Unexpected failure
-                assert False, f"Unexpected failure for {counting_method.value}, {reentry_mode.value}, {funnel_order.value}: {str(e)}"
+                assert False, (
+                    f"Unexpected failure for {counting_method.value}, {reentry_mode.value}, {funnel_order.value}: {str(e)}"
+                )
 
     # Test with empty dataset
     def test_edge_case_empty_dataset(self):
