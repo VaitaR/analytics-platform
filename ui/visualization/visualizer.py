@@ -612,7 +612,7 @@ class FunnelVisualizer:
 
         # Modern cohort analysis colorscale - optimized for dark theme and readability
         # Using a professional red→orange→yellow→green progression that's intuitive and easy on eyes
-        
+
         # Option 1: Classic traffic light progression (more vibrant)
         if getattr(self, 'cohort_color_style', 'classic') == 'classic':
             cohort_colorscale = [

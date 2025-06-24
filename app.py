@@ -118,12 +118,12 @@ st.markdown(
         font-weight: 600;
         color: #374151;
     }
-    
+
     /* Smooth scrolling and prevent jump behavior */
     html {
         scroll-behavior: smooth;
     }
-    
+
     /* Prevent layout shifts during rerun - Dark theme compatible */
     .stTabs [data-baseweb="tab-list"] {
         position: sticky;
@@ -133,58 +133,58 @@ st.markdown(
         border-bottom: 1px solid var(--border-color, #e5e7eb);
         padding: 0.5rem 0;
     }
-    
+
     /* Dark theme support for tabs */
     @media (prefers-color-scheme: dark) {
         .stTabs [data-baseweb="tab-list"] {
             background: #0e1117;
             border-bottom: 1px solid #262730;
         }
-        
+
         .stTabs [data-baseweb="tab"] {
             color: #fafafa !important;
         }
-        
+
         .stTabs [data-baseweb="tab"][aria-selected="true"] {
             color: #ff6b6b !important;
             border-bottom-color: #ff6b6b !important;
         }
     }
-    
+
     /* Force dark theme compatibility for Streamlit apps */
     [data-theme="dark"] .stTabs [data-baseweb="tab-list"] {
         background: #0e1117 !important;
         border-bottom: 1px solid #262730 !important;
     }
-    
+
     [data-theme="dark"] .stTabs [data-baseweb="tab"] {
         color: #fafafa !important;
     }
-    
+
     [data-theme="dark"] .stTabs [data-baseweb="tab"][aria-selected="true"] {
         color: #ff6b6b !important;
         border-bottom-color: #ff6b6b !important;
     }
-    
+
     /* Smooth transitions for interactive elements */
     .stSelectbox > div > div {
         transition: all 0.2s ease;
     }
-    
+
     .stSlider > div > div {
         transition: all 0.2s ease;
     }
-    
+
     .stCheckbox > label {
         transition: all 0.2s ease;
     }
-    
+
     /* Prevent content jumping during updates */
     .main .block-container {
         padding-top: 2rem;
         padding-bottom: 2rem;
     }
-    
+
     /* Anchor for tab content to prevent jumping */
     .tab-content-anchor {
         scroll-margin-top: 100px;
@@ -625,16 +625,16 @@ def create_simple_event_selector():
     with col_funnel:
         # Modern funnel builder with clean design
         st.markdown("### 🎯 Your Funnel")
-        
+
         if not st.session_state.funnel_steps:
             # Empty state with clear call-to-action
             st.markdown(
                 """
                 <div style="
-                    text-align: center; 
-                    padding: 2rem; 
-                    border: 2px dashed #4A5568; 
-                    border-radius: 12px; 
+                    text-align: center;
+                    padding: 2rem;
+                    border: 2px dashed #4A5568;
+                    border-radius: 12px;
                     background: rgba(74, 85, 104, 0.1);
                     margin: 1rem 0;
                 ">
@@ -649,7 +649,7 @@ def create_simple_event_selector():
             for i, step in enumerate(st.session_state.funnel_steps):
                 # Create a single row with number, name, and buttons
                 step_col1, step_col2, step_col3, step_col4, step_col5 = st.columns([0.6, 3, 0.6, 0.6, 0.6])
-                
+
                 with step_col1:
                     # Step number badge
                     st.markdown(
@@ -670,7 +670,7 @@ def create_simple_event_selector():
                         """,
                         unsafe_allow_html=True,
                     )
-                
+
                 with step_col2:
                     # Step name with clean styling
                     st.markdown(
@@ -690,7 +690,7 @@ def create_simple_event_selector():
                         """,
                         unsafe_allow_html=True,
                     )
-                
+
                 with step_col3:
                     # Move up button
                     if i > 0:
@@ -702,7 +702,7 @@ def create_simple_event_selector():
                             help="Move up",
                             use_container_width=True,
                         )
-                
+
                 with step_col4:
                     # Move down button
                     if i < len(st.session_state.funnel_steps) - 1:
@@ -714,7 +714,7 @@ def create_simple_event_selector():
                             help="Move down",
                             use_container_width=True,
                         )
-                
+
                 with step_col5:
                     # Remove button
                     st.button(
@@ -726,12 +726,12 @@ def create_simple_event_selector():
                         use_container_width=True,
                         type="secondary",
                     )
-            
+
             st.markdown("---")
-            
+
             # Action buttons with modern styling
             action_col1, action_col2 = st.columns([1, 1])
-            
+
             with action_col1:
                 st.button(
                     "🗑️ Clear All",
@@ -741,7 +741,7 @@ def create_simple_event_selector():
                     help="Remove all events from funnel",
                     type="secondary",
                 )
-            
+
             with action_col2:
                 if len(st.session_state.funnel_steps) >= 2:
                     if st.button(
@@ -762,7 +762,7 @@ def create_simple_event_selector():
                         help="Add at least 2 events to enable configuration",
                         disabled=True,
                     )
-            
+
             # Enhanced funnel summary with more useful information
             if len(st.session_state.funnel_steps) >= 2:
                 # Calculate coverage for funnel steps
@@ -772,9 +772,9 @@ def create_simple_event_selector():
                         stats = st.session_state.event_statistics.get(step, {})
                         coverage = stats.get('user_coverage', 0)
                         step_coverage.append(f"{coverage:.0f}%")
-                
+
                 coverage_text = " → ".join(step_coverage) if step_coverage else "calculating..."
-                
+
                 st.markdown(
                     f"""
                     <div style="
@@ -789,11 +789,11 @@ def create_simple_event_selector():
                         </div>
                         <div style="color: #E2E8F0; font-size: 14px; line-height: 1.5;">
                             <div style="margin-bottom: 6px;">
-                                <strong>📈 {len(st.session_state.funnel_steps)} steps:</strong> 
+                                <strong>📈 {len(st.session_state.funnel_steps)} steps:</strong>
                                 {st.session_state.funnel_steps[0]} → {st.session_state.funnel_steps[-1]}
                             </div>
                             <div>
-                                <strong>🎯 Step coverage:</strong> 
+                                <strong>🎯 Step coverage:</strong>
                                 {coverage_text}
                             </div>
                         </div>
@@ -1084,7 +1084,7 @@ ORDER BY user_id, timestamp""",
 
         # STEP 3: Configure Analysis - Настройки воронки переносим в основную область
         st.markdown('<div id="step3-config"></div>', unsafe_allow_html=True)
-        
+
         st.markdown("## ⚙️ Step 3: Configure Analysis Parameters")
 
         # Создаем форму в основной области вместо sidebar
@@ -1315,7 +1315,7 @@ ORDER BY user_id, timestamp""",
 
         # Create tabs with session state management
         tab_objects = st.tabs(tabs)
-        
+
         # Add JavaScript to preserve scroll position and prevent jumping
         st.markdown("""
         <script>
@@ -1324,7 +1324,7 @@ ORDER BY user_id, timestamp""",
             const scrollY = window.scrollY;
             sessionStorage.setItem('currentScrollY', scrollY);
         }
-        
+
         // Restore scroll position after UI updates
         function restoreScrollPosition() {
             const scrollY = sessionStorage.getItem('currentScrollY');
@@ -1334,11 +1334,11 @@ ORDER BY user_id, timestamp""",
                 }, 100);
             }
         }
-        
+
         // Listen for form changes to preserve scroll
         document.addEventListener('change', preserveScrollPosition);
         document.addEventListener('DOMContentLoaded', restoreScrollPosition);
-        
+
         // Also preserve on page visibility change (when Streamlit reruns)
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible') {
@@ -1351,7 +1351,7 @@ ORDER BY user_id, timestamp""",
         with tab_objects[0]:  # Funnel Chart
             # Add anchor to prevent jumping
             st.markdown('<div class="tab-content-anchor" id="funnel-chart"></div>', unsafe_allow_html=True)
-            
+
             # Business explanation for Funnel Chart
             st.info(
                 """
@@ -1605,7 +1605,7 @@ ORDER BY user_id, timestamp""",
         with tab_objects[1]:  # Flow Diagram
             # Add anchor to prevent jumping
             st.markdown('<div class="tab-content-anchor" id="flow-diagram"></div>', unsafe_allow_html=True)
-            
+
             # Business explanation for Flow Diagram
             st.info(
                 """
@@ -1650,7 +1650,7 @@ ORDER BY user_id, timestamp""",
         with tab_objects[2]:  # Time Series Analysis
             # Add anchor to prevent jumping
             st.markdown('<div class="tab-content-anchor" id="time-series"></div>', unsafe_allow_html=True)
-            
+
             st.markdown("### 🕒 Time Series Analysis")
             st.markdown("*Analyze funnel metrics trends over time with configurable periods*")
 
@@ -1725,10 +1725,10 @@ ORDER BY user_id, timestamp""",
                     "Weeks": "1w",
                     "Months": "1mo",
                 }
-                
+
                 # Get current value from session state, with safe fallback
                 current_aggregation = st.session_state.timeseries_settings.get("aggregation_period", "Days")
-                
+
                 # Use selectbox without on_change to avoid callback conflicts
                 aggregation_period = st.selectbox(
                     "📅 Aggregate by:",
@@ -1736,7 +1736,7 @@ ORDER BY user_id, timestamp""",
                     index=list(aggregation_options.keys()).index(current_aggregation) if current_aggregation in aggregation_options.keys() else 1,
                     key="timeseries_aggregation"
                 )
-                
+
                 # Update session state directly if value changed
                 if aggregation_period != st.session_state.timeseries_settings.get("aggregation_period"):
                     st.session_state.timeseries_settings["aggregation_period"] = aggregation_period
@@ -1753,10 +1753,10 @@ ORDER BY user_id, timestamp""",
                     "Total Unique Users (Legacy)": "total_unique_users",
                     "Total Events (Legacy)": "total_events",
                 }
-                
+
                 # Get current value from session state, with safe fallback
                 current_primary = st.session_state.timeseries_settings.get("primary_metric", "Users Starting Funnel (Cohort)")
-                
+
                 primary_metric_display = st.selectbox(
                     "📊 Primary Metric (Bars):",
                     options=list(primary_options.keys()),
@@ -1764,7 +1764,7 @@ ORDER BY user_id, timestamp""",
                     key="timeseries_primary",
                     help="Select the metric to display as bars on the left Y-axis. Cohort metrics are attributed to signup dates, Daily metrics to event dates."
                 )
-                
+
                 # Update session state directly if value changed
                 if primary_metric_display != st.session_state.timeseries_settings.get("primary_metric"):
                     st.session_state.timeseries_settings["primary_metric"] = primary_metric_display
@@ -1786,7 +1786,7 @@ ORDER BY user_id, timestamp""",
 
                 # Get current value from session state, with safe fallback
                 current_secondary = st.session_state.timeseries_settings.get("secondary_metric", "Cohort Conversion Rate (%)")
-                
+
                 secondary_metric_display = st.selectbox(
                     "📈 Secondary Metric (Line):",
                     options=list(secondary_options.keys()),
@@ -1794,7 +1794,7 @@ ORDER BY user_id, timestamp""",
                     key="timeseries_secondary",
                     help="Select the percentage metric to display as a line on the right Y-axis. All rates shown are cohort-based (attributed to signup dates)."
                 )
-                
+
                 # Update session state directly if value changed
                 if secondary_metric_display != st.session_state.timeseries_settings.get("secondary_metric"):
                     st.session_state.timeseries_settings["secondary_metric"] = secondary_metric_display
@@ -2270,7 +2270,7 @@ ORDER BY user_id, timestamp""",
         with tab_objects[tab_idx]:  # Process Mining
             # Add anchor to prevent jumping
             st.markdown('<div class="tab-content-anchor" id="process-mining"></div>', unsafe_allow_html=True)
-            
+
             st.markdown("### 🔍 Process Mining: User Journey Discovery")
 
             st.info(
@@ -2372,7 +2372,7 @@ ORDER BY user_id, timestamp""",
                             filter_info = f" (filtered to {len(filter_events)} selected funnel events)"
                         else:
                             filter_info = " (analyzing all events in dataset)"
-                        
+
                         st.success(
                             f"✅ Discovered {len(process_data.activities)} activities and {len(process_data.transitions)} transitions{filter_info}"
                         )
@@ -2415,7 +2415,7 @@ ORDER BY user_id, timestamp""",
                     viz_options = ["sankey", "journey", "funnel", "network"]
                     current_viz_type = st.session_state.process_mining_settings["visualization_type"]
                     current_viz_index = viz_options.index(current_viz_type) if current_viz_type in viz_options else 0
-                    
+
                     visualization_type = st.selectbox(
                         "📊 Visualization Type",
                         options=viz_options,
@@ -2435,7 +2435,7 @@ ORDER BY user_id, timestamp""",
 
                 with viz_col2:
                     show_frequencies = st.checkbox(
-                        "📈 Show Frequencies", 
+                        "📈 Show Frequencies",
                         value=st.session_state.process_mining_settings["show_frequencies"],
                         key="pm_viz_show_frequencies"
                     )

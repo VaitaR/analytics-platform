@@ -396,11 +396,11 @@ class DataSourceManager:
             }
 
         events_data = []
-        
+
         # EXACTLY 8 events for focused funnel analysis
         event_sequence = [
             "Sign Up",
-            "Email Verification", 
+            "Email Verification",
             "First Login",
             "Profile Setup",
             "Product Browse",
@@ -424,7 +424,7 @@ class DataSourceManager:
                 # More gradual dropout for higher connectivity
                 retention_rate = 1 - dropout_rates[step_idx]
                 n_remaining = int(len(remaining_users) * retention_rate)
-                
+
                 # Use weighted selection to keep more engaged users
                 # Users with premium subscriptions are more likely to continue
                 user_weights = []
@@ -440,16 +440,16 @@ class DataSourceManager:
                     if user_props["age_group"] in ["18-25", "26-35"]:
                         weight *= 1.2
                     user_weights.append(weight)
-                
+
                 # Normalize weights
                 user_weights = np.array(user_weights)
                 user_weights = user_weights / user_weights.sum()
-                
+
                 # Select users with weighted probability
                 remaining_users = np.random.choice(
-                    remaining_users, 
-                    size=n_remaining, 
-                    replace=False, 
+                    remaining_users,
+                    size=n_remaining,
+                    replace=False,
                     p=user_weights
                 )
                 current_users = set(remaining_users)
@@ -502,11 +502,11 @@ class DataSourceManager:
                     properties.update({
                         "order_value": float(round(np.random.lognormal(3.5, 0.8), 2)),  # $30-$300 range
                         "payment_method": str(np.random.choice(
-                            ["credit_card", "paypal", "apple_pay", "google_pay"], 
+                            ["credit_card", "paypal", "apple_pay", "google_pay"],
                             p=[0.50, 0.25, 0.15, 0.10]
                         )),
                         "product_category": str(np.random.choice(
-                            ["electronics", "clothing", "books", "home"], 
+                            ["electronics", "clothing", "books", "home"],
                             p=[0.30, 0.35, 0.20, 0.15]
                         )),
                     })
@@ -534,25 +534,25 @@ class DataSourceManager:
         # Add cross-step engagement events for users who completed multiple steps
         # This increases connectivity between events
         engaged_users = [uid for uid in user_ids if np.random.random() < 0.4]  # 40% of users are "engaged"
-        
+
         for user_id in engaged_users:
             # Add repeat interactions for engaged users
             user_props = user_properties[user_id]
             reg_date = datetime.strptime(user_props["registration_date"], "%Y-%m-%d")
-            
+
             # Generate 1-3 additional events from the main sequence
             n_additional = np.random.choice([1, 2, 3], p=[0.5, 0.3, 0.2])
-            
+
             for _ in range(n_additional):
                 # Choose events they're likely to repeat (browse, cart actions)
                 repeat_events = ["Product Browse", "Add to Cart"]
                 event_name = np.random.choice(repeat_events)
-                
+
                 # Timing should be after their initial journey
                 timestamp = reg_date + timedelta(
                     days=np.random.uniform(7, 60)  # 1 week to 2 months later
                 )
-                
+
                 properties = {
                     "platform": np.random.choice(
                         ["mobile", "desktop", "tablet"], p=[0.65, 0.30, 0.05]
@@ -561,7 +561,7 @@ class DataSourceManager:
                     "session_id": f"session_{user_id}_repeat_{np.random.randint(1000, 9999)}",
                     "is_repeat_action": True,
                 }
-                
+
                 if event_name == "Product Browse":
                     properties.update({
                         "pages_viewed": int(np.random.choice([2, 3, 4, 5, 6], p=[0.20, 0.25, 0.25, 0.20, 0.10])),
