@@ -614,34 +614,34 @@ class FunnelVisualizer:
         # Using a professional red→orange→yellow→green progression that's intuitive and easy on eyes
 
         # Option 1: Classic traffic light progression (more vibrant)
-        if getattr(self, 'cohort_color_style', 'classic') == 'classic':
+        if getattr(self, "cohort_color_style", "classic") == "classic":
             cohort_colorscale = [
-                [0.0, "#1F2937"],    # Dark gray (0% - no data/very poor)
-                [0.1, "#7F1D1D"],    # Dark red (10% - very poor conversion)
-                [0.2, "#B91C1C"],    # Red (20% - poor conversion)
-                [0.3, "#DC2626"],    # Bright red (30% - below average)
-                [0.4, "#EA580C"],    # Red-orange (40% - needs improvement)
-                [0.5, "#F59E0B"],    # Orange (50% - average)
-                [0.6, "#FCD34D"],    # Yellow-orange (60% - above average)
-                [0.7, "#FDE047"],    # Yellow (70% - good)
-                [0.8, "#84CC16"],    # Yellow-green (80% - very good)
-                [0.9, "#22C55E"],    # Green (90% - excellent)
-                [1.0, "#15803D"]     # Dark green (100% - outstanding)
+                [0.0, "#1F2937"],  # Dark gray (0% - no data/very poor)
+                [0.1, "#7F1D1D"],  # Dark red (10% - very poor conversion)
+                [0.2, "#B91C1C"],  # Red (20% - poor conversion)
+                [0.3, "#DC2626"],  # Bright red (30% - below average)
+                [0.4, "#EA580C"],  # Red-orange (40% - needs improvement)
+                [0.5, "#F59E0B"],  # Orange (50% - average)
+                [0.6, "#FCD34D"],  # Yellow-orange (60% - above average)
+                [0.7, "#FDE047"],  # Yellow (70% - good)
+                [0.8, "#84CC16"],  # Yellow-green (80% - very good)
+                [0.9, "#22C55E"],  # Green (90% - excellent)
+                [1.0, "#15803D"],  # Dark green (100% - outstanding)
             ]
         else:
             # Option 2: Muted professional palette (softer on eyes)
             cohort_colorscale = [
-                [0.0, "#1F2937"],    # Dark gray (0% - no data/very poor)
-                [0.1, "#991B1B"],    # Muted dark red (10%)
-                [0.2, "#DC2626"],    # Muted red (20%)
-                [0.3, "#F87171"],    # Light red (30%)
-                [0.4, "#FB923C"],    # Muted orange (40%)
-                [0.5, "#FBBF24"],    # Muted yellow (50%)
-                [0.6, "#FDE68A"],    # Light yellow (60%)
-                [0.7, "#BEF264"],    # Light green-yellow (70%)
-                [0.8, "#86EFAC"],    # Light green (80%)
-                [0.9, "#34D399"],    # Medium green (90%)
-                [1.0, "#059669"]     # Dark green (100%)
+                [0.0, "#1F2937"],  # Dark gray (0% - no data/very poor)
+                [0.1, "#991B1B"],  # Muted dark red (10%)
+                [0.2, "#DC2626"],  # Muted red (20%)
+                [0.3, "#F87171"],  # Light red (30%)
+                [0.4, "#FB923C"],  # Muted orange (40%)
+                [0.5, "#FBBF24"],  # Muted yellow (50%)
+                [0.6, "#FDE68A"],  # Light yellow (60%)
+                [0.7, "#BEF264"],  # Light green-yellow (70%)
+                [0.8, "#86EFAC"],  # Light green (80%)
+                [0.9, "#34D399"],  # Medium green (90%)
+                [1.0, "#059669"],  # Dark green (100%)
             ]
 
         # Create enhanced heatmap

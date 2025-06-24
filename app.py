@@ -211,16 +211,21 @@ window.addEventListener('load', function() {
 
 # Performance monitoring decorators
 
+
 # Cached Data Loading Functions
 @st.cache_data
 def load_sample_data_cached() -> pd.DataFrame:
     """Cached wrapper for loading sample data to prevent regeneration on every UI interaction"""
     from core import DataSourceManager
+
     manager = DataSourceManager()
     return manager.get_sample_data()
 
+
 @st.cache_data
-def load_file_data_cached(file_name: str, file_size: int, file_type: str, file_content: bytes) -> pd.DataFrame:
+def load_file_data_cached(
+    file_name: str, file_size: int, file_type: str, file_content: bytes
+) -> pd.DataFrame:
     """Cached wrapper for loading file data based on file properties to avoid re-processing same files"""
     import os
     import tempfile
@@ -254,32 +259,44 @@ def load_file_data_cached(file_name: str, file_size: int, file_type: str, file_c
         except OSError:
             pass
 
+
 @st.cache_data
 def load_clickhouse_data_cached(query: str, connection_hash: str) -> pd.DataFrame:
     """Cached wrapper for ClickHouse data loading based on query and connection"""
     # Note: This assumes the connection is already established in session state
-    if hasattr(st.session_state, "data_source_manager") and st.session_state.data_source_manager.clickhouse_client:
+    if (
+        hasattr(st.session_state, "data_source_manager")
+        and st.session_state.data_source_manager.clickhouse_client
+    ):
         return st.session_state.data_source_manager.load_from_clickhouse(query)
     return pd.DataFrame()
+
 
 @st.cache_data
 def get_segmentation_properties_cached(events_data: pd.DataFrame) -> dict[str, list[str]]:
     """Cached wrapper for getting segmentation properties to avoid repeated JSON parsing"""
     from core import DataSourceManager
+
     manager = DataSourceManager()
     return manager.get_segmentation_properties(events_data)
 
+
 @st.cache_data
-def get_property_values_cached(events_data: pd.DataFrame, prop_name: str, prop_type: str) -> list[str]:
+def get_property_values_cached(
+    events_data: pd.DataFrame, prop_name: str, prop_type: str
+) -> list[str]:
     """Cached wrapper for getting property values to avoid repeated filtering"""
     from core import DataSourceManager
+
     manager = DataSourceManager()
     return manager.get_property_values(events_data, prop_name, prop_type)
+
 
 @st.cache_data
 def get_sorted_event_names_cached(events_data: pd.DataFrame) -> list[str]:
     """Cached wrapper for getting sorted event names to avoid repeated sorting"""
     return sorted(events_data["event_name"].unique())
+
 
 @st.cache_data
 def calculate_timeseries_metrics_cached(
@@ -287,7 +304,7 @@ def calculate_timeseries_metrics_cached(
     funnel_steps: tuple[str, ...],
     polars_period: str,
     config_dict: dict[str, Any],
-    use_polars: bool = True
+    use_polars: bool = True,
 ) -> pd.DataFrame:
     """
     Cached wrapper for time series calculation to prevent recalculation during tab switching.
@@ -304,9 +321,11 @@ def calculate_timeseries_metrics_cached(
 
     return calculator.calculate_timeseries_metrics(events_data, steps_list, polars_period)
 
+
 # Data Source Management
 # Callback functions for UI state management
 # Removed callback functions - now using direct state updates to prevent navigation issues
+
 
 def initialize_session_state():
     """Initialize Streamlit session state variables"""
@@ -345,7 +364,7 @@ def initialize_session_state():
         st.session_state.timeseries_settings = {
             "aggregation_period": "Days",
             "primary_metric": "Users Starting Funnel (Cohort)",
-            "secondary_metric": "Cohort Conversion Rate (%)"
+            "secondary_metric": "Cohort Conversion Rate (%)",
         }
     if "process_mining_settings" not in st.session_state:
         st.session_state.process_mining_settings = {
@@ -353,7 +372,7 @@ def initialize_session_state():
             "include_cycles": True,
             "show_frequencies": True,
             "use_funnel_events_only": True,
-            "visualization_type": "sankey"
+            "visualization_type": "sankey",
         }
 
 
@@ -421,9 +440,9 @@ def get_comprehensive_performance_analysis() -> dict[str, Any]:
     if hasattr(st.session_state, "last_calculator") and hasattr(
         st.session_state.last_calculator, "_performance_metrics"
     ):
-        analysis[
-            "funnel_calculator_metrics"
-        ] = st.session_state.last_calculator._performance_metrics
+        analysis["funnel_calculator_metrics"] = (
+            st.session_state.last_calculator._performance_metrics
+        )
 
         # Get bottleneck analysis from calculator
         bottleneck_analysis = st.session_state.last_calculator.get_bottleneck_analysis()
@@ -648,7 +667,9 @@ def create_simple_event_selector():
             # Clean step display with inline layout - no scrolling, show all events
             for i, step in enumerate(st.session_state.funnel_steps):
                 # Create a single row with number, name, and buttons
-                step_col1, step_col2, step_col3, step_col4, step_col5 = st.columns([0.6, 3, 0.6, 0.6, 0.6])
+                step_col1, step_col2, step_col3, step_col4, step_col5 = st.columns(
+                    [0.6, 3, 0.6, 0.6, 0.6]
+                )
 
                 with step_col1:
                     # Step number badge
@@ -753,7 +774,9 @@ def create_simple_event_selector():
                         disabled=False,
                     ):
                         # Use Streamlit's scroll_to_element when available, or show info message
-                        st.info("📍 Scroll down to Step 3: Configure Analysis Parameters to set up your funnel analysis.")
+                        st.info(
+                            "📍 Scroll down to Step 3: Configure Analysis Parameters to set up your funnel analysis."
+                        )
                 else:
                     st.button(
                         "⚙️ Configure Analysis",
@@ -767,10 +790,13 @@ def create_simple_event_selector():
             if len(st.session_state.funnel_steps) >= 2:
                 # Calculate coverage for funnel steps
                 step_coverage = []
-                if st.session_state.events_data is not None and "event_statistics" in st.session_state:
+                if (
+                    st.session_state.events_data is not None
+                    and "event_statistics" in st.session_state
+                ):
                     for step in st.session_state.funnel_steps:
                         stats = st.session_state.event_statistics.get(step, {})
-                        coverage = stats.get('user_coverage', 0)
+                        coverage = stats.get("user_coverage", 0)
                         step_coverage.append(f"{coverage:.0f}%")
 
                 coverage_text = " → ".join(step_coverage) if step_coverage else "calculating..."
@@ -853,13 +879,10 @@ def main():
                 with st.spinner("Processing file..."):
                     # Use cached file loading based on file properties
                     file_content = uploaded_file.getvalue()
-                    file_type = uploaded_file.name.split('.')[-1].lower()
+                    file_type = uploaded_file.name.split(".")[-1].lower()
 
                     st.session_state.events_data = load_file_data_cached(
-                        uploaded_file.name,
-                        uploaded_file.size,
-                        file_type,
-                        file_content
+                        uploaded_file.name, uploaded_file.size, file_type, file_content
                     )
 
                     if not st.session_state.events_data.empty:
@@ -985,7 +1008,7 @@ ORDER BY user_id, timestamp""",
                 "📁 Load Config",
                 type=["json"],
                 help="Upload saved configuration",
-                key="sidebar_config_upload"
+                key="sidebar_config_upload",
             )
 
             if uploaded_config is not None:
@@ -1266,8 +1289,6 @@ ORDER BY user_id, timestamp""",
             else:
                 st.toast("⚠️ Please add at least 2 steps to create a funnel", icon="⚠️")
 
-
-
     # STEP 4: Results - показываем только если есть результаты
     if st.session_state.analysis_results:
         st.markdown("---")
@@ -1317,7 +1338,8 @@ ORDER BY user_id, timestamp""",
         tab_objects = st.tabs(tabs)
 
         # Add JavaScript to preserve scroll position and prevent jumping
-        st.markdown("""
+        st.markdown(
+            """
         <script>
         // Store current scroll position before any UI updates
         function preserveScrollPosition() {
@@ -1346,11 +1368,15 @@ ORDER BY user_id, timestamp""",
             }
         });
         </script>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         with tab_objects[0]:  # Funnel Chart
             # Add anchor to prevent jumping
-            st.markdown('<div class="tab-content-anchor" id="funnel-chart"></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="tab-content-anchor" id="funnel-chart"></div>', unsafe_allow_html=True
+            )
 
             # Business explanation for Funnel Chart
             st.info(
@@ -1604,7 +1630,9 @@ ORDER BY user_id, timestamp""",
 
         with tab_objects[1]:  # Flow Diagram
             # Add anchor to prevent jumping
-            st.markdown('<div class="tab-content-anchor" id="flow-diagram"></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="tab-content-anchor" id="flow-diagram"></div>', unsafe_allow_html=True
+            )
 
             # Business explanation for Flow Diagram
             st.info(
@@ -1649,7 +1677,9 @@ ORDER BY user_id, timestamp""",
 
         with tab_objects[2]:  # Time Series Analysis
             # Add anchor to prevent jumping
-            st.markdown('<div class="tab-content-anchor" id="time-series"></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="tab-content-anchor" id="time-series"></div>', unsafe_allow_html=True
+            )
 
             st.markdown("### 🕒 Time Series Analysis")
             st.markdown("*Analyze funnel metrics trends over time with configurable periods*")
@@ -1727,18 +1757,24 @@ ORDER BY user_id, timestamp""",
                 }
 
                 # Get current value from session state, with safe fallback
-                current_aggregation = st.session_state.timeseries_settings.get("aggregation_period", "Days")
+                current_aggregation = st.session_state.timeseries_settings.get(
+                    "aggregation_period", "Days"
+                )
 
                 # Use selectbox without on_change to avoid callback conflicts
                 aggregation_period = st.selectbox(
                     "📅 Aggregate by:",
                     options=list(aggregation_options.keys()),
-                    index=list(aggregation_options.keys()).index(current_aggregation) if current_aggregation in aggregation_options.keys() else 1,
-                    key="timeseries_aggregation"
+                    index=list(aggregation_options.keys()).index(current_aggregation)
+                    if current_aggregation in aggregation_options.keys()
+                    else 1,
+                    key="timeseries_aggregation",
                 )
 
                 # Update session state directly if value changed
-                if aggregation_period != st.session_state.timeseries_settings.get("aggregation_period"):
+                if aggregation_period != st.session_state.timeseries_settings.get(
+                    "aggregation_period"
+                ):
                     st.session_state.timeseries_settings["aggregation_period"] = aggregation_period
                 polars_period = aggregation_options[aggregation_period]
 
@@ -1755,18 +1791,24 @@ ORDER BY user_id, timestamp""",
                 }
 
                 # Get current value from session state, with safe fallback
-                current_primary = st.session_state.timeseries_settings.get("primary_metric", "Users Starting Funnel (Cohort)")
+                current_primary = st.session_state.timeseries_settings.get(
+                    "primary_metric", "Users Starting Funnel (Cohort)"
+                )
 
                 primary_metric_display = st.selectbox(
                     "📊 Primary Metric (Bars):",
                     options=list(primary_options.keys()),
-                    index=list(primary_options.keys()).index(current_primary) if current_primary in primary_options.keys() else 0,
+                    index=list(primary_options.keys()).index(current_primary)
+                    if current_primary in primary_options.keys()
+                    else 0,
                     key="timeseries_primary",
-                    help="Select the metric to display as bars on the left Y-axis. Cohort metrics are attributed to signup dates, Daily metrics to event dates."
+                    help="Select the metric to display as bars on the left Y-axis. Cohort metrics are attributed to signup dates, Daily metrics to event dates.",
                 )
 
                 # Update session state directly if value changed
-                if primary_metric_display != st.session_state.timeseries_settings.get("primary_metric"):
+                if primary_metric_display != st.session_state.timeseries_settings.get(
+                    "primary_metric"
+                ):
                     st.session_state.timeseries_settings["primary_metric"] = primary_metric_display
                 primary_metric = primary_options[primary_metric_display]
 
@@ -1785,19 +1827,27 @@ ORDER BY user_id, timestamp""",
                         secondary_options[display_name] = metric_name
 
                 # Get current value from session state, with safe fallback
-                current_secondary = st.session_state.timeseries_settings.get("secondary_metric", "Cohort Conversion Rate (%)")
+                current_secondary = st.session_state.timeseries_settings.get(
+                    "secondary_metric", "Cohort Conversion Rate (%)"
+                )
 
                 secondary_metric_display = st.selectbox(
                     "📈 Secondary Metric (Line):",
                     options=list(secondary_options.keys()),
-                    index=list(secondary_options.keys()).index(current_secondary) if current_secondary in secondary_options.keys() else 0,
+                    index=list(secondary_options.keys()).index(current_secondary)
+                    if current_secondary in secondary_options.keys()
+                    else 0,
                     key="timeseries_secondary",
-                    help="Select the percentage metric to display as a line on the right Y-axis. All rates shown are cohort-based (attributed to signup dates)."
+                    help="Select the percentage metric to display as a line on the right Y-axis. All rates shown are cohort-based (attributed to signup dates).",
                 )
 
                 # Update session state directly if value changed
-                if secondary_metric_display != st.session_state.timeseries_settings.get("secondary_metric"):
-                    st.session_state.timeseries_settings["secondary_metric"] = secondary_metric_display
+                if secondary_metric_display != st.session_state.timeseries_settings.get(
+                    "secondary_metric"
+                ):
+                    st.session_state.timeseries_settings["secondary_metric"] = (
+                        secondary_metric_display
+                    )
                 secondary_metric = secondary_options[secondary_metric_display]
 
             # Calculate time series data only if we have all required data
@@ -1828,7 +1878,7 @@ ORDER BY user_id, timestamp""",
                         funnel_steps_tuple,
                         polars_period,
                         config_dict,
-                        use_polars
+                        use_polars,
                     )
 
                     if not timeseries_data.empty:
@@ -2269,7 +2319,10 @@ ORDER BY user_id, timestamp""",
         # Process Mining Tab (always show if we have event data)
         with tab_objects[tab_idx]:  # Process Mining
             # Add anchor to prevent jumping
-            st.markdown('<div class="tab-content-anchor" id="process-mining"></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="tab-content-anchor" id="process-mining"></div>',
+                unsafe_allow_html=True,
+            )
 
             st.markdown("### 🔍 Process Mining: User Journey Discovery")
 
@@ -2297,7 +2350,7 @@ ORDER BY user_id, timestamp""",
                         max_value=100,
                         value=st.session_state.process_mining_settings["min_frequency"],
                         key="pm_min_frequency",
-                        help="Hide transitions with fewer occurrences to reduce noise"
+                        help="Hide transitions with fewer occurrences to reduce noise",
                     )
                     # Update session state directly
                     if min_frequency != st.session_state.process_mining_settings["min_frequency"]:
@@ -2308,10 +2361,13 @@ ORDER BY user_id, timestamp""",
                         "Detect cycles",
                         value=st.session_state.process_mining_settings["include_cycles"],
                         key="pm_include_cycles",
-                        help="Find repetitive behavior patterns"
+                        help="Find repetitive behavior patterns",
                     )
                     # Update session state directly
-                    if include_cycles != st.session_state.process_mining_settings["include_cycles"]:
+                    if (
+                        include_cycles
+                        != st.session_state.process_mining_settings["include_cycles"]
+                    ):
                         st.session_state.process_mining_settings["include_cycles"] = include_cycles
 
                 with col3:
@@ -2319,22 +2375,32 @@ ORDER BY user_id, timestamp""",
                         "Show frequencies",
                         value=st.session_state.process_mining_settings["show_frequencies"],
                         key="pm_show_frequencies",
-                        help="Display transition counts on visualizations"
+                        help="Display transition counts on visualizations",
                     )
                     # Update session state directly
-                    if show_frequencies != st.session_state.process_mining_settings["show_frequencies"]:
-                        st.session_state.process_mining_settings["show_frequencies"] = show_frequencies
+                    if (
+                        show_frequencies
+                        != st.session_state.process_mining_settings["show_frequencies"]
+                    ):
+                        st.session_state.process_mining_settings["show_frequencies"] = (
+                            show_frequencies
+                        )
 
                 with col4:
                     use_funnel_events_only = st.checkbox(
                         "Use selected events only",
                         value=st.session_state.process_mining_settings["use_funnel_events_only"],
                         key="pm_use_funnel_events_only",
-                        help="Analyze only the events selected in your funnel (recommended for focused analysis)"
+                        help="Analyze only the events selected in your funnel (recommended for focused analysis)",
                     )
                     # Update session state directly
-                    if use_funnel_events_only != st.session_state.process_mining_settings["use_funnel_events_only"]:
-                        st.session_state.process_mining_settings["use_funnel_events_only"] = use_funnel_events_only
+                    if (
+                        use_funnel_events_only
+                        != st.session_state.process_mining_settings["use_funnel_events_only"]
+                    ):
+                        st.session_state.process_mining_settings["use_funnel_events_only"] = (
+                            use_funnel_events_only
+                        )
 
             # Show warning if filtering is enabled but no funnel events selected
             if use_funnel_events_only and not st.session_state.funnel_steps:
@@ -2369,7 +2435,9 @@ ORDER BY user_id, timestamp""",
 
                         # Create success message with filtering info
                         if filter_events:
-                            filter_info = f" (filtered to {len(filter_events)} selected funnel events)"
+                            filter_info = (
+                                f" (filtered to {len(filter_events)} selected funnel events)"
+                            )
                         else:
                             filter_info = " (analyzing all events in dataset)"
 
@@ -2413,8 +2481,14 @@ ORDER BY user_id, timestamp""",
                 with viz_col1:
                     # Get current visualization type index
                     viz_options = ["sankey", "journey", "funnel", "network"]
-                    current_viz_type = st.session_state.process_mining_settings["visualization_type"]
-                    current_viz_index = viz_options.index(current_viz_type) if current_viz_type in viz_options else 0
+                    current_viz_type = st.session_state.process_mining_settings[
+                        "visualization_type"
+                    ]
+                    current_viz_index = (
+                        viz_options.index(current_viz_type)
+                        if current_viz_type in viz_options
+                        else 0
+                    )
 
                     visualization_type = st.selectbox(
                         "📊 Visualization Type",
@@ -2427,17 +2501,22 @@ ORDER BY user_id, timestamp""",
                             "network": "🕸️ Network View (Advanced)",
                         }[x],
                         key="pm_visualization_type",
-                        help="Choose visualization style for process analysis"
+                        help="Choose visualization style for process analysis",
                     )
                     # Update session state directly
-                    if visualization_type != st.session_state.process_mining_settings["visualization_type"]:
-                        st.session_state.process_mining_settings["visualization_type"] = visualization_type
+                    if (
+                        visualization_type
+                        != st.session_state.process_mining_settings["visualization_type"]
+                    ):
+                        st.session_state.process_mining_settings["visualization_type"] = (
+                            visualization_type
+                        )
 
                 with viz_col2:
                     show_frequencies = st.checkbox(
                         "📈 Show Frequencies",
                         value=st.session_state.process_mining_settings["show_frequencies"],
-                        key="pm_viz_show_frequencies"
+                        key="pm_viz_show_frequencies",
                     )
 
                 with viz_col3:
@@ -2864,8 +2943,6 @@ ORDER BY user_id, timestamp""",
 
             tab_idx += 1
 
-
-
     # Footer
     st.markdown("---")
     st.markdown(
@@ -2877,9 +2954,6 @@ ORDER BY user_id, timestamp""",
     """,
         unsafe_allow_html=True,
     )
-
-
-
 
 
 if __name__ == "__main__":

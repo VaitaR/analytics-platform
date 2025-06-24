@@ -771,7 +771,9 @@ class PathAnalyzer:
         return journeys
 
     def _discover_activities(
-        self, events_pl: pl.DataFrame, user_journeys: Optional[dict[str, list[dict[str, Any]]]] = None
+        self,
+        events_pl: pl.DataFrame,
+        user_journeys: Optional[dict[str, list[dict[str, Any]]]] = None,
     ) -> dict[str, dict[str, Any]]:
         """Discover activities and their characteristics - optimized version"""
         # Get optimized journey DataFrame

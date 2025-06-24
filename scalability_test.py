@@ -125,17 +125,13 @@ def scalability_test():
 
         # Test without cycles
         start_time = time.time()
-        analyzer.discover_process_mining_structure(
-            df, min_frequency=10, include_cycles=False
-        )
+        analyzer.discover_process_mining_structure(df, min_frequency=10, include_cycles=False)
         time_no_cycles = time.time() - start_time
         print(f"{time_no_cycles:>8.2f}s", end="     ")
 
         # Test with cycles
         start_time = time.time()
-        analyzer.discover_process_mining_structure(
-            df, min_frequency=10, include_cycles=True
-        )
+        analyzer.discover_process_mining_structure(df, min_frequency=10, include_cycles=True)
         time_with_cycles = time.time() - start_time
         print(f"{time_with_cycles:>8.2f}s", end="     ")
 

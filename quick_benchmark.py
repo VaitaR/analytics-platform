@@ -106,9 +106,7 @@ def quick_benchmark():
     # Test statistics (optimized)
     print("   Testing _calculate_process_statistics_optimized...")
     start_time = time.time()
-    analyzer._calculate_process_statistics_optimized(
-        journey_df, activities, transitions
-    )
+    analyzer._calculate_process_statistics_optimized(journey_df, activities, transitions)
     stats_time = time.time() - start_time
     print(f"   ✅ Statistics calculation: {stats_time:.3f}s")
 
@@ -141,9 +139,7 @@ def quick_benchmark():
 
     print("   Without cycles:")
     start_time = time.time()
-    analyzer.discover_process_mining_structure(
-        df, min_frequency=1, include_cycles=False
-    )
+    analyzer.discover_process_mining_structure(df, min_frequency=1, include_cycles=False)
     time_no_cycles = time.time() - start_time
     print(
         f"   ✅ No cycles: {time_no_cycles:.3f}s ({total_events / time_no_cycles:,.0f} events/sec)"
@@ -151,9 +147,7 @@ def quick_benchmark():
 
     print("   With cycles:")
     start_time = time.time()
-    analyzer.discover_process_mining_structure(
-        df, min_frequency=1, include_cycles=True
-    )
+    analyzer.discover_process_mining_structure(df, min_frequency=1, include_cycles=True)
     time_with_cycles = time.time() - start_time
     print(
         f"   ⚠️  With cycles: {time_with_cycles:.3f}s ({total_events / time_with_cycles:,.0f} events/sec)"

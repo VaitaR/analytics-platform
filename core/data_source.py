@@ -447,10 +447,7 @@ class DataSourceManager:
 
                 # Select users with weighted probability
                 remaining_users = np.random.choice(
-                    remaining_users,
-                    size=n_remaining,
-                    replace=False,
-                    p=user_weights
+                    remaining_users, size=n_remaining, replace=False, p=user_weights
                 )
                 current_users = set(remaining_users)
 
@@ -493,33 +490,56 @@ class DataSourceManager:
                     "app_version": np.random.choice(
                         ["3.1.0", "3.2.0", "3.3.0"], p=[0.15, 0.35, 0.50]
                     ),
-                    "device_type": np.random.choice(["ios", "android", "web"], p=[0.45, 0.40, 0.15]),
+                    "device_type": np.random.choice(
+                        ["ios", "android", "web"], p=[0.45, 0.40, 0.15]
+                    ),
                     "session_id": f"session_{user_id}_{step_idx}_{np.random.randint(1000, 9999)}",
                 }
 
                 # Add step-specific properties for richer analysis
                 if event_name == "Purchase Complete":
-                    properties.update({
-                        "order_value": float(round(np.random.lognormal(3.5, 0.8), 2)),  # $30-$300 range
-                        "payment_method": str(np.random.choice(
-                            ["credit_card", "paypal", "apple_pay", "google_pay"],
-                            p=[0.50, 0.25, 0.15, 0.10]
-                        )),
-                        "product_category": str(np.random.choice(
-                            ["electronics", "clothing", "books", "home"],
-                            p=[0.30, 0.35, 0.20, 0.15]
-                        )),
-                    })
+                    properties.update(
+                        {
+                            "order_value": float(
+                                round(np.random.lognormal(3.5, 0.8), 2)
+                            ),  # $30-$300 range
+                            "payment_method": str(
+                                np.random.choice(
+                                    ["credit_card", "paypal", "apple_pay", "google_pay"],
+                                    p=[0.50, 0.25, 0.15, 0.10],
+                                )
+                            ),
+                            "product_category": str(
+                                np.random.choice(
+                                    ["electronics", "clothing", "books", "home"],
+                                    p=[0.30, 0.35, 0.20, 0.15],
+                                )
+                            ),
+                        }
+                    )
                 elif event_name == "Add to Cart":
-                    properties.update({
-                        "cart_value": float(round(np.random.lognormal(3.2, 0.6), 2)),  # $25-$200 range
-                        "items_count": int(np.random.choice([1, 2, 3, 4, 5], p=[0.40, 0.30, 0.15, 0.10, 0.05])),
-                    })
+                    properties.update(
+                        {
+                            "cart_value": float(
+                                round(np.random.lognormal(3.2, 0.6), 2)
+                            ),  # $25-$200 range
+                            "items_count": int(
+                                np.random.choice([1, 2, 3, 4, 5], p=[0.40, 0.30, 0.15, 0.10, 0.05])
+                            ),
+                        }
+                    )
                 elif event_name == "Product Browse":
-                    properties.update({
-                        "pages_viewed": int(np.random.choice([1, 2, 3, 4, 5, 6, 7, 8], p=[0.25, 0.20, 0.15, 0.12, 0.10, 0.08, 0.06, 0.04])),
-                        "time_spent_minutes": float(round(np.random.exponential(8), 1)),
-                    })
+                    properties.update(
+                        {
+                            "pages_viewed": int(
+                                np.random.choice(
+                                    [1, 2, 3, 4, 5, 6, 7, 8],
+                                    p=[0.25, 0.20, 0.15, 0.12, 0.10, 0.08, 0.06, 0.04],
+                                )
+                            ),
+                            "time_spent_minutes": float(round(np.random.exponential(8), 1)),
+                        }
+                    )
 
                 events_data.append(
                     {
@@ -533,7 +553,9 @@ class DataSourceManager:
 
         # Add cross-step engagement events for users who completed multiple steps
         # This increases connectivity between events
-        engaged_users = [uid for uid in user_ids if np.random.random() < 0.4]  # 40% of users are "engaged"
+        engaged_users = [
+            uid for uid in user_ids if np.random.random() < 0.4
+        ]  # 40% of users are "engaged"
 
         for user_id in engaged_users:
             # Add repeat interactions for engaged users
@@ -563,15 +585,27 @@ class DataSourceManager:
                 }
 
                 if event_name == "Product Browse":
-                    properties.update({
-                        "pages_viewed": int(np.random.choice([2, 3, 4, 5, 6], p=[0.20, 0.25, 0.25, 0.20, 0.10])),
-                        "time_spent_minutes": float(round(np.random.exponential(12), 1)),  # Longer sessions for repeat users
-                    })
+                    properties.update(
+                        {
+                            "pages_viewed": int(
+                                np.random.choice([2, 3, 4, 5, 6], p=[0.20, 0.25, 0.25, 0.20, 0.10])
+                            ),
+                            "time_spent_minutes": float(
+                                round(np.random.exponential(12), 1)
+                            ),  # Longer sessions for repeat users
+                        }
+                    )
                 elif event_name == "Add to Cart":
-                    properties.update({
-                        "cart_value": float(round(np.random.lognormal(3.4, 0.7), 2)),  # Slightly higher for repeat users
-                        "items_count": int(np.random.choice([1, 2, 3, 4], p=[0.30, 0.35, 0.25, 0.10])),
-                    })
+                    properties.update(
+                        {
+                            "cart_value": float(
+                                round(np.random.lognormal(3.4, 0.7), 2)
+                            ),  # Slightly higher for repeat users
+                            "items_count": int(
+                                np.random.choice([1, 2, 3, 4], p=[0.30, 0.35, 0.25, 0.10])
+                            ),
+                        }
+                    )
 
                 events_data.append(
                     {

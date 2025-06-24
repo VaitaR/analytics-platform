@@ -150,9 +150,9 @@ user_003,Purchase,2024-01-01 12:00:00,{},{}"""
             is_valid, message = data_manager.validate_event_data(invalid_df)
 
             assert not is_valid, f"Should be invalid when missing {missing_col}"
-            assert (
-                missing_col.lower() in message.lower()
-            ), f"Error message should mention {missing_col}"
+            assert missing_col.lower() in message.lower(), (
+                f"Error message should mention {missing_col}"
+            )
 
         print("✅ Missing required columns validation test passed")
 
@@ -182,9 +182,9 @@ user_003,Purchase,2024-01-01 12:00:00,{},{}"""
 
             # Should either be invalid or successfully convert timestamps
             if not is_valid:
-                assert (
-                    "timestamp" in message.lower()
-                ), f"Should mention timestamp issues for {timestamps}"
+                assert "timestamp" in message.lower(), (
+                    f"Should mention timestamp issues for {timestamps}"
+                )
 
         print("✅ Invalid timestamp format handling test passed")
 
@@ -235,9 +235,9 @@ class TestCorruptedFileHandling:
                 result_df = data_manager.load_from_file(mock_file)
 
                 # Should handle gracefully
-                assert isinstance(
-                    result_df, pd.DataFrame
-                ), f"Should return DataFrame for error: {error}"
+                assert isinstance(result_df, pd.DataFrame), (
+                    f"Should return DataFrame for error: {error}"
+                )
                 assert len(result_df) == 0, f"Should return empty DataFrame for error: {error}"
 
         print("✅ Corrupted Parquet file handling test passed")
@@ -294,12 +294,12 @@ class TestCorruptedFileHandling:
                 result_df = data_manager.load_from_file(mock_file)
 
                 # Should handle encoding errors gracefully
-                assert isinstance(
-                    result_df, pd.DataFrame
-                ), f"Should return DataFrame for encoding error: {error}"
-                assert (
-                    len(result_df) == 0
-                ), f"Should return empty DataFrame for encoding error: {error}"
+                assert isinstance(result_df, pd.DataFrame), (
+                    f"Should return DataFrame for encoding error: {error}"
+                )
+                assert len(result_df) == 0, (
+                    f"Should return empty DataFrame for encoding error: {error}"
+                )
 
         print("✅ Encoding issues handling test passed")
 
@@ -343,9 +343,9 @@ class TestLargeFileMemoryManagement:
             execution_time = end_time - start_time
 
             # Should load in reasonable time (less than 10 seconds)
-            assert (
-                execution_time < 10.0
-            ), f"Large file loading took too long: {execution_time:.2f}s"
+            assert execution_time < 10.0, (
+                f"Large file loading took too long: {execution_time:.2f}s"
+            )
 
             # Should load successfully
             assert isinstance(result_df, pd.DataFrame), "Should return DataFrame"
@@ -448,9 +448,9 @@ class TestLargeFileMemoryManagement:
                 is_valid, _ = data_manager.validate_event_data(result_df)
 
                 assert is_valid, f"Chunk {chunks_processed} should be valid"
-                assert (
-                    len(result_df) == chunk_rows
-                ), f"Chunk {chunks_processed} should have {chunk_rows} rows"
+                assert len(result_df) == chunk_rows, (
+                    f"Chunk {chunks_processed} should have {chunk_rows} rows"
+                )
 
                 chunks_processed += 1
 
@@ -502,9 +502,9 @@ class TestLargeFileMemoryManagement:
                 )
 
         # Validate results
-        assert (
-            len(results) == num_simulated_uploads
-        ), f"All {num_simulated_uploads} simulated uploads should complete"
+        assert len(results) == num_simulated_uploads, (
+            f"All {num_simulated_uploads} simulated uploads should complete"
+        )
 
         # Check performance
         avg_duration = sum(r["duration"] for r in results) / len(results)
@@ -512,9 +512,9 @@ class TestLargeFileMemoryManagement:
 
         # Check success
         successful_uploads = sum(1 for r in results if r["success"])
-        assert (
-            successful_uploads == num_simulated_uploads
-        ), f"All simulated uploads should succeed, got {successful_uploads}/{num_simulated_uploads}"
+        assert successful_uploads == num_simulated_uploads, (
+            f"All simulated uploads should succeed, got {successful_uploads}/{num_simulated_uploads}"
+        )
 
         print(
             f"✅ Concurrent file upload simulation test passed ({num_simulated_uploads} simulated uploads, avg {avg_duration:.2f}s)"
@@ -554,9 +554,9 @@ class TestFileUploadSecurity:
             result_df = data_manager.load_from_file(mock_file)
 
             # Should return empty DataFrame for security (since we don't actually read the file)
-            assert isinstance(
-                result_df, pd.DataFrame
-            ), f"Should return DataFrame for filename: {filename}"
+            assert isinstance(result_df, pd.DataFrame), (
+                f"Should return DataFrame for filename: {filename}"
+            )
             # Note: Actual file reading is mocked, so we get empty DataFrame
 
         print("✅ Filename validation security test passed")
@@ -573,9 +573,9 @@ class TestFileUploadSecurity:
             result_df = data_manager.load_from_file(mock_file)
 
             # Should handle memory errors gracefully
-            assert isinstance(
-                result_df, pd.DataFrame
-            ), "Should return DataFrame even for memory errors"
+            assert isinstance(result_df, pd.DataFrame), (
+                "Should return DataFrame even for memory errors"
+            )
             assert len(result_df) == 0, "Should return empty DataFrame for oversized files"
 
         print("✅ File size limits simulation test passed")
@@ -621,8 +621,8 @@ class TestFileUploadSecurity:
             is_valid, message = data_manager.validate_event_data(malicious_df)
 
             # Should be valid structurally (content filtering is not part of validation)
-            assert (
-                is_valid or "timestamp" in message.lower()
-            ), f"Scenario {i} should validate or have timestamp issue"
+            assert is_valid or "timestamp" in message.lower(), (
+                f"Scenario {i} should validate or have timestamp issue"
+            )
 
         print("✅ Content validation security test passed")
